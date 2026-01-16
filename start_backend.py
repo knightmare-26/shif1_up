@@ -17,7 +17,7 @@ def check_python_version():
         print(f"Current version: {sys.version}")
         sys.exit(1)
     print(f"✅ Python version: {sys.version.split()[0]}")
-
+#abc
 def check_dependencies():
     """Check if required dependencies are installed"""
     try:
