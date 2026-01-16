@@ -1,0 +1,17 @@
+{
+  "data": [
+    "position=1 driver_id='verstappen' driver_name='Max Verstappen' constructor='Red Bull Racing Honda RBPT' points=437.0 wins=19 podiums=0 nationality='Dutch' number=1",
+    "position=2 driver_id='norris' driver_name='Lando Norris' constructor='McLaren Mercedes' points=374.0 wins=0 podiums=0 nationality='British' number=4",
+    "position=3 driver_id='leclerc' driver_name='Charles Leclerc' constructor='Ferrari' points=356.0 wins=0 podiums=0 nationality='Monegasque' number=16",
+    "position=4 driver_id='piastri' driver_name='Oscar Piastri' constructor='McLaren Mercedes' points=292.0 wins=0 podiums=0 nationality='Australian' number=81",
+    "position=5 driver_id='sainz' driver_name='Carlos Sainz' constructor='Ferrari' points=290.0 wins=0 podiums=0 nationality='Spanish' number=55",
+    "position=6 driver_id='russell' driver_name='George Russell' constructor='Mercedes' points=245.0 wins=0 podiums=0 nationality='British' number=63",
+    "position=7 driver_id='hamilton' driver_name='Lewis Hamilton' constructor='Mercedes' points=223.0 wins=0 podiums=0 nationality='British' number=44",
+    "position=8 driver_id='perez' driver_name='Sergio Perez' constructor='Red Bull Racing Honda RBPT' points=152.0 wins=0 podiums=0 nationality='Mexican' number=11",
+    "position=9 driver_id='alonso' driver_name='Fernando Alonso' constructor='Aston Martin Aramco Mercedes' points=70.0 wins=0 podiums=0 nationality='Spanish' number=14",
+    "position=10 driver_id='gasly' driver_name='Pierre Gasly' constructor='Alpine Renault' points=42.0 wins=0 podiums=0 nationality='French' number=10"
+  ],
+  "created_at": "2025-09-07T19:21:30.768287",
+  "expires_at": "2025-09-07T20:21:30.768287",
+  "ttl": 3600
+}

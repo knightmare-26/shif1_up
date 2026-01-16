@@ -1,0 +1,12 @@
+{
+  "data": [
+    "position=1 constructor_id='red_bull_racing' constructor_name='Red Bull Racing Honda RBPT' points=589.0 wins=19 nationality='Austrian'",
+    "position=2 constructor_id='mclaren' constructor_name='McLaren Mercedes' points=666.0 wins=0 nationality='British'",
+    "position=3 constructor_id='ferrari' constructor_name='Ferrari' points=646.0 wins=0 nationality='Italian'",
+    "position=4 constructor_id='mercedes' constructor_name='Mercedes' points=468.0 wins=0 nationality='German'",
+    "position=5 constructor_id='aston_martin' constructor_name='Aston Martin Aramco Mercedes' points=94.0 wins=0 nationality='British'"
+  ],
+  "created_at": "2025-09-07T19:21:30.758605",
+  "expires_at": "2025-09-07T20:21:30.758605",
+  "ttl": 3600
+}

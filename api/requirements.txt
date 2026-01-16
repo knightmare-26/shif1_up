@@ -1,0 +1,55 @@
+# FastAPI and web server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# FastF1 and F1 data
+fastf1==3.6.1
+pandas==2.1.4
+numpy==1.25.2
+
+# HTTP client
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Data validation and serialization
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Caching and storage
+redis==5.0.1
+aioredis==2.0.1
+
+# Database (optional)
+sqlalchemy==2.0.23
+alembic==1.13.1
+asyncpg==0.29.0
+
+# Utilities
+python-dotenv==1.0.0
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Development and testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+
+# Monitoring and logging
+structlog==23.2.0
+prometheus-client==0.19.0
+
+# Background tasks
+celery==5.3.4
+
+# File handling
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Time series data
+influxdb-client==1.38.0
+
+# WebSocket support
+websockets==12.0

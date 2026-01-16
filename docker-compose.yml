@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DUCKDB_PATH=/data/f1_history.duckdb
+      - FASTF1_CACHE_DIR=/data/fastf1_cache
+    volumes:
+      - ./data:/data
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  poller:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - FASTF1_CACHE_DIR=/data/fastf1_cache
+      - RACE_YEAR=2024
+      - RACE_GP=Bahrain
+      - POLL_INTERVAL=5
+    volumes:
+      - ./data:/data
+      - ./live:/app/live
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python live/poller.py
+
+  worker:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - ./predict:/app/predict
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: python predict/worker.py
+
+volumes:
+  redis_data:
