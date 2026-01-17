@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 rfdbialvbrfdehuajvbae,
 """
 Startup script for Shif1 UP FastAPI backend
 Run this from the project root directory
