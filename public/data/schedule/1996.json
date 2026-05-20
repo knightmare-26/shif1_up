@@ -1,0 +1,146 @@
+[
+  {
+    "round": 1,
+    "race_name": "Australian Grand Prix",
+    "circuit_name": "Albert Park Grand Prix Circuit",
+    "country": "Australia",
+    "location": "Melbourne",
+    "date": "1996-03-10",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Brazilian Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Jos\u00e9 Carlos Pace",
+    "country": "Brazil",
+    "location": "S\u00e3o Paulo",
+    "date": "1996-03-31",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Argentine Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Juan y Oscar G\u00e1lvez",
+    "country": "Argentina",
+    "location": "Buenos Aires",
+    "date": "1996-04-07",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "European Grand Prix",
+    "circuit_name": "N\u00fcrburgring",
+    "country": "Germany",
+    "location": "N\u00fcrburg",
+    "date": "1996-04-28",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "San Marino Grand Prix",
+    "circuit_name": "Autodromo Enzo e Dino Ferrari",
+    "country": "Italy",
+    "location": "Imola",
+    "date": "1996-05-05",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1996-05-19",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "Spanish Grand Prix",
+    "circuit_name": "Circuit de Barcelona-Catalunya",
+    "country": "Spain",
+    "location": "Barcelona",
+    "date": "1996-06-02",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "Canadian Grand Prix",
+    "circuit_name": "Circuit Gilles Villeneuve",
+    "country": "Canada",
+    "location": "Montreal",
+    "date": "1996-06-16",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Circuit de Nevers Magny-Cours",
+    "country": "France",
+    "location": "Magny Cours",
+    "date": "1996-06-30",
+    "time": ""
+  },
+  {
+    "round": 10,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Silverstone Circuit",
+    "country": "UK",
+    "location": "Silverstone",
+    "date": "1996-07-14",
+    "time": ""
+  },
+  {
+    "round": 11,
+    "race_name": "German Grand Prix",
+    "circuit_name": "Hockenheimring",
+    "country": "Germany",
+    "location": "Hockenheim",
+    "date": "1996-07-28",
+    "time": ""
+  },
+  {
+    "round": 12,
+    "race_name": "Hungarian Grand Prix",
+    "circuit_name": "Hungaroring",
+    "country": "Hungary",
+    "location": "Budapest",
+    "date": "1996-08-11",
+    "time": ""
+  },
+  {
+    "round": 13,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1996-08-25",
+    "time": ""
+  },
+  {
+    "round": 14,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1996-09-08",
+    "time": ""
+  },
+  {
+    "round": 15,
+    "race_name": "Portuguese Grand Prix",
+    "circuit_name": "Aut\u00f3dromo do Estoril",
+    "country": "Portugal",
+    "location": "Estoril",
+    "date": "1996-09-22",
+    "time": ""
+  },
+  {
+    "round": 16,
+    "race_name": "Japanese Grand Prix",
+    "circuit_name": "Suzuka Circuit",
+    "country": "Japan",
+    "location": "Suzuka",
+    "date": "1996-10-13",
+    "time": ""
+  }
+]

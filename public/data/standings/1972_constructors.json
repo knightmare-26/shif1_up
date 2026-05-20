@@ -1,0 +1,98 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 61.0,
+    "wins": 5
+  },
+  {
+    "position": 2,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 51.0,
+    "wins": 4
+  },
+  {
+    "position": 3,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 49.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 33.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "surtees",
+    "constructor_name": "Surtees",
+    "nationality": "British",
+    "points": 18.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "march",
+    "constructor_name": "March",
+    "nationality": "British",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 14.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "constructor_id": "matra",
+    "constructor_name": "Matra",
+    "nationality": "French",
+    "points": 12.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tecno",
+    "constructor_name": "Tecno",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "connew",
+    "constructor_name": "Connew",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "politoys",
+    "constructor_name": "Politoys",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

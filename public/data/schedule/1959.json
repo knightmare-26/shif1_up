@@ -1,0 +1,83 @@
+[
+  {
+    "round": 1,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1959-05-10",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Indianapolis 500",
+    "circuit_name": "Indianapolis Motor Speedway",
+    "country": "USA",
+    "location": "Indianapolis",
+    "date": "1959-05-30",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1959-05-31",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Reims-Gueux",
+    "country": "France",
+    "location": "Reims",
+    "date": "1959-07-05",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Aintree",
+    "country": "UK",
+    "location": "Liverpool",
+    "date": "1959-07-18",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "German Grand Prix",
+    "circuit_name": "AVUS",
+    "country": "Germany",
+    "location": "Berlin",
+    "date": "1959-08-02",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "Portuguese Grand Prix",
+    "circuit_name": "Monsanto Park Circuit",
+    "country": "Portugal",
+    "location": "Lisbon",
+    "date": "1959-08-23",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1959-09-13",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "United States Grand Prix",
+    "circuit_name": "Sebring International Raceway",
+    "country": "USA",
+    "location": "Florida",
+    "date": "1959-12-12",
+    "time": ""
+  }
+]

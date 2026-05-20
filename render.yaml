@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: shif1-up-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: DUCKDB_PATH
+        value: /app/data/f1_history.duckdb
+      - key: FASTF1_CACHE_DIR
+        value: /app/data/fastf1_cache
+      - key: MODEL_DIR
+        value: /app/data/models
+      - key: LOG_FORMAT
+        value: json
+      - key: LOG_LEVEL
+        value: INFO
+      - key: PYTHONPATH
+        value: /app/api
+      - key: JWT_SECRET
+        generateValue: true
+      # Set REDIS_URL to your Upstash rediss:// connection string
+      - key: REDIS_URL
+        sync: false
+      # Update CORS_ORIGINS after your Vercel frontend URL is known
+      - key: CORS_ORIGINS
+        value: http://localhost:3000

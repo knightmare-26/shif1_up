@@ -1,0 +1,122 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 143.5,
+    "wins": 12
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 57.5,
+    "wins": 1
+  },
+  {
+    "position": 3,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 47.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 38.0,
+    "wins": 2
+  },
+  {
+    "position": 5,
+    "constructor_id": "renault",
+    "constructor_name": "Renault",
+    "nationality": "French",
+    "points": 34.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 25.5,
+    "wins": 1
+  },
+  {
+    "position": 7,
+    "constructor_id": "toleman",
+    "constructor_name": "Toleman",
+    "nationality": "British",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "alfa",
+    "constructor_name": "Alfa Romeo",
+    "nationality": "Swiss",
+    "points": 11.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "arrows",
+    "constructor_name": "Arrows",
+    "nationality": "British",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "ligier",
+    "constructor_name": "Ligier",
+    "nationality": "French",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "osella",
+    "constructor_name": "Osella",
+    "nationality": "Italian",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "ats",
+    "constructor_name": "ATS",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "spirit",
+    "constructor_name": "Spirit",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "ram",
+    "constructor_name": "RAM",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

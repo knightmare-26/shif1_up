@@ -1,0 +1,106 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "cooper-climax",
+    "constructor_name": "Cooper-Climax",
+    "nationality": "British",
+    "points": 48.0,
+    "wins": 6
+  },
+  {
+    "position": 2,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 34.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 26.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "cooper-maserati",
+    "constructor_name": "Cooper-Maserati",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "cooper-castellotti",
+    "constructor_name": "Cooper-Castellotti",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "porsche",
+    "constructor_name": "Porsche",
+    "nationality": "German",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "behra-porsche",
+    "constructor_name": "Behra-Porsche",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "scarab",
+    "constructor_name": "Scarab",
+    "nationality": "American",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "aston_martin",
+    "constructor_name": "Aston Martin",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "maserati",
+    "constructor_name": "Maserati",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "jbw",
+    "constructor_name": "JBW",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "vanwall",
+    "constructor_name": "Vanwall",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,98 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 73.0,
+    "wins": 7
+  },
+  {
+    "position": 2,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 36.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "march-ford",
+    "constructor_name": "March-Ford",
+    "nationality": "British",
+    "points": 34.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 33.0,
+    "wins": 2
+  },
+  {
+    "position": 5,
+    "constructor_id": "lotus-ford",
+    "constructor_name": "Lotus-Ford",
+    "nationality": "British",
+    "points": 21.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "matra",
+    "constructor_name": "Matra",
+    "nationality": "French",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "surtees",
+    "constructor_name": "Surtees",
+    "nationality": "British",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "lotus-pw",
+    "constructor_name": "Lotus-Pratt &amp; Whitney",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "march-alfa_romeo",
+    "constructor_name": "March-Alfa Romeo",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "bellasi",
+    "constructor_name": "Bellasi",
+    "nationality": "Swiss",
+    "points": 0.0,
+    "wins": 0
+  }
+]

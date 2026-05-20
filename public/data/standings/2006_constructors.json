@@ -1,0 +1,98 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "renault",
+    "constructor_name": "Renault",
+    "nationality": "French",
+    "points": 206.0,
+    "wins": 8
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 201.0,
+    "wins": 9
+  },
+  {
+    "position": 3,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 110.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "honda",
+    "constructor_name": "Honda",
+    "nationality": "Japanese",
+    "points": 86.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "bmw_sauber",
+    "constructor_name": "BMW Sauber",
+    "nationality": "German",
+    "points": 36.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "toyota",
+    "constructor_name": "Toyota",
+    "nationality": "Japanese",
+    "points": 35.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "red_bull",
+    "constructor_name": "Red Bull",
+    "nationality": "Austrian",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 11.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "toro_rosso",
+    "constructor_name": "Toro Rosso",
+    "nationality": "Italian",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "mf1",
+    "constructor_name": "MF1",
+    "nationality": "Russian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "super_aguri",
+    "constructor_name": "Super Aguri",
+    "nationality": "Japanese",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "spyker_mf1",
+    "constructor_name": "Spyker MF1",
+    "nationality": "Dutch",
+    "points": 0.0,
+    "wins": 0
+  }
+]

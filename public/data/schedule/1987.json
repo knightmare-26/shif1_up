@@ -1,0 +1,146 @@
+[
+  {
+    "round": 1,
+    "race_name": "Brazilian Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Internacional Nelson Piquet",
+    "country": "Brazil",
+    "location": "Rio de Janeiro",
+    "date": "1987-04-12",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "San Marino Grand Prix",
+    "circuit_name": "Autodromo Enzo e Dino Ferrari",
+    "country": "Italy",
+    "location": "Imola",
+    "date": "1987-05-03",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1987-05-17",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1987-05-31",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "Detroit Grand Prix",
+    "circuit_name": "Detroit Street Circuit",
+    "country": "USA",
+    "location": "Detroit",
+    "date": "1987-06-21",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Circuit Paul Ricard",
+    "country": "France",
+    "location": "Le Castellet",
+    "date": "1987-07-05",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Silverstone Circuit",
+    "country": "UK",
+    "location": "Silverstone",
+    "date": "1987-07-12",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "German Grand Prix",
+    "circuit_name": "Hockenheimring",
+    "country": "Germany",
+    "location": "Hockenheim",
+    "date": "1987-07-26",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "Hungarian Grand Prix",
+    "circuit_name": "Hungaroring",
+    "country": "Hungary",
+    "location": "Budapest",
+    "date": "1987-08-09",
+    "time": ""
+  },
+  {
+    "round": 10,
+    "race_name": "Austrian Grand Prix",
+    "circuit_name": "Red Bull Ring",
+    "country": "Austria",
+    "location": "Spielberg",
+    "date": "1987-08-16",
+    "time": ""
+  },
+  {
+    "round": 11,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1987-09-06",
+    "time": ""
+  },
+  {
+    "round": 12,
+    "race_name": "Portuguese Grand Prix",
+    "circuit_name": "Aut\u00f3dromo do Estoril",
+    "country": "Portugal",
+    "location": "Estoril",
+    "date": "1987-09-20",
+    "time": ""
+  },
+  {
+    "round": 13,
+    "race_name": "Spanish Grand Prix",
+    "circuit_name": "Circuito de Jerez",
+    "country": "Spain",
+    "location": "Jerez de la Frontera",
+    "date": "1987-09-27",
+    "time": ""
+  },
+  {
+    "round": 14,
+    "race_name": "Mexican Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Hermanos Rodr\u00edguez",
+    "country": "Mexico",
+    "location": "Mexico City",
+    "date": "1987-10-18",
+    "time": ""
+  },
+  {
+    "round": 15,
+    "race_name": "Japanese Grand Prix",
+    "circuit_name": "Suzuka Circuit",
+    "country": "Japan",
+    "location": "Suzuka",
+    "date": "1987-11-01",
+    "time": ""
+  },
+  {
+    "round": 16,
+    "race_name": "Australian Grand Prix",
+    "circuit_name": "Adelaide Street Circuit",
+    "country": "Australia",
+    "location": "Adelaide",
+    "date": "1987-11-15",
+    "time": ""
+  }
+]

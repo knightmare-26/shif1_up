@@ -1,0 +1,382 @@
+[
+  {
+    "position": 1,
+    "driver_id": "rindt",
+    "driver_name": "Jochen Rindt",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 45.0,
+    "wins": 5
+  },
+  {
+    "position": 2,
+    "driver_id": "ickx",
+    "driver_name": "Jacky Ickx",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 40.0,
+    "wins": 3
+  },
+  {
+    "position": 3,
+    "driver_id": "regazzoni",
+    "driver_name": "Clay Regazzoni",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 33.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "hulme",
+    "driver_name": "Denny Hulme",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 27.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "driver_id": "stewart",
+    "driver_name": "Jackie Stewart",
+    "nationality": "British",
+    "number": "",
+    "constructor": "March",
+    "points": 25.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "driver_id": "jack_brabham",
+    "driver_name": "Jack Brabham",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 25.0,
+    "wins": 1
+  },
+  {
+    "position": 7,
+    "driver_id": "rodriguez",
+    "driver_name": "Pedro Rodr\u00edguez",
+    "nationality": "Mexican",
+    "number": "",
+    "constructor": "BRM",
+    "points": 23.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "driver_id": "amon",
+    "driver_name": "Chris Amon",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "March",
+    "points": 23.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "beltoise",
+    "driver_name": "Jean-Pierre Beltoise",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Matra",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "emerson_fittipaldi",
+    "driver_name": "Emerson Fittipaldi",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 12.0,
+    "wins": 1
+  },
+  {
+    "position": 11,
+    "driver_id": "stommelen",
+    "driver_name": "Rolf Stommelen",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "pescarolo",
+    "driver_name": "Henri Pescarolo",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Matra",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "hill",
+    "driver_name": "Graham Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "mclaren",
+    "driver_name": "Bruce McLaren",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "wisell",
+    "driver_name": "Reine Wisell",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "mario_andretti",
+    "driver_name": "Mario Andretti",
+    "nationality": "American",
+    "number": "",
+    "constructor": "March",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "giunti",
+    "driver_name": "Ignazio Giunti",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "surtees",
+    "driver_name": "John Surtees",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "miles",
+    "driver_name": "John Miles",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 20,
+    "driver_id": "oliver",
+    "driver_name": "Jackie Oliver",
+    "nationality": "British",
+    "number": "",
+    "constructor": "BRM",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 21,
+    "driver_id": "gavin",
+    "driver_name": "Johnny Servoz-Gavin",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 22,
+    "driver_id": "cevert",
+    "driver_name": "Fran\u00e7ois Cevert",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 23,
+    "driver_id": "gethin",
+    "driver_name": "Peter Gethin",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 24,
+    "driver_id": "gurney",
+    "driver_name": "Dan Gurney",
+    "nationality": "American",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 25,
+    "driver_id": "bell",
+    "driver_name": "Derek Bell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "siffert",
+    "driver_name": "Jo Siffert",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "March",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "peterson",
+    "driver_name": "Ronnie Peterson",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "March",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "adamich",
+    "driver_name": "Andrea de Adamich",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "McLaren-Alfa Romeo",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "love",
+    "driver_name": "John Love",
+    "nationality": "Rhodesian",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "eaton",
+    "driver_name": "George Eaton",
+    "nationality": "Canadian",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "klerk",
+    "driver_name": "Peter de Klerk",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "charlton",
+    "driver_name": "Dave Charlton",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "courage",
+    "driver_name": "Piers Courage",
+    "nationality": "British",
+    "number": "",
+    "constructor": "De Tomaso",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lovely",
+    "driver_name": "Pete Lovely",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "schenken",
+    "driver_name": "Tim Schenken",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "De Tomaso",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bonnier",
+    "driver_name": "Jo Bonnier",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "McLaren-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "moser",
+    "driver_name": "Silvio Moser",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Bellasi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hutchison",
+    "driver_name": "Gus Hutchison",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  }
+]

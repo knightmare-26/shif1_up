@@ -1,0 +1,39 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Racing+Sans+One&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Orbitron', monospace;
+    background-color: #0A0A0A;
+    color: #FFFFFF;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-racing-red hover:bg-red-700 text-pure-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl;
+  }
+  
+  .btn-secondary {
+    @apply bg-turbo-teal hover:bg-blue-700 text-pure-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl;
+  }
+  
+  .card {
+    @apply bg-track-grey text-carbon-black p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300;
+  }
+  
+  .nav-link {
+    @apply text-pure-white hover:text-racing-red transition-colors duration-300 font-medium;
+  }
+  
+  .track-border {
+    @apply border-2 border-racing-red rounded-lg;
+  }
+  
+  .checkered-bg {
+    background-image: repeating-conic-gradient(#000 0deg 90deg, #fff 90deg 180deg);
+    background-size: 20px 20px;
+  }
+}

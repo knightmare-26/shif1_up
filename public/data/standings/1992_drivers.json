@@ -1,0 +1,362 @@
+[
+  {
+    "position": 1,
+    "driver_id": "mansell",
+    "driver_name": "Nigel Mansell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Williams",
+    "points": 108.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "driver_id": "patrese",
+    "driver_name": "Riccardo Patrese",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Williams",
+    "points": 56.0,
+    "wins": 1
+  },
+  {
+    "position": 3,
+    "driver_id": "michael_schumacher",
+    "driver_name": "Michael Schumacher",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Benetton",
+    "points": 53.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "senna",
+    "driver_name": "Ayrton Senna",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 50.0,
+    "wins": 3
+  },
+  {
+    "position": 5,
+    "driver_id": "berger",
+    "driver_name": "Gerhard Berger",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 49.0,
+    "wins": 2
+  },
+  {
+    "position": 6,
+    "driver_id": "brundle",
+    "driver_name": "Martin Brundle",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Benetton",
+    "points": 38.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "alesi",
+    "driver_name": "Jean Alesi",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 18.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "driver_id": "hakkinen",
+    "driver_name": "Mika H\u00e4kkinen",
+    "nationality": "Finnish",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 11.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "cesaris",
+    "driver_name": "Andrea de Cesaris",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "alboreto",
+    "driver_name": "Michele Alboreto",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Footwork",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "comas",
+    "driver_name": "\u00c9rik Comas",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Ligier",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "wendlinger",
+    "driver_name": "Karl Wendlinger",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "March",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "capelli",
+    "driver_name": "Ivan Capelli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "boutsen",
+    "driver_name": "Thierry Boutsen",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Ligier",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "herbert",
+    "driver_name": "Johnny Herbert",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "martini",
+    "driver_name": "Pierluigi Martini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Dallara",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "modena",
+    "driver_name": "Stefano Modena",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Jordan",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "fittipaldi",
+    "driver_name": "Christian Fittipaldi",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "gachot",
+    "driver_name": "Bertrand Gachot",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Larrousse",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "suzuki",
+    "driver_name": "Aguri Suzuki",
+    "nationality": "Japanese",
+    "number": "",
+    "constructor": "Footwork",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lehto",
+    "driver_name": "Jyrki J\u00e4rvilehto",
+    "nationality": "Finnish",
+    "number": "",
+    "constructor": "Dallara",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "morbidelli",
+    "driver_name": "Gianni Morbidelli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gugelmin",
+    "driver_name": "Maur\u00edcio Gugelmin",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Jordan",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "grouillard",
+    "driver_name": "Olivier Grouillard",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "katayama",
+    "driver_name": "Ukyo Katayama",
+    "nationality": "Japanese",
+    "number": "",
+    "constructor": "Larrousse",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "belmondo",
+    "driver_name": "Paul Belmondo",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "poele",
+    "driver_name": "Eric van de Poele",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "naspetti",
+    "driver_name": "Emanuele Naspetti",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "March",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "larini",
+    "driver_name": "Nicola Larini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "damon_hill",
+    "driver_name": "Damon Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lammers",
+    "driver_name": "Jan Lammers",
+    "nationality": "Dutch",
+    "number": "",
+    "constructor": "March",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "tarquini",
+    "driver_name": "Gabriele Tarquini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Fondmetal",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "chiesa",
+    "driver_name": "Andrea Chiesa",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Fondmetal",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "moreno",
+    "driver_name": "Roberto Moreno",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Andrea Moda",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "zanardi",
+    "driver_name": "Alessandro Zanardi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "mccarthy",
+    "driver_name": "Perry McCarthy",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Andrea Moda",
+    "points": 0.0,
+    "wins": 0
+  }
+]

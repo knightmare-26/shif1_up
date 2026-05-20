@@ -1,0 +1,119 @@
+[
+  {
+    "round": 1,
+    "race_name": "South African Grand Prix",
+    "circuit_name": "Kyalami",
+    "country": "South Africa",
+    "location": "Midrand",
+    "date": "1970-03-07",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Spanish Grand Prix",
+    "circuit_name": "Jarama",
+    "country": "Spain",
+    "location": "Madrid",
+    "date": "1970-04-19",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1970-05-10",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1970-06-07",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1970-06-21",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Charade Circuit",
+    "country": "France",
+    "location": "Clermont-Ferrand",
+    "date": "1970-07-05",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Brands Hatch",
+    "country": "UK",
+    "location": "Kent",
+    "date": "1970-07-18",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "German Grand Prix",
+    "circuit_name": "Hockenheimring",
+    "country": "Germany",
+    "location": "Hockenheim",
+    "date": "1970-08-02",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "Austrian Grand Prix",
+    "circuit_name": "Red Bull Ring",
+    "country": "Austria",
+    "location": "Spielberg",
+    "date": "1970-08-16",
+    "time": ""
+  },
+  {
+    "round": 10,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1970-09-06",
+    "time": ""
+  },
+  {
+    "round": 11,
+    "race_name": "Canadian Grand Prix",
+    "circuit_name": "Circuit Mont-Tremblant",
+    "country": "Canada",
+    "location": "Quebec",
+    "date": "1970-09-20",
+    "time": ""
+  },
+  {
+    "round": 12,
+    "race_name": "United States Grand Prix",
+    "circuit_name": "Watkins Glen",
+    "country": "USA",
+    "location": "New York State",
+    "date": "1970-10-04",
+    "time": ""
+  },
+  {
+    "round": 13,
+    "race_name": "Mexican Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Hermanos Rodr\u00edguez",
+    "country": "Mexico",
+    "location": "Mexico City",
+    "date": "1970-10-25",
+    "time": ""
+  }
+]

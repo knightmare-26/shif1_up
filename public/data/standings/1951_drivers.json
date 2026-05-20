@@ -1,0 +1,502 @@
+[
+  {
+    "position": 1,
+    "driver_id": "fangio",
+    "driver_name": "Juan Fangio",
+    "nationality": "Argentine",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 31.0,
+    "wins": 3
+  },
+  {
+    "position": 2,
+    "driver_id": "ascari",
+    "driver_name": "Alberto Ascari",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 25.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "driver_id": "gonzalez",
+    "driver_name": "Jos\u00e9 Froil\u00e1n Gonz\u00e1lez",
+    "nationality": "Argentine",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 24.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "farina",
+    "driver_name": "Nino Farina",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 19.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "driver_id": "villoresi",
+    "driver_name": "Luigi Villoresi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "driver_id": "taruffi",
+    "driver_name": "Piero Taruffi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "wallard",
+    "driver_name": "Lee Wallard",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 9.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "driver_id": "bonetto",
+    "driver_name": "Felice Bonetto",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "nazaruk",
+    "driver_name": "Mike Nazaruk",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "reg_parnell",
+    "driver_name": "Reg Parnell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "fagioli",
+    "driver_name": "Luigi Fagioli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 4.0,
+    "wins": 1
+  },
+  {
+    "position": 12,
+    "driver_id": "sanesi",
+    "driver_name": "Consalvo Sanesi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "rosier",
+    "driver_name": "Louis Rosier",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "linden",
+    "driver_name": "Andy Linden",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Sherman",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "mcgrath",
+    "driver_name": "Jack McGrath",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "ayulo",
+    "driver_name": "Manny Ayulo",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "graffenried",
+    "driver_name": "Toulo de Graffenried",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "cabantous",
+    "driver_name": "Yves Cabantous",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "ball",
+    "driver_name": "Bobby Ball",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Schroeder",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "chiron",
+    "driver_name": "Louis Chiron",
+    "nationality": "Monegasque",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "fischer",
+    "driver_name": "Rudi Fischer",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "simon",
+    "driver_name": "Andr\u00e9 Simon",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Simca",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "banks",
+    "driver_name": "Henry Banks",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Moore",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "andre_pilette",
+    "driver_name": "Andr\u00e9 Pilette",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "manzon",
+    "driver_name": "Robert Manzon",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Simca",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "claes",
+    "driver_name": "Johnny Claes",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "forberg",
+    "driver_name": "Carl Forberg",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "peter_walker",
+    "driver_name": "Peter Walker",
+    "nationality": "British",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "levegh",
+    "driver_name": "Pierre Levegh",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "etancelin",
+    "driver_name": "Philippe \u00c9tancelin",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "moss",
+    "driver_name": "Stirling Moss",
+    "nationality": "British",
+    "number": "",
+    "constructor": "HWM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "darter",
+    "driver_name": "Duane Carter",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Deidt",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "chaboud",
+    "driver_name": "Eug\u00e8ne Chaboud",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "shawe_taylor",
+    "driver_name": "Brian Shawe Taylor",
+    "nationality": "British",
+    "number": "",
+    "constructor": "ERA",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "guy_mairesse",
+    "driver_name": "Guy Mairesse",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "whitehead",
+    "driver_name": "Peter Whitehead",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "rol",
+    "driver_name": "Franco Rol",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "OSCA",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "swaters",
+    "driver_name": "Jacques Swaters",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "godia",
+    "driver_name": "Paco Godia",
+    "nationality": "Spanish",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gerard",
+    "driver_name": "Bob Gerard",
+    "nationality": "British",
+    "number": "",
+    "constructor": "ERA",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "duncan_hamilton",
+    "driver_name": "Duncan Hamilton",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Talbot-Lago",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "schell",
+    "driver_name": "Harry Schell",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bettenhausen",
+    "driver_name": "Tony Bettenhausen",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Deidt",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "nalon",
+    "driver_name": "Duke Nalon",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "trintignant",
+    "driver_name": "Maurice Trintignant",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Simca",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "force",
+    "driver_name": "Gene Force",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hanks",
+    "driver_name": "Sam Hanks",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "schindler",
+    "driver_name": "Bill Schindler",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "rose",
+    "driver_name": "Mauri Rose",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Deidt",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "faulkner",
+    "driver_name": "Walt Faulkner",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kuzma",
+    "points": 0.0,
+    "wins": 0
+  }
+]

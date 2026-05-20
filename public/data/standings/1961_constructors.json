@@ -1,0 +1,114 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 45.0,
+    "wins": 5
+  },
+  {
+    "position": 2,
+    "constructor_id": "lotus-climax",
+    "constructor_name": "Lotus-Climax",
+    "nationality": "British",
+    "points": 35.0,
+    "wins": 3
+  },
+  {
+    "position": 3,
+    "constructor_id": "porsche",
+    "constructor_name": "Porsche",
+    "nationality": "German",
+    "points": 22.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "cooper-climax",
+    "constructor_name": "Cooper-Climax",
+    "nationality": "British",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-maserati",
+    "constructor_name": "Cooper-Maserati",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "gilby",
+    "constructor_name": "Gilby",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "lotus-maserati",
+    "constructor_name": "Lotus-Maserati",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "ferguson",
+    "constructor_name": "Ferguson",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "de_tomaso-alfa_romeo",
+    "constructor_name": "De Tomaso-Alfa Romeo",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "de_tomaso-osca",
+    "constructor_name": "De Tomaso-Osca",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "jbw",
+    "constructor_name": "JBW",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "emeryson",
+    "constructor_name": "Emeryson",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "mbm",
+    "constructor_name": "MBM",
+    "nationality": "Swiss",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,162 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 79.0,
+    "wins": 6
+  },
+  {
+    "position": 2,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 71.0,
+    "wins": 6
+  },
+  {
+    "position": 3,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 67.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 29.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "penske",
+    "constructor_name": "Penske",
+    "nationality": "American",
+    "points": 20.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "constructor_id": "ligier",
+    "constructor_name": "Ligier",
+    "nationality": "French",
+    "points": 20.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "march",
+    "constructor_name": "March",
+    "nationality": "British",
+    "points": 19.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "constructor_id": "shadow",
+    "constructor_name": "Shadow",
+    "nationality": "British",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "brabham-alfa_romeo",
+    "constructor_name": "Brabham-Alfa Romeo",
+    "nationality": "British",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "surtees",
+    "constructor_name": "Surtees",
+    "nationality": "British",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "fittipaldi",
+    "constructor_name": "Fittipaldi",
+    "nationality": "Brazilian",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "ensign",
+    "constructor_name": "Ensign",
+    "nationality": "British",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "constructor_id": "parnelli",
+    "constructor_name": "Parnelli",
+    "nationality": "American",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "hesketh",
+    "constructor_name": "Hesketh",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "wolf",
+    "constructor_name": "Wolf",
+    "nationality": "Canadian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "boro",
+    "constructor_name": "Boro",
+    "nationality": "Dutch",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "kojima",
+    "constructor_name": "Kojima",
+    "nationality": "Japanese",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "brabham-ford",
+    "constructor_name": "Brabham-Ford",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,502 @@
+[
+  {
+    "position": 1,
+    "driver_id": "clark",
+    "driver_name": "Jim Clark",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 54.0,
+    "wins": 7
+  },
+  {
+    "position": 2,
+    "driver_id": "hill",
+    "driver_name": "Graham Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "BRM",
+    "points": 29.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "driver_id": "ginther",
+    "driver_name": "Richie Ginther",
+    "nationality": "American",
+    "number": "",
+    "constructor": "BRM",
+    "points": 29.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "driver_id": "surtees",
+    "driver_name": "John Surtees",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 22.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "driver_id": "gurney",
+    "driver_name": "Dan Gurney",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 19.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "driver_id": "mclaren",
+    "driver_name": "Bruce McLaren",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 17.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "jack_brabham",
+    "driver_name": "Jack Brabham",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "driver_id": "maggs",
+    "driver_name": "Tony Maggs",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "ireland",
+    "driver_name": "Innes Ireland",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "bandini",
+    "driver_name": "Lorenzo Bandini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "BRM",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "bonnier",
+    "driver_name": "Jo Bonnier",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "mitter",
+    "driver_name": "Gerhard Mitter",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Porsche",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "hall",
+    "driver_name": "Jim Hall",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "beaufort",
+    "driver_name": "Carel Godin de Beaufort",
+    "nationality": "Dutch",
+    "number": "",
+    "constructor": "Porsche",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "siffert",
+    "driver_name": "Jo Siffert",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "trevor_taylor",
+    "driver_name": "Trevor Taylor",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "scarfiotti",
+    "driver_name": "Ludovico Scarfiotti",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "amon",
+    "driver_name": "Chris Amon",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "Lola",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "sharp",
+    "driver_name": "Hap Sharp",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "broeker",
+    "driver_name": "Peter Broeker",
+    "nationality": "Canadian",
+    "number": "",
+    "constructor": "Stebro",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "trintignant",
+    "driver_name": "Maurice Trintignant",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Lola",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hailwood",
+    "driver_name": "Mike Hailwood",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "settember",
+    "driver_name": "Tony Settember",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Scirocco",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "love",
+    "driver_name": "John Love",
+    "nationality": "Rhodesian",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "collomb",
+    "driver_name": "Bernard Collomb",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "phil_hill",
+    "driver_name": "Phil Hill",
+    "nationality": "American",
+    "number": "",
+    "constructor": "ATS",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gregory",
+    "driver_name": "Masten Gregory",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "solana",
+    "driver_name": "Mois\u00e9s Solana",
+    "nationality": "Mexican",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "serrurier",
+    "driver_name": "Doug Serrurier",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "LDS",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "anderson",
+    "driver_name": "Bob Anderson",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lola",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "blokdyk",
+    "driver_name": "Trevor Blokdyk",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Cooper-Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "campbell-jones",
+    "driver_name": "John Campbell-Jones",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "spence",
+    "driver_name": "Mike Spence",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "niemann",
+    "driver_name": "Brausch Niemann",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Lotus-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "baghetti",
+    "driver_name": "Giancarlo Baghetti",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "ATS",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "mairesse",
+    "driver_name": "Willy Mairesse",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bianchi",
+    "driver_name": "Lucien Bianchi",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Lola",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "cabral",
+    "driver_name": "M\u00e1rio de Ara\u00fajo Cabral",
+    "nationality": "Portuguese",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "ward",
+    "driver_name": "Rodger Ward",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "rodriguez",
+    "driver_name": "Pedro Rodr\u00edguez",
+    "nationality": "Mexican",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "burgess",
+    "driver_name": "Ian Burgess",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Scirocco",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "klerk",
+    "driver_name": "Peter de Klerk",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Alfa Romeo",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "prophet",
+    "driver_name": "David Prophet",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "raby",
+    "driver_name": "Ian Raby",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Gilby",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "pieterse",
+    "driver_name": "Ernie Pieterse",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "tingle",
+    "driver_name": "Sam Tingle",
+    "nationality": "Rhodesian",
+    "number": "",
+    "constructor": "LDS",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "arundell",
+    "driver_name": "Peter Arundell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "driver",
+    "driver_name": "Paddy Driver",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Lotus-BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hansgen",
+    "driver_name": "Walt Hansgen",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-Climax",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "dochnal",
+    "driver_name": "Frank Dochnal",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Cooper-Climax",
+    "points": 0.0,
+    "wins": 0
+  }
+]

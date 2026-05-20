@@ -1,0 +1,66 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "vanwall",
+    "constructor_name": "Vanwall",
+    "nationality": "British",
+    "points": 48.0,
+    "wins": 6
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 40.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "cooper",
+    "constructor_name": "Cooper",
+    "nationality": "British",
+    "points": 31.0,
+    "wins": 2
+  },
+  {
+    "position": 4,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 18.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "maserati",
+    "constructor_name": "Maserati",
+    "nationality": "Italian",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "porsche",
+    "constructor_name": "Porsche",
+    "nationality": "German",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "connaught",
+    "constructor_name": "Connaught",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

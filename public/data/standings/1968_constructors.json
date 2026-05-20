@@ -1,0 +1,138 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "lotus-ford",
+    "constructor_name": "Lotus-Ford",
+    "nationality": "British",
+    "points": 62.0,
+    "wins": 5
+  },
+  {
+    "position": 2,
+    "constructor_id": "mclaren-ford",
+    "constructor_name": "McLaren-Ford",
+    "nationality": "British",
+    "points": 49.0,
+    "wins": 3
+  },
+  {
+    "position": 3,
+    "constructor_id": "matra-ford",
+    "constructor_name": "Matra-Ford",
+    "nationality": "French",
+    "points": 45.0,
+    "wins": 3
+  },
+  {
+    "position": 4,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 32.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 28.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "honda",
+    "constructor_name": "Honda",
+    "nationality": "Japanese",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "cooper-brm",
+    "constructor_name": "Cooper-BRM",
+    "nationality": "British",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "brabham-repco",
+    "constructor_name": "Brabham-Repco",
+    "nationality": "British",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "matra",
+    "constructor_name": "Matra",
+    "nationality": "French",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "mclaren-brm",
+    "constructor_name": "McLaren-BRM",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-maserati",
+    "constructor_name": "Cooper-Maserati",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "eagle-weslake",
+    "constructor_name": "Eagle-Weslake",
+    "nationality": "American",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "lola",
+    "constructor_name": "Lola",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "brabham-climax",
+    "constructor_name": "Brabham-Climax",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "lds",
+    "constructor_name": "LDS",
+    "nationality": "South African",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-climax",
+    "constructor_name": "Cooper-Climax",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,65 @@
+[
+  {
+    "round": 1,
+    "race_name": "Argentine Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Juan y Oscar G\u00e1lvez",
+    "country": "Argentina",
+    "location": "Buenos Aires",
+    "date": "1955-01-16",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1955-05-22",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Indianapolis 500",
+    "circuit_name": "Indianapolis Motor Speedway",
+    "country": "USA",
+    "location": "Indianapolis",
+    "date": "1955-05-30",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1955-06-05",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1955-06-19",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Aintree",
+    "country": "UK",
+    "location": "Liverpool",
+    "date": "1955-07-16",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1955-09-11",
+    "time": ""
+  }
+]

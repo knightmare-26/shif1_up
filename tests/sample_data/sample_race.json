@@ -1,0 +1,65 @@
+{
+  "race_id": "2024_Bahrain",
+  "year": 2024,
+  "round": 1,
+  "gp": "Bahrain",
+  "date": "2024-03-02",
+  "circuit_name": "Bahrain International Circuit",
+  "country": "Bahrain",
+  "results": [
+    {
+      "position": 1,
+      "driver_name": "Max Verstappen",
+      "constructor_name": "Red Bull Racing Honda RBPT",
+      "points": 25,
+      "time": "1:31:44.742",
+      "fastest_lap": true,
+      "fastest_lap_time": "1:33.660",
+      "status": "Finished"
+    },
+    {
+      "position": 2,
+      "driver_name": "Sergio Perez",
+      "constructor_name": "Red Bull Racing Honda RBPT",
+      "points": 18,
+      "time": "+22.457",
+      "fastest_lap": false,
+      "fastest_lap_time": null,
+      "status": "Finished"
+    },
+    {
+      "position": 3,
+      "driver_name": "Carlos Sainz",
+      "constructor_name": "Ferrari",
+      "points": 15,
+      "time": "+25.110",
+      "fastest_lap": false,
+      "fastest_lap_time": null,
+      "status": "Finished"
+    }
+  ],
+  "laps": [
+    {
+      "lap_number": 1,
+      "driver_name": "Max Verstappen",
+      "lap_time_ms": 93660,
+      "sector1_ms": 31220,
+      "sector2_ms": 31220,
+      "sector3_ms": 31220,
+      "tyre": "SOFT",
+      "pit": false,
+      "position": 1
+    },
+    {
+      "lap_number": 2,
+      "driver_name": "Max Verstappen",
+      "lap_time_ms": 93360,
+      "sector1_ms": 31120,
+      "sector2_ms": 31120,
+      "sector3_ms": 31120,
+      "tyre": "SOFT",
+      "pit": false,
+      "position": 1
+    }
+  ]
+}

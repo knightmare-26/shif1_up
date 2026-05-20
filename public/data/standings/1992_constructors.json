@@ -1,0 +1,130 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 164.0,
+    "wins": 10
+  },
+  {
+    "position": 2,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 99.0,
+    "wins": 5
+  },
+  {
+    "position": 3,
+    "constructor_id": "benetton",
+    "constructor_name": "Benetton",
+    "nationality": "Italian",
+    "points": 91.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 21.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "footwork",
+    "constructor_name": "Footwork",
+    "nationality": "British",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "ligier",
+    "constructor_name": "Ligier",
+    "nationality": "French",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "march",
+    "constructor_name": "March",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "dallara",
+    "constructor_name": "Dallara",
+    "nationality": "Italian",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "jordan",
+    "constructor_name": "Jordan",
+    "nationality": "Irish",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "minardi",
+    "constructor_name": "Minardi",
+    "nationality": "Italian",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "constructor_id": "larrousse",
+    "constructor_name": "Larrousse",
+    "nationality": "French",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "fondmetal",
+    "constructor_name": "Fondmetal",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "moda",
+    "constructor_name": "Andrea Moda",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  }
+]

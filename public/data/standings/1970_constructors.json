@@ -1,0 +1,98 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 59.0,
+    "wins": 6
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 55.0,
+    "wins": 4
+  },
+  {
+    "position": 3,
+    "constructor_id": "march",
+    "constructor_name": "March",
+    "nationality": "British",
+    "points": 48.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 35.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "mclaren-ford",
+    "constructor_name": "McLaren-Ford",
+    "nationality": "British",
+    "points": 35.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 23.0,
+    "wins": 1
+  },
+  {
+    "position": 7,
+    "constructor_id": "matra",
+    "constructor_name": "Matra",
+    "nationality": "French",
+    "points": 23.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "surtees",
+    "constructor_name": "Surtees",
+    "nationality": "British",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "mclaren-alfa_romeo",
+    "constructor_name": "McLaren-Alfa Romeo",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tomaso",
+    "constructor_name": "De Tomaso",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "bellasi",
+    "constructor_name": "Bellasi",
+    "nationality": "Swiss",
+    "points": 0.0,
+    "wins": 0
+  }
+]

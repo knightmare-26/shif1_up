@@ -1,0 +1,98 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "red_bull",
+    "constructor_name": "Red Bull",
+    "nationality": "Austrian",
+    "points": 498.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 454.0,
+    "wins": 5
+  },
+  {
+    "position": 3,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 396.0,
+    "wins": 5
+  },
+  {
+    "position": 4,
+    "constructor_id": "mercedes",
+    "constructor_name": "Mercedes",
+    "nationality": "German",
+    "points": 214.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "renault",
+    "constructor_name": "Renault",
+    "nationality": "French",
+    "points": 163.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 69.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "force_india",
+    "constructor_name": "Force India",
+    "nationality": "Indian",
+    "points": 68.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "sauber",
+    "constructor_name": "Sauber",
+    "nationality": "Swiss",
+    "points": 44.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "toro_rosso",
+    "constructor_name": "Toro Rosso",
+    "nationality": "Italian",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "lotus_racing",
+    "constructor_name": "Lotus",
+    "nationality": "Malaysian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "hrt",
+    "constructor_name": "HRT",
+    "nationality": "Spanish",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "virgin",
+    "constructor_name": "Virgin",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

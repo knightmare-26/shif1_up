@@ -1,0 +1,154 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 141.0,
+    "wins": 10
+  },
+  {
+    "position": 2,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 77.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 59.0,
+    "wins": 3
+  },
+  {
+    "position": 4,
+    "constructor_id": "benetton",
+    "constructor_name": "Benetton",
+    "nationality": "Italian",
+    "points": 39.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "arrows",
+    "constructor_name": "Arrows",
+    "nationality": "British",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "dallara",
+    "constructor_name": "Dallara",
+    "nationality": "Italian",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "brabham",
+    "constructor_name": "Brabham",
+    "nationality": "British",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "onyx",
+    "constructor_name": "Onyx",
+    "nationality": "British",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "minardi",
+    "constructor_name": "Minardi",
+    "nationality": "Italian",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "march",
+    "constructor_name": "March",
+    "nationality": "British",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "constructor_id": "rial",
+    "constructor_name": "Rial",
+    "nationality": "German",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "constructor_id": "ligier",
+    "constructor_name": "Ligier",
+    "nationality": "French",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "constructor_id": "ags",
+    "constructor_name": "AGS",
+    "nationality": "French",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "constructor_id": "larrousse",
+    "constructor_name": "Larrousse",
+    "nationality": "French",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "osella",
+    "constructor_name": "Osella",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "coloni",
+    "constructor_name": "Coloni",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "zakspeed",
+    "constructor_name": "Zakspeed",
+    "nationality": "German",
+    "points": 0.0,
+    "wins": 0
+  }
+]

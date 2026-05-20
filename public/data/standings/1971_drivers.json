@@ -1,0 +1,502 @@
+[
+  {
+    "position": 1,
+    "driver_id": "stewart",
+    "driver_name": "Jackie Stewart",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 62.0,
+    "wins": 6
+  },
+  {
+    "position": 2,
+    "driver_id": "peterson",
+    "driver_name": "Ronnie Peterson",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 33.0,
+    "wins": 0
+  },
+  {
+    "position": 3,
+    "driver_id": "cevert",
+    "driver_name": "Fran\u00e7ois Cevert",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 26.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "ickx",
+    "driver_name": "Jacky Ickx",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 19.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "driver_id": "siffert",
+    "driver_name": "Jo Siffert",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "BRM",
+    "points": 19.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "driver_id": "emerson_fittipaldi",
+    "driver_name": "Emerson Fittipaldi",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Lotus-Ford",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "regazzoni",
+    "driver_name": "Clay Regazzoni",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "driver_id": "mario_andretti",
+    "driver_name": "Mario Andretti",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 12.0,
+    "wins": 1
+  },
+  {
+    "position": 9,
+    "driver_id": "gethin",
+    "driver_name": "Peter Gethin",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 9.0,
+    "wins": 1
+  },
+  {
+    "position": 10,
+    "driver_id": "rodriguez",
+    "driver_name": "Pedro Rodr\u00edguez",
+    "nationality": "Mexican",
+    "number": "",
+    "constructor": "BRM",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "amon",
+    "driver_name": "Chris Amon",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "Matra",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "wisell",
+    "driver_name": "Reine Wisell",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "Lotus-Ford",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "hulme",
+    "driver_name": "Denny Hulme",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "schenken",
+    "driver_name": "Tim Schenken",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "ganley",
+    "driver_name": "Howden Ganley",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "BRM",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "donohue",
+    "driver_name": "Mark Donohue",
+    "nationality": "American",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "pescarolo",
+    "driver_name": "Henri Pescarolo",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "hailwood",
+    "driver_name": "Mike Hailwood",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "surtees",
+    "driver_name": "John Surtees",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 20,
+    "driver_id": "stommelen",
+    "driver_name": "Rolf Stommelen",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 21,
+    "driver_id": "hill",
+    "driver_name": "Graham Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 22,
+    "driver_id": "beltoise",
+    "driver_name": "Jean-Pierre Beltoise",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Matra",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "oliver",
+    "driver_name": "Jackie Oliver",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "redman",
+    "driver_name": "Brian Redman",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lennep",
+    "driver_name": "Gijs van Lennep",
+    "nationality": "Dutch",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bonnier",
+    "driver_name": "Jo Bonnier",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hobbs",
+    "driver_name": "David Hobbs",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "galli",
+    "driver_name": "Nanni Galli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "marko",
+    "driver_name": "Helmut Marko",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "adamich",
+    "driver_name": "Andrea de Adamich",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "March-Alfa Romeo",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "elford",
+    "driver_name": "Vic Elford",
+    "nationality": "British",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "mazet",
+    "driver_name": "Fran\u00e7ois Mazet",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "Cannoc",
+    "driver_name": "John Cannon",
+    "nationality": "Canadian",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "eaton",
+    "driver_name": "George Eaton",
+    "nationality": "Canadian",
+    "number": "",
+    "constructor": "BRM",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "jarier",
+    "driver_name": "Jean-Pierre Jarier",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "beuttler",
+    "driver_name": "Mike Beuttler",
+    "nationality": "British",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "barber",
+    "driver_name": "Skip Barber",
+    "nationality": "American",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "jean",
+    "driver_name": "Max Jean",
+    "nationality": "French",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "roig",
+    "driver_name": "Alex Soler-Roig",
+    "nationality": "Spanish",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lauda",
+    "driver_name": "Niki Lauda",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lovely",
+    "driver_name": "Pete Lovely",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Lotus-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "charlton",
+    "driver_name": "Dave Charlton",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bell",
+    "driver_name": "Derek Bell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "love",
+    "driver_name": "John Love",
+    "nationality": "Rhodesian",
+    "number": "",
+    "constructor": "March-Ford",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "moser",
+    "driver_name": "Silvio Moser",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Bellasi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "pretorius",
+    "driver_name": "Jackie Pretorius",
+    "nationality": "South African",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "walker",
+    "driver_name": "David Walker",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Lotus-Pratt &amp; Whitney",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "craft",
+    "driver_name": "Chris Craft",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Brabham",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "posey",
+    "driver_name": "Sam Posey",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Surtees",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "revson",
+    "driver_name": "Peter Revson",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 0.0,
+    "wins": 0
+  }
+]

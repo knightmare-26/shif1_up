@@ -1,0 +1,502 @@
+[
+  {
+    "position": 1,
+    "driver_id": "hawthorn",
+    "driver_name": "Mike Hawthorn",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 42.0,
+    "wins": 1
+  },
+  {
+    "position": 2,
+    "driver_id": "moss",
+    "driver_name": "Stirling Moss",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 41.0,
+    "wins": 4
+  },
+  {
+    "position": 3,
+    "driver_id": "brooks",
+    "driver_name": "Tony Brooks",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Vanwall",
+    "points": 24.0,
+    "wins": 3
+  },
+  {
+    "position": 4,
+    "driver_id": "salvadori",
+    "driver_name": "Roy Salvadori",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "driver_id": "collins",
+    "driver_name": "Peter Collins",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 14.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "driver_id": "schell",
+    "driver_name": "Harry Schell",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "trintignant",
+    "driver_name": "Maurice Trintignant",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 12.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "driver_id": "musso",
+    "driver_name": "Luigi Musso",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 12.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "lewis-evans",
+    "driver_name": "Stuart Lewis-Evans",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Vanwall",
+    "points": 11.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "phil_hill",
+    "driver_name": "Phil Hill",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "trips",
+    "driver_name": "Wolfgang von Trips",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "behra",
+    "driver_name": "Jean Behra",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "bryan",
+    "driver_name": "Jimmy Bryan",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Epperly",
+    "points": 8.0,
+    "wins": 1
+  },
+  {
+    "position": 14,
+    "driver_id": "fangio",
+    "driver_name": "Juan Fangio",
+    "nationality": "Argentine",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "george_amick",
+    "driver_name": "George Amick",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Epperly",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "boyd",
+    "driver_name": "Johnny Boyd",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "bettenhausen",
+    "driver_name": "Tony Bettenhausen",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Epperly",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "jack_brabham",
+    "driver_name": "Jack Brabham",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "allison",
+    "driver_name": "Cliff Allison",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 20,
+    "driver_id": "bonnier",
+    "driver_name": "Jo Bonnier",
+    "nationality": "Swedish",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 21,
+    "driver_id": "rathmann",
+    "driver_name": "Jim Rathmann",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Epperly",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gregory",
+    "driver_name": "Masten Gregory",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "shelby",
+    "driver_name": "Carroll Shelby",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "mclaren",
+    "driver_name": "Bruce McLaren",
+    "nationality": "New Zealander",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "hill",
+    "driver_name": "Graham Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Team Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gendebien",
+    "driver_name": "Olivier Gendebien",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "reece",
+    "driver_name": "Jimmy Reece",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Watson",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "barth",
+    "driver_name": "Edgar Barth",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Porsche",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "burgess",
+    "driver_name": "Ian Burgess",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "menditeguy",
+    "driver_name": "Carlos Menditeguy",
+    "nationality": "Argentine",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "freeland",
+    "driver_name": "Don Freeland",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Phillips",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "godia",
+    "driver_name": "Paco Godia",
+    "nationality": "Spanish",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "fairman",
+    "driver_name": "Jack Fairman",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Connaught",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "larson",
+    "driver_name": "Jud Larson",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Watson",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "marsh",
+    "driver_name": "Tony Marsh",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gerini",
+    "driver_name": "Gerino Gerini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "herrmann",
+    "driver_name": "Hans Herrmann",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gould",
+    "driver_name": "Horace Gould",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "johnson",
+    "driver_name": "Eddie Johnson",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "filippis",
+    "driver_name": "Maria de Filippis",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "ruttman",
+    "driver_name": "Troy Ruttman",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Maserati",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "cheesbourg",
+    "driver_name": "Bill Cheesbourg",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "bueb",
+    "driver_name": "Ivor Bueb",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Connaught",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "beaufort",
+    "driver_name": "Carel Godin de Beaufort",
+    "nationality": "Dutch",
+    "number": "",
+    "constructor": "Porsche",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "keller",
+    "driver_name": "Al Keller",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "parsons",
+    "driver_name": "Johnnie Parsons",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kurtis Kraft",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "tolan",
+    "driver_name": "Johnnie Tolan",
+    "nationality": "American",
+    "number": "",
+    "constructor": "Kuzma",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "la_caze",
+    "driver_name": "Robert La Caze",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "guelfi",
+    "driver_name": "Andr\u00e9 Guelfi",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Cooper",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "cabianca",
+    "driver_name": "Giulio Cabianca",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "OSCA",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,101 @@
+[
+  {
+    "round": 1,
+    "race_name": "South African Grand Prix",
+    "circuit_name": "Kyalami",
+    "country": "South Africa",
+    "location": "Midrand",
+    "date": "1967-01-02",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1967-05-07",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1967-06-04",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1967-06-18",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Le Mans",
+    "country": "France",
+    "location": "Le Mans",
+    "date": "1967-07-02",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Silverstone Circuit",
+    "country": "UK",
+    "location": "Silverstone",
+    "date": "1967-07-15",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "German Grand Prix",
+    "circuit_name": "N\u00fcrburgring",
+    "country": "Germany",
+    "location": "N\u00fcrburg",
+    "date": "1967-08-06",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "Canadian Grand Prix",
+    "circuit_name": "Mosport International Raceway",
+    "country": "Canada",
+    "location": "Ontario",
+    "date": "1967-08-27",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1967-09-10",
+    "time": ""
+  },
+  {
+    "round": 10,
+    "race_name": "United States Grand Prix",
+    "circuit_name": "Watkins Glen",
+    "country": "USA",
+    "location": "New York State",
+    "date": "1967-10-01",
+    "time": ""
+  },
+  {
+    "round": 11,
+    "race_name": "Mexican Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Hermanos Rodr\u00edguez",
+    "country": "Mexico",
+    "location": "Mexico City",
+    "date": "1967-10-22",
+    "time": ""
+  }
+]

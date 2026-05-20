@@ -1,0 +1,82 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "mercedes",
+    "constructor_name": "Mercedes",
+    "nationality": "German",
+    "points": 573.0,
+    "wins": 13
+  },
+  {
+    "position": 2,
+    "constructor_id": "red_bull",
+    "constructor_name": "Red Bull",
+    "nationality": "Austrian",
+    "points": 319.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 202.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "racing_point",
+    "constructor_name": "Racing Point",
+    "nationality": "British",
+    "points": 195.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "renault",
+    "constructor_name": "Renault",
+    "nationality": "French",
+    "points": 181.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 131.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "alphatauri",
+    "constructor_name": "AlphaTauri",
+    "nationality": "Italian",
+    "points": 107.0,
+    "wins": 1
+  },
+  {
+    "position": 8,
+    "constructor_id": "alfa",
+    "constructor_name": "Alfa Romeo",
+    "nationality": "Swiss",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "haas",
+    "constructor_name": "Haas F1 Team",
+    "nationality": "American",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

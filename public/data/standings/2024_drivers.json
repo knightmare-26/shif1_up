@@ -1,0 +1,242 @@
+[
+  {
+    "position": 1,
+    "driver_id": "max_verstappen",
+    "driver_name": "Max Verstappen",
+    "nationality": "Dutch",
+    "number": "3",
+    "constructor": "Red Bull",
+    "points": 437.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "driver_id": "norris",
+    "driver_name": "Lando Norris",
+    "nationality": "British",
+    "number": "1",
+    "constructor": "McLaren",
+    "points": 374.0,
+    "wins": 4
+  },
+  {
+    "position": 3,
+    "driver_id": "leclerc",
+    "driver_name": "Charles Leclerc",
+    "nationality": "Monegasque",
+    "number": "16",
+    "constructor": "Ferrari",
+    "points": 356.0,
+    "wins": 3
+  },
+  {
+    "position": 4,
+    "driver_id": "piastri",
+    "driver_name": "Oscar Piastri",
+    "nationality": "Australian",
+    "number": "81",
+    "constructor": "McLaren",
+    "points": 292.0,
+    "wins": 2
+  },
+  {
+    "position": 5,
+    "driver_id": "sainz",
+    "driver_name": "Carlos Sainz",
+    "nationality": "Spanish",
+    "number": "55",
+    "constructor": "Ferrari",
+    "points": 290.0,
+    "wins": 2
+  },
+  {
+    "position": 6,
+    "driver_id": "russell",
+    "driver_name": "George Russell",
+    "nationality": "British",
+    "number": "63",
+    "constructor": "Mercedes",
+    "points": 245.0,
+    "wins": 2
+  },
+  {
+    "position": 7,
+    "driver_id": "hamilton",
+    "driver_name": "Lewis Hamilton",
+    "nationality": "British",
+    "number": "44",
+    "constructor": "Mercedes",
+    "points": 223.0,
+    "wins": 2
+  },
+  {
+    "position": 8,
+    "driver_id": "perez",
+    "driver_name": "Sergio P\u00e9rez",
+    "nationality": "Mexican",
+    "number": "11",
+    "constructor": "Red Bull",
+    "points": 152.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "alonso",
+    "driver_name": "Fernando Alonso",
+    "nationality": "Spanish",
+    "number": "14",
+    "constructor": "Aston Martin",
+    "points": 70.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "gasly",
+    "driver_name": "Pierre Gasly",
+    "nationality": "French",
+    "number": "10",
+    "constructor": "Alpine F1 Team",
+    "points": 42.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "hulkenberg",
+    "driver_name": "Nico H\u00fclkenberg",
+    "nationality": "German",
+    "number": "27",
+    "constructor": "Haas F1 Team",
+    "points": 41.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "tsunoda",
+    "driver_name": "Yuki Tsunoda",
+    "nationality": "Japanese",
+    "number": "22",
+    "constructor": "RB F1 Team",
+    "points": 30.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "stroll",
+    "driver_name": "Lance Stroll",
+    "nationality": "Canadian",
+    "number": "18",
+    "constructor": "Aston Martin",
+    "points": 24.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "ocon",
+    "driver_name": "Esteban Ocon",
+    "nationality": "French",
+    "number": "31",
+    "constructor": "Alpine F1 Team",
+    "points": 23.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "kevin_magnussen",
+    "driver_name": "Kevin Magnussen",
+    "nationality": "Danish",
+    "number": "20",
+    "constructor": "Haas F1 Team",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "albon",
+    "driver_name": "Alexander Albon",
+    "nationality": "Thai",
+    "number": "23",
+    "constructor": "Williams",
+    "points": 12.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "ricciardo",
+    "driver_name": "Daniel Ricciardo",
+    "nationality": "Australian",
+    "number": "3",
+    "constructor": "RB F1 Team",
+    "points": 12.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "bearman",
+    "driver_name": "Oliver Bearman",
+    "nationality": "British",
+    "number": "87",
+    "constructor": "Ferrari",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "colapinto",
+    "driver_name": "Franco Colapinto",
+    "nationality": "Argentine",
+    "number": "43",
+    "constructor": "Williams",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 20,
+    "driver_id": "zhou",
+    "driver_name": "Guanyu Zhou",
+    "nationality": "Chinese",
+    "number": "24",
+    "constructor": "Sauber",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 21,
+    "driver_id": "lawson",
+    "driver_name": "Liam Lawson",
+    "nationality": "New Zealander",
+    "number": "30",
+    "constructor": "RB F1 Team",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 22,
+    "driver_id": "bottas",
+    "driver_name": "Valtteri Bottas",
+    "nationality": "Finnish",
+    "number": "77",
+    "constructor": "Sauber",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 23,
+    "driver_id": "sargeant",
+    "driver_name": "Logan Sargeant",
+    "nationality": "American",
+    "number": "2",
+    "constructor": "Williams",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 24,
+    "driver_id": "doohan",
+    "driver_name": "Jack Doohan",
+    "nationality": "Australian",
+    "number": "7",
+    "constructor": "Alpine F1 Team",
+    "points": 0.0,
+    "wins": 0
+  }
+]

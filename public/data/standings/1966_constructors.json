@@ -1,0 +1,122 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "brabham-repco",
+    "constructor_name": "Brabham-Repco",
+    "nationality": "British",
+    "points": 42.0,
+    "wins": 4
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 31.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "cooper-maserati",
+    "constructor_name": "Cooper-Maserati",
+    "nationality": "British",
+    "points": 30.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 22.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "lotus-brm",
+    "constructor_name": "Lotus-BRM",
+    "nationality": "British",
+    "points": 13.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "constructor_id": "lotus-climax",
+    "constructor_name": "Lotus-Climax",
+    "nationality": "British",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "eagle-climax",
+    "constructor_name": "Eagle-Climax",
+    "nationality": "American",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "honda",
+    "constructor_name": "Honda",
+    "nationality": "Japanese",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "mclaren-ford",
+    "constructor_name": "McLaren-Ford",
+    "nationality": "British",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "brabham-climax",
+    "constructor_name": "Brabham-Climax",
+    "nationality": "British",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "brabham-brm",
+    "constructor_name": "Brabham-BRM",
+    "nationality": "British",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "constructor_id": "mclaren-seren",
+    "constructor_name": "McLaren-Serenissima",
+    "nationality": "British",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-ferrari",
+    "constructor_name": "Cooper-Ferrari",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "eagle-weslake",
+    "constructor_name": "Eagle-Weslake",
+    "nationality": "American",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "shannon",
+    "constructor_name": "Shannon",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

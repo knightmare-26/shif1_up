@@ -1,0 +1,90 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 156.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 133.0,
+    "wins": 6
+  },
+  {
+    "position": 3,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 38.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "jordan",
+    "constructor_name": "Jordan",
+    "nationality": "Irish",
+    "points": 34.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "constructor_id": "benetton",
+    "constructor_name": "Benetton",
+    "nationality": "Italian",
+    "points": 33.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "sauber",
+    "constructor_name": "Sauber",
+    "nationality": "Swiss",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "arrows",
+    "constructor_name": "Arrows",
+    "nationality": "British",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "stewart",
+    "constructor_name": "Stewart",
+    "nationality": "British",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "prost",
+    "constructor_name": "Prost",
+    "nationality": "French",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "minardi",
+    "constructor_name": "Minardi",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

@@ -1,0 +1,90 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 204.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "constructor_id": "bmw_sauber",
+    "constructor_name": "BMW Sauber",
+    "nationality": "German",
+    "points": 101.0,
+    "wins": 0
+  },
+  {
+    "position": 3,
+    "constructor_id": "renault",
+    "constructor_name": "Renault",
+    "nationality": "French",
+    "points": 51.0,
+    "wins": 0
+  },
+  {
+    "position": 4,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 33.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "red_bull",
+    "constructor_name": "Red Bull",
+    "nationality": "Austrian",
+    "points": 24.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "toyota",
+    "constructor_name": "Toyota",
+    "nationality": "Japanese",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "toro_rosso",
+    "constructor_name": "Toro Rosso",
+    "nationality": "Italian",
+    "points": 8.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "honda",
+    "constructor_name": "Honda",
+    "nationality": "Japanese",
+    "points": 6.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "super_aguri",
+    "constructor_name": "Super Aguri",
+    "nationality": "Japanese",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "spyker",
+    "constructor_name": "Spyker",
+    "nationality": "Dutch",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 8
+  }
+]

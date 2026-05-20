@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DUCKDB_PATH=/app/data/f1_history.duckdb
+      - FASTF1_CACHE_DIR=/app/data/fastf1_cache
+      - MODEL_DIR=/app/data/models
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  poller:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - FASTF1_CACHE_DIR=/app/data/fastf1_cache
+      - RACE_YEAR=2024
+      - RACE_GP=Bahrain
+      - POLL_INTERVAL=5
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    entrypoint: ["python", "live/poller.py"]
+
+volumes:
+  redis_data:

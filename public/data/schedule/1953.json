@@ -1,0 +1,83 @@
+[
+  {
+    "round": 1,
+    "race_name": "Argentine Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Juan y Oscar G\u00e1lvez",
+    "country": "Argentina",
+    "location": "Buenos Aires",
+    "date": "1953-01-18",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "Indianapolis 500",
+    "circuit_name": "Indianapolis Motor Speedway",
+    "country": "USA",
+    "location": "Indianapolis",
+    "date": "1953-05-30",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1953-06-07",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1953-06-21",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Reims-Gueux",
+    "country": "France",
+    "location": "Reims",
+    "date": "1953-07-05",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Silverstone Circuit",
+    "country": "UK",
+    "location": "Silverstone",
+    "date": "1953-07-18",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "German Grand Prix",
+    "circuit_name": "N\u00fcrburgring",
+    "country": "Germany",
+    "location": "N\u00fcrburg",
+    "date": "1953-08-02",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "Swiss Grand Prix",
+    "circuit_name": "Circuit Bremgarten",
+    "country": "Switzerland",
+    "location": "Bern",
+    "date": "1953-08-23",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1953-09-13",
+    "time": ""
+  }
+]

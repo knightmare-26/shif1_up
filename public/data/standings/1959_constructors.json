@@ -1,0 +1,122 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "cooper-climax",
+    "constructor_name": "Cooper-Climax",
+    "nationality": "British",
+    "points": 40.0,
+    "wins": 5
+  },
+  {
+    "position": 2,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 32.0,
+    "wins": 2
+  },
+  {
+    "position": 3,
+    "constructor_id": "brm",
+    "constructor_name": "BRM",
+    "nationality": "British",
+    "points": 18.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-maserati",
+    "constructor_name": "Cooper-Maserati",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "aston_martin",
+    "constructor_name": "Aston Martin",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "porsche",
+    "constructor_name": "Porsche",
+    "nationality": "German",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "maserati",
+    "constructor_name": "Maserati",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-borgward",
+    "constructor_name": "Cooper-Borgward",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "kurtis_kraft",
+    "constructor_name": "Kurtis Kraft",
+    "nationality": "American",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "cooper-osca",
+    "constructor_name": "Cooper-OSCA",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "tec-mec",
+    "constructor_name": "Tec-Mec",
+    "nationality": "Italian",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "connaught",
+    "constructor_name": "Connaught",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "jbw",
+    "constructor_name": "JBW",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "vanwall",
+    "constructor_name": "Vanwall",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

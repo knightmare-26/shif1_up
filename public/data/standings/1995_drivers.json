@@ -1,0 +1,352 @@
+[
+  {
+    "position": 1,
+    "driver_id": "michael_schumacher",
+    "driver_name": "Michael Schumacher",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Benetton",
+    "points": 102.0,
+    "wins": 9
+  },
+  {
+    "position": 2,
+    "driver_id": "damon_hill",
+    "driver_name": "Damon Hill",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Williams",
+    "points": 69.0,
+    "wins": 4
+  },
+  {
+    "position": 3,
+    "driver_id": "coulthard",
+    "driver_name": "David Coulthard",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Williams",
+    "points": 49.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "herbert",
+    "driver_name": "Johnny Herbert",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Benetton",
+    "points": 45.0,
+    "wins": 2
+  },
+  {
+    "position": 5,
+    "driver_id": "alesi",
+    "driver_name": "Jean Alesi",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 42.0,
+    "wins": 1
+  },
+  {
+    "position": 6,
+    "driver_id": "berger",
+    "driver_name": "Gerhard Berger",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "Ferrari",
+    "points": 31.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "hakkinen",
+    "driver_name": "Mika H\u00e4kkinen",
+    "nationality": "Finnish",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 17.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "driver_id": "panis",
+    "driver_name": "Olivier Panis",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Ligier",
+    "points": 16.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "frentzen",
+    "driver_name": "Heinz-Harald Frentzen",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Sauber",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "blundell",
+    "driver_name": "Mark Blundell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "barrichello",
+    "driver_name": "Rubens Barrichello",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Jordan",
+    "points": 11.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "irvine",
+    "driver_name": "Eddie Irvine",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Jordan",
+    "points": 10.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "brundle",
+    "driver_name": "Martin Brundle",
+    "nationality": "British",
+    "number": "",
+    "constructor": "Ligier",
+    "points": 7.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "morbidelli",
+    "driver_name": "Gianni Morbidelli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Footwork",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "salo",
+    "driver_name": "Mika Salo",
+    "nationality": "Finnish",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "boullion",
+    "driver_name": "Jean-Christophe Boullion",
+    "nationality": "French",
+    "number": "",
+    "constructor": "Sauber",
+    "points": 3.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "suzuki",
+    "driver_name": "Aguri Suzuki",
+    "nationality": "Japanese",
+    "number": "",
+    "constructor": "Ligier",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "lamy",
+    "driver_name": "Pedro Lamy",
+    "nationality": "Portuguese",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "martini",
+    "driver_name": "Pierluigi Martini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "katayama",
+    "driver_name": "Ukyo Katayama",
+    "nationality": "Japanese",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "diniz",
+    "driver_name": "Pedro Diniz",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Forti",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "papis",
+    "driver_name": "Massimiliano Papis",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Footwork",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "badoer",
+    "driver_name": "Luca Badoer",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Minardi",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "inoue",
+    "driver_name": "Taki Inoue",
+    "nationality": "Japanese",
+    "number": "",
+    "constructor": "Footwork",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "montermini",
+    "driver_name": "Andrea Montermini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Pacific",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "gachot",
+    "driver_name": "Bertrand Gachot",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Pacific",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "schiattarella",
+    "driver_name": "Domenico Schiattarella",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Simtek",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "wendlinger",
+    "driver_name": "Karl Wendlinger",
+    "nationality": "Austrian",
+    "number": "",
+    "constructor": "Sauber",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "mansell",
+    "driver_name": "Nigel Mansell",
+    "nationality": "British",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "magnussen",
+    "driver_name": "Jan Magnussen",
+    "nationality": "Danish",
+    "number": "",
+    "constructor": "McLaren",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "verstappen",
+    "driver_name": "Jos Verstappen",
+    "nationality": "Dutch",
+    "number": "",
+    "constructor": "Simtek",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "moreno",
+    "driver_name": "Roberto Moreno",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Forti",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "tarquini",
+    "driver_name": "Gabriele Tarquini",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Tyrrell",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "deletraz",
+    "driver_name": "Jean-Denis D\u00e9l\u00e9traz",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Pacific",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "driver_id": "lavaggi",
+    "driver_name": "Giovanni Lavaggi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Pacific",
+    "points": 0.0,
+    "wins": 0
+  }
+]

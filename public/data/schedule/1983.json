@@ -1,0 +1,137 @@
+[
+  {
+    "round": 1,
+    "race_name": "Brazilian Grand Prix",
+    "circuit_name": "Aut\u00f3dromo Internacional Nelson Piquet",
+    "country": "Brazil",
+    "location": "Rio de Janeiro",
+    "date": "1983-03-13",
+    "time": ""
+  },
+  {
+    "round": 2,
+    "race_name": "United States Grand Prix West",
+    "circuit_name": "Long Beach",
+    "country": "USA",
+    "location": "California",
+    "date": "1983-03-27",
+    "time": ""
+  },
+  {
+    "round": 3,
+    "race_name": "French Grand Prix",
+    "circuit_name": "Circuit Paul Ricard",
+    "country": "France",
+    "location": "Le Castellet",
+    "date": "1983-04-17",
+    "time": ""
+  },
+  {
+    "round": 4,
+    "race_name": "San Marino Grand Prix",
+    "circuit_name": "Autodromo Enzo e Dino Ferrari",
+    "country": "Italy",
+    "location": "Imola",
+    "date": "1983-05-01",
+    "time": ""
+  },
+  {
+    "round": 5,
+    "race_name": "Monaco Grand Prix",
+    "circuit_name": "Circuit de Monaco",
+    "country": "Monaco",
+    "location": "Monte Carlo",
+    "date": "1983-05-15",
+    "time": ""
+  },
+  {
+    "round": 6,
+    "race_name": "Belgian Grand Prix",
+    "circuit_name": "Circuit de Spa-Francorchamps",
+    "country": "Belgium",
+    "location": "Spa",
+    "date": "1983-05-22",
+    "time": ""
+  },
+  {
+    "round": 7,
+    "race_name": "Detroit Grand Prix",
+    "circuit_name": "Detroit Street Circuit",
+    "country": "USA",
+    "location": "Detroit",
+    "date": "1983-06-05",
+    "time": ""
+  },
+  {
+    "round": 8,
+    "race_name": "Canadian Grand Prix",
+    "circuit_name": "Circuit Gilles Villeneuve",
+    "country": "Canada",
+    "location": "Montreal",
+    "date": "1983-06-12",
+    "time": ""
+  },
+  {
+    "round": 9,
+    "race_name": "British Grand Prix",
+    "circuit_name": "Silverstone Circuit",
+    "country": "UK",
+    "location": "Silverstone",
+    "date": "1983-07-16",
+    "time": ""
+  },
+  {
+    "round": 10,
+    "race_name": "German Grand Prix",
+    "circuit_name": "Hockenheimring",
+    "country": "Germany",
+    "location": "Hockenheim",
+    "date": "1983-08-07",
+    "time": ""
+  },
+  {
+    "round": 11,
+    "race_name": "Austrian Grand Prix",
+    "circuit_name": "Red Bull Ring",
+    "country": "Austria",
+    "location": "Spielberg",
+    "date": "1983-08-14",
+    "time": ""
+  },
+  {
+    "round": 12,
+    "race_name": "Dutch Grand Prix",
+    "circuit_name": "Circuit Park Zandvoort",
+    "country": "Netherlands",
+    "location": "Zandvoort",
+    "date": "1983-08-28",
+    "time": ""
+  },
+  {
+    "round": 13,
+    "race_name": "Italian Grand Prix",
+    "circuit_name": "Autodromo Nazionale di Monza",
+    "country": "Italy",
+    "location": "Monza",
+    "date": "1983-09-11",
+    "time": ""
+  },
+  {
+    "round": 14,
+    "race_name": "European Grand Prix",
+    "circuit_name": "Brands Hatch",
+    "country": "UK",
+    "location": "Kent",
+    "date": "1983-09-25",
+    "time": ""
+  },
+  {
+    "round": 15,
+    "race_name": "South African Grand Prix",
+    "circuit_name": "Kyalami",
+    "country": "South Africa",
+    "location": "Midrand",
+    "date": "1983-10-15",
+    "time": ""
+  }
+]

@@ -1,0 +1,114 @@
+[
+  {
+    "position": 1,
+    "constructor_id": "williams",
+    "constructor_name": "Williams",
+    "nationality": "British",
+    "points": 118.0,
+    "wins": 7
+  },
+  {
+    "position": 2,
+    "constructor_id": "benetton",
+    "constructor_name": "Benetton",
+    "nationality": "Italian",
+    "points": 103.0,
+    "wins": 8
+  },
+  {
+    "position": 3,
+    "constructor_id": "ferrari",
+    "constructor_name": "Ferrari",
+    "nationality": "Italian",
+    "points": 71.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "constructor_id": "mclaren",
+    "constructor_name": "McLaren",
+    "nationality": "British",
+    "points": 42.0,
+    "wins": 0
+  },
+  {
+    "position": 5,
+    "constructor_id": "jordan",
+    "constructor_name": "Jordan",
+    "nationality": "Irish",
+    "points": 28.0,
+    "wins": 0
+  },
+  {
+    "position": 6,
+    "constructor_id": "ligier",
+    "constructor_name": "Ligier",
+    "nationality": "French",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "constructor_id": "tyrrell",
+    "constructor_name": "Tyrrell",
+    "nationality": "British",
+    "points": 13.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "constructor_id": "sauber",
+    "constructor_name": "Sauber",
+    "nationality": "Swiss",
+    "points": 12.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "constructor_id": "footwork",
+    "constructor_name": "Footwork",
+    "nationality": "British",
+    "points": 9.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "constructor_id": "minardi",
+    "constructor_name": "Minardi",
+    "nationality": "Italian",
+    "points": 5.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "constructor_id": "larrousse",
+    "constructor_name": "Larrousse",
+    "nationality": "French",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "team_lotus",
+    "constructor_name": "Team Lotus",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "simtek",
+    "constructor_name": "Simtek",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 0,
+    "constructor_id": "pacific",
+    "constructor_name": "Pacific",
+    "nationality": "British",
+    "points": 0.0,
+    "wins": 0
+  }
+]

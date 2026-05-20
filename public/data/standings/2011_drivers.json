@@ -1,0 +1,282 @@
+[
+  {
+    "position": 1,
+    "driver_id": "vettel",
+    "driver_name": "Sebastian Vettel",
+    "nationality": "German",
+    "number": "5",
+    "constructor": "Red Bull",
+    "points": 392.0,
+    "wins": 11
+  },
+  {
+    "position": 2,
+    "driver_id": "button",
+    "driver_name": "Jenson Button",
+    "nationality": "British",
+    "number": "22",
+    "constructor": "McLaren",
+    "points": 270.0,
+    "wins": 3
+  },
+  {
+    "position": 3,
+    "driver_id": "webber",
+    "driver_name": "Mark Webber",
+    "nationality": "Australian",
+    "number": "",
+    "constructor": "Red Bull",
+    "points": 258.0,
+    "wins": 1
+  },
+  {
+    "position": 4,
+    "driver_id": "alonso",
+    "driver_name": "Fernando Alonso",
+    "nationality": "Spanish",
+    "number": "14",
+    "constructor": "Ferrari",
+    "points": 257.0,
+    "wins": 1
+  },
+  {
+    "position": 5,
+    "driver_id": "hamilton",
+    "driver_name": "Lewis Hamilton",
+    "nationality": "British",
+    "number": "44",
+    "constructor": "McLaren",
+    "points": 227.0,
+    "wins": 3
+  },
+  {
+    "position": 6,
+    "driver_id": "massa",
+    "driver_name": "Felipe Massa",
+    "nationality": "Brazilian",
+    "number": "19",
+    "constructor": "Ferrari",
+    "points": 118.0,
+    "wins": 0
+  },
+  {
+    "position": 7,
+    "driver_id": "rosberg",
+    "driver_name": "Nico Rosberg",
+    "nationality": "German",
+    "number": "6",
+    "constructor": "Mercedes",
+    "points": 89.0,
+    "wins": 0
+  },
+  {
+    "position": 8,
+    "driver_id": "michael_schumacher",
+    "driver_name": "Michael Schumacher",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Mercedes",
+    "points": 76.0,
+    "wins": 0
+  },
+  {
+    "position": 9,
+    "driver_id": "sutil",
+    "driver_name": "Adrian Sutil",
+    "nationality": "German",
+    "number": "99",
+    "constructor": "Force India",
+    "points": 42.0,
+    "wins": 0
+  },
+  {
+    "position": 10,
+    "driver_id": "petrov",
+    "driver_name": "Vitaly Petrov",
+    "nationality": "Russian",
+    "number": "",
+    "constructor": "Renault",
+    "points": 37.0,
+    "wins": 0
+  },
+  {
+    "position": 11,
+    "driver_id": "heidfeld",
+    "driver_name": "Nick Heidfeld",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Renault",
+    "points": 34.0,
+    "wins": 0
+  },
+  {
+    "position": 12,
+    "driver_id": "kobayashi",
+    "driver_name": "Kamui Kobayashi",
+    "nationality": "Japanese",
+    "number": "10",
+    "constructor": "Sauber",
+    "points": 30.0,
+    "wins": 0
+  },
+  {
+    "position": 13,
+    "driver_id": "resta",
+    "driver_name": "Paul di Resta",
+    "nationality": "British",
+    "number": "40",
+    "constructor": "Force India",
+    "points": 27.0,
+    "wins": 0
+  },
+  {
+    "position": 14,
+    "driver_id": "alguersuari",
+    "driver_name": "Jaime Alguersuari",
+    "nationality": "Spanish",
+    "number": "",
+    "constructor": "Toro Rosso",
+    "points": 26.0,
+    "wins": 0
+  },
+  {
+    "position": 15,
+    "driver_id": "buemi",
+    "driver_name": "S\u00e9bastien Buemi",
+    "nationality": "Swiss",
+    "number": "",
+    "constructor": "Toro Rosso",
+    "points": 15.0,
+    "wins": 0
+  },
+  {
+    "position": 16,
+    "driver_id": "perez",
+    "driver_name": "Sergio P\u00e9rez",
+    "nationality": "Mexican",
+    "number": "11",
+    "constructor": "Sauber",
+    "points": 14.0,
+    "wins": 0
+  },
+  {
+    "position": 17,
+    "driver_id": "barrichello",
+    "driver_name": "Rubens Barrichello",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Williams",
+    "points": 4.0,
+    "wins": 0
+  },
+  {
+    "position": 18,
+    "driver_id": "bruno_senna",
+    "driver_name": "Bruno Senna",
+    "nationality": "Brazilian",
+    "number": "",
+    "constructor": "Renault",
+    "points": 2.0,
+    "wins": 0
+  },
+  {
+    "position": 19,
+    "driver_id": "maldonado",
+    "driver_name": "Pastor Maldonado",
+    "nationality": "Venezuelan",
+    "number": "13",
+    "constructor": "Williams",
+    "points": 1.0,
+    "wins": 0
+  },
+  {
+    "position": 20,
+    "driver_id": "rosa",
+    "driver_name": "Pedro de la Rosa",
+    "nationality": "Spanish",
+    "number": "",
+    "constructor": "Sauber",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 21,
+    "driver_id": "trulli",
+    "driver_name": "Jarno Trulli",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 22,
+    "driver_id": "kovalainen",
+    "driver_name": "Heikki Kovalainen",
+    "nationality": "Finnish",
+    "number": "",
+    "constructor": "Lotus",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 23,
+    "driver_id": "liuzzi",
+    "driver_name": "Vitantonio Liuzzi",
+    "nationality": "Italian",
+    "number": "",
+    "constructor": "HRT",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 24,
+    "driver_id": "ambrosio",
+    "driver_name": "J\u00e9r\u00f4me d'Ambrosio",
+    "nationality": "Belgian",
+    "number": "",
+    "constructor": "Virgin",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 25,
+    "driver_id": "glock",
+    "driver_name": "Timo Glock",
+    "nationality": "German",
+    "number": "",
+    "constructor": "Virgin",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 26,
+    "driver_id": "karthikeyan",
+    "driver_name": "Narain Karthikeyan",
+    "nationality": "Indian",
+    "number": "",
+    "constructor": "HRT",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 27,
+    "driver_id": "ricciardo",
+    "driver_name": "Daniel Ricciardo",
+    "nationality": "Australian",
+    "number": "3",
+    "constructor": "HRT",
+    "points": 0.0,
+    "wins": 0
+  },
+  {
+    "position": 28,
+    "driver_id": "chandhok",
+    "driver_name": "Karun Chandhok",
+    "nationality": "Indian",
+    "number": "",
+    "constructor": "Lotus",
+    "points": 0.0,
+    "wins": 0
+  }
+]
