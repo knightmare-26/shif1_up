@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import {
-  Home, BarChart3, Users, MapPin, Activity, Trophy,
+  Home, BarChart3, Activity, Trophy,
   Database, Menu, X, TrendingUp,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -14,8 +14,6 @@ const NAV_ITEMS: NavItem[] = [
   { path: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
   { path: '/predictions',  label: 'Predictions',  icon: TrendingUp },
   { path: '/race-results', label: 'Race Results', icon: Trophy },
-  { path: '/drivers',      label: 'Drivers',      icon: Users },
-  { path: '/tracks',       label: 'Tracks',       icon: MapPin },
   { path: '/live',         label: 'Live',         icon: Activity },
   { path: '/data-manager', label: 'Data Manager', icon: Database },
 ];
