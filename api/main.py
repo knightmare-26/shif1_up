@@ -128,12 +128,17 @@ async def lifespan(app: FastAPI):
         logger.info("ℹ️  No DATABASE_URL — skipping Postgres")
 
     if DATABASE_URL:
-        duckdb_service = SupabaseF1Service(DATABASE_URL)
-        logger.info("Using Supabase for F1 historical data")
+        try:
+            duckdb_service = SupabaseF1Service(DATABASE_URL)
+            await duckdb_service.initialize()
+            logger.info("✅ Using Supabase for F1 historical data")
+        except Exception as exc:
+            logger.warning("⚠️  Supabase F1 unavailable (%s) — falling back to DuckDB", exc)
+            duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
+            await duckdb_service.initialize()
     else:
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
-        logger.info("Using DuckDB for F1 historical data")
-    await duckdb_service.initialize()
+        await duckdb_service.initialize()
 
     fastf1_service = FastF1Service()
     ergast_service = ErgastService()
