@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { Link } from 'react-router-dom';
-import { Car, MapPin, Flag, TrendingUp, Calendar, Users, LogIn, UserPlus } from 'lucide-react';
+import { Car, MapPin, Flag, TrendingUp, Calendar, Users } from 'lucide-react';
 
 const MainPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
@@ -150,35 +150,6 @@ const MainPage: React.FC = () => {
           and AI-powered predictions. Get insights into driver performance, track analysis, 
           and live race data all in one comprehensive platform.
         </p>
-      </motion.div>
-
-      {/* Call to Action */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="bg-gradient-to-r from-racing-red to-red-700 rounded-2xl p-8 text-center text-pure-white shadow-2xl mb-12"
-      >
-        <h3 className="text-3xl font-bold mb-4">Unlock Your Personalized F1 Experience</h3>
-        <p className="text-lg opacity-90 mb-6">
-          Sign up to get personalized insights based on your favorite driver, track, and team preferences
-        </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Link
-            to="/signup"
-            className="inline-flex items-center px-8 py-4 bg-pure-white text-racing-red font-bold text-lg rounded-lg hover:bg-gray-100 transition-all duration-300 transform hover:scale-105"
-          >
-            <UserPlus className="w-5 h-5 mr-2" />
-            Get Started
-          </Link>
-          <Link
-            to="/login"
-            className="inline-flex items-center px-8 py-4 bg-transparent border-2 border-pure-white text-pure-white font-bold text-lg rounded-lg hover:bg-pure-white hover:text-racing-red transition-all duration-300 transform hover:scale-105"
-          >
-            <LogIn className="w-5 h-5 mr-2" />
-            Sign In
-          </Link>
-        </div>
       </motion.div>
 
       {/* Features Grid */}
