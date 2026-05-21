@@ -44,6 +44,9 @@ api/fastf1_cache/
 # Claude Code IDE settings (user-specific)
 .claude/
 
+# Local secrets — never commit
+CLAUDE.local.md
+
 # FastF1 HTTP cache
 api/data/fastf1_cache/
 *.sqlite
