@@ -88,8 +88,7 @@ const LiveAnalytics: React.FC = () => {
           </div>
         ) : (
           <p className="opacity-80 text-sm">
-            Live timing data streams here during F1 sessions. Use the <strong>Live Data Monitor</strong> to
-            connect to the WebSocket feed when a session is running.
+            Live timing data streams here during active F1 sessions. Visit the <strong>Live Data Monitor</strong> page for real-time positions and lap times.
           </p>
         )}
       </motion.div>
@@ -201,14 +200,13 @@ const LiveAnalytics: React.FC = () => {
       >
         <h3 className="text-2xl font-bold mb-2">Live Data — Race Weekends Only</h3>
         <p className="opacity-90 text-sm max-w-2xl mx-auto">
-          During an F1 session, start <code className="bg-white/20 px-1 rounded">live/poller.py</code> to push
-          real-time timing to Redis. The <strong>Live Data Monitor</strong> page then streams it directly to your
-          browser via WebSocket.
+          Live timing data streams to your browser during active F1 sessions.
+          Visit the <strong>Live Data Monitor</strong> page to watch real-time positions, lap times, and gaps.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 text-sm">
-          <div><p className="font-bold">WebSocket Streaming</p><p className="opacity-80">Sub-second updates via Redis pub/sub</p></div>
-          <div><p className="font-bold">Auto-reconnect</p><p className="opacity-80">Exponential backoff on disconnect</p></div>
-          <div><p className="font-bold">Historical Fallback</p><p className="opacity-80">Post-race data loads from DuckDB</p></div>
+          <div><p className="font-bold">Real-Time Streaming</p><p className="opacity-80">Sub-second position updates</p></div>
+          <div><p className="font-bold">Auto-reconnect</p><p className="opacity-80">Seamless recovery on network drop</p></div>
+          <div><p className="font-bold">Historical Data</p><p className="opacity-80">Post-race analysis available immediately</p></div>
         </div>
       </motion.div>
     </div>

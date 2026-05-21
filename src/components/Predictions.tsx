@@ -220,7 +220,7 @@ const Predictions: React.FC = () => {
           onClick={retrain}
           disabled={training}
           className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50 transition-colors"
-          title="Retrain models on latest DuckDB data"
+          title="Retrain prediction models on latest data"
         >
           <RefreshCw className={`w-4 h-4 ${training ? 'animate-spin' : ''}`} />
           {training ? 'Retraining…' : 'Retrain Models'}
@@ -300,7 +300,7 @@ const Predictions: React.FC = () => {
           className="flex flex-col items-center justify-center py-24 text-center">
           <TrendingUp className="w-12 h-12 text-gray-700 mb-4" />
           <p className="text-gray-500 text-sm">Select a circuit and click <strong className="text-gray-400">Generate Predictions</strong></p>
-          <p className="text-gray-600 text-xs mt-1">Models auto-train on first run using ingested DuckDB data</p>
+          <p className="text-gray-600 text-xs mt-1">Predictions are generated from historical F1 race data</p>
         </motion.div>
       )}
     </div>

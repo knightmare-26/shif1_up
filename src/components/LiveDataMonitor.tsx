@@ -247,8 +247,7 @@ const LiveDataMonitor: React.FC = () => {
                       <Radio className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                       <p className="text-xl font-bold text-carbon-black mb-2">No live session active</p>
                       <p className="text-gray-600 text-sm">
-                        Live data appears here during an F1 session. Start the race poller or use
-                        the simulate endpoint to inject test data.
+                        Live data appears here during an active F1 session. Data streams automatically when a race weekend is underway.
                       </p>
                     </>
                   ) : (
@@ -335,7 +334,7 @@ const LiveDataMonitor: React.FC = () => {
             <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <p className="text-xl font-bold text-carbon-black mb-2">Select a race and press Start</p>
             <p className="text-gray-600 text-sm">
-              Connects to the backend WebSocket — live during race weekends when the poller is running.
+              Live data streams automatically during active F1 race weekends.
             </p>
           </div>
         )}

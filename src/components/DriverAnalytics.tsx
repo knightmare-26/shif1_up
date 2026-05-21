@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Award, Flag, RefreshCw, ExternalLink, Calendar, ChevronDown, Database } from 'lucide-react';
+import { Users, TrendingUp, Award, Flag, RefreshCw, Calendar } from 'lucide-react';
 import { backendApi, DriverStanding, ConstructorStanding } from '../services/backendApi';
 import { f1DataExtractor } from '../services/f1DataExtractor';
 import { Driver, Team } from '../types/f1';
@@ -9,7 +9,6 @@ const DriverAnalytics: React.FC = () => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -47,22 +46,14 @@ const DriverAnalytics: React.FC = () => {
     setError(null);
     
     try {
-      console.log(`🚀 Loading F1 data for ${selectedYear}...`);
-      
-      // First try to get data from the extractor cache
       const cachedData = f1DataExtractor.getYearData(selectedYear);
-      
+
       if (cachedData) {
-        console.log(`📦 Using cached data for ${selectedYear}`);
         setDrivers(cachedData.drivers);
         setTeams(cachedData.teams);
-        setLastUpdated(new Date());
         return;
       }
-      
-      // If no cached data, fetch from API and store in extractor
-      console.log(`🌐 Fetching fresh data for ${selectedYear} from API...`);
-      
+
       const [driverStandings, constructorStandings] = await Promise.all([
         backendApi.getDriverStandings(selectedYear),
         backendApi.getConstructorStandings(selectedYear)
@@ -77,21 +68,13 @@ const DriverAnalytics: React.FC = () => {
         backendApi.convertConstructorStandingToTeam(standing)
       );
       
-      // Store in extractor cache for future use
       f1DataExtractor.storeYearData(selectedYear, driverData, teamData);
-      
+
       setDrivers(driverData);
       setTeams(teamData);
-      setLastUpdated(new Date());
-      console.log(`✅ Loaded and cached ${driverData.length} drivers and ${teamData.length} teams for ${selectedYear}`);
-      
     } catch (err) {
-      console.error('Error loading data:', err);
-      // Fallback to mock data if API fails
-      console.log(`⚠️ API failed for ${selectedYear}, using fallback data`);
       setDrivers(getFallbackDriverData(selectedYear));
       setTeams(getFallbackTeamData(selectedYear));
-      setLastUpdated(new Date());
     } finally {
       setIsLoading(false);
     }
@@ -257,39 +240,10 @@ const DriverAnalytics: React.FC = () => {
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
             </button>
-            {lastUpdated && selectedYear === new Date().getFullYear() && (
-              <p className="text-sm text-gray-400">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
           </div>
         </div>
       </motion.div>
 
-      {/* Data Management Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="bg-gray-900 rounded-xl p-4 mb-6 shadow-lg"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Database className="w-5 h-5 text-turbo-teal" />
-              <span className="text-pure-white font-semibold">Data Status</span>
-            </div>
-            <div className="text-sm text-gray-400">
-              {f1DataExtractor.getAvailableYears().length} years cached
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span className="text-sm text-gray-400">
-              Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString() : 'Never'}
-            </span>
-          </div>
-        </div>
-      </motion.div>
 
       {error && (
         <motion.div
@@ -304,24 +258,6 @@ const DriverAnalytics: React.FC = () => {
         </motion.div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="bg-track-grey rounded-xl p-4 mb-6"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <ExternalLink className="w-4 h-4 text-turbo-teal" />
-            <span className="text-sm text-carbon-black">
-              Data from FastF1 API & Ergast API (Fallback)
-            </span>
-          </div>
-          <div className="text-xs text-gray-600">
-            Auto-refresh every 15 minutes • Live data every 30 seconds
-          </div>
-        </div>
-      </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -452,7 +388,7 @@ const DriverAnalytics: React.FC = () => {
       >
         <h3 className="text-2xl font-bold mb-4">Advanced Analytics Coming Soon</h3>
         <p className="text-lg opacity-90 mb-6">
-          Real-time telemetry, lap analysis, and AI-powered predictions powered by FastF1
+          Real-time telemetry, lap analysis, and AI-powered race predictions
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>

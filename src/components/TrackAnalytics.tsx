@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Calendar, Clock, Flag, RefreshCw, ExternalLink, TrendingUp } from 'lucide-react';
+import { MapPin, Calendar, Clock, Flag, RefreshCw, TrendingUp } from 'lucide-react';
 import { backendApi, RaceEvent } from '../services/backendApi';
 
 const TrackAnalytics: React.FC = () => {
   const [raceSchedule, setRaceSchedule] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [availableYears, setAvailableYears] = useState<number[]>([]);
@@ -36,12 +35,8 @@ const TrackAnalytics: React.FC = () => {
     setError(null);
     
     try {
-      console.log(`🚀 Loading F1 race schedule for ${selectedYear} from backend API...`);
-      
-      // Try to fetch data from backend API
       const raceEvents = await backendApi.getRaceSchedule(selectedYear);
-      
-      // Convert backend data to frontend format
+
       const schedule = raceEvents.map(event => ({
         round: event.round,
         raceName: event.race_name,
@@ -54,15 +49,8 @@ const TrackAnalytics: React.FC = () => {
       }));
       
       setRaceSchedule(schedule);
-      setLastUpdated(new Date());
-      console.log(`✅ Loaded ${schedule.length} races for ${selectedYear} from backend`);
-      
     } catch (err) {
-      console.error('Backend API error:', err);
-      // Fallback to mock data if backend fails
-      console.log(`⚠️ Backend API failed for ${selectedYear}, using fallback data`);
       setRaceSchedule(getFallbackRaceSchedule(selectedYear));
-      setLastUpdated(new Date());
     } finally {
       setIsLoading(false);
     }
@@ -321,11 +309,6 @@ const TrackAnalytics: React.FC = () => {
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
             </button>
-            {lastUpdated && selectedYear === new Date().getFullYear() && (
-              <p className="text-sm text-gray-400">
-                Last updated: {lastUpdated.toLocaleTimeString()}
-              </p>
-            )}
           </div>
         </div>
       </motion.div>
@@ -343,24 +326,6 @@ const TrackAnalytics: React.FC = () => {
         </motion.div>
       )}
 
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.2 }}
-        className="bg-track-grey rounded-xl p-4 mb-6"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <ExternalLink className="w-4 h-4 text-turbo-teal" />
-            <span className="text-sm text-carbon-black">
-              Data from FastF1 API & Ergast API (Fallback)
-            </span>
-          </div>
-          <div className="text-xs text-gray-600">
-            Auto-refresh every 15 minutes • Live data every 30 seconds
-          </div>
-        </div>
-      </motion.div>
 
       {nextRace && (
         <motion.div
@@ -513,7 +478,7 @@ const TrackAnalytics: React.FC = () => {
       >
         <h3 className="text-2xl font-bold mb-4">Advanced Track Analysis Coming Soon</h3>
         <p className="text-lg opacity-90 mb-6">
-          Real-time weather data, tire strategies, and AI-powered track performance predictions powered by FastF1
+          Real-time weather data, tire strategies, and AI-powered track performance predictions
         </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
           <div>
