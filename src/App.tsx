@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 import MainPage from './components/MainPage';
 import TrackAnalytics from './components/TrackAnalytics';
 import DriverAnalytics from './components/DriverAnalytics';
@@ -38,7 +39,9 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => (
   <Router>
-    <AppContent />
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   </Router>
 );
 
