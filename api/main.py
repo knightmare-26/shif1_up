@@ -24,6 +24,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from services.simple_duckdb_service import SimpleDuckDBService
+from services.supabase_f1_service import SupabaseF1Service
 from services.postgres_service import PostgresService
 from services.redis_service import RedisService
 from services.mock_redis_service import MockRedisService
@@ -126,7 +127,12 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️  No DATABASE_URL — skipping Postgres")
 
-    duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
+    if DATABASE_URL:
+        duckdb_service = SupabaseF1Service(DATABASE_URL)
+        logger.info("Using Supabase for F1 historical data")
+    else:
+        duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
+        logger.info("Using DuckDB for F1 historical data")
     await duckdb_service.initialize()
 
     fastf1_service = FastF1Service()
@@ -188,6 +194,8 @@ app.add_middleware(
 # Sample data loader (used until real ingestion runs)
 # ---------------------------------------------------------------------------
 async def _load_sample_data():
+    if getattr(duckdb_service, "backend", None) == "postgres":
+        return  # Supabase is populated via ingest, not sample data
     try:
         await duckdb_service.store_drivers([
             {"driver_id": "verstappen", "full_name": "Max Verstappen",   "nationality": "Dutch",       "number": 1},

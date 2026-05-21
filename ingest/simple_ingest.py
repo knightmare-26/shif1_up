@@ -26,12 +26,14 @@ import fastf1.ergast
 import pandas as pd
 
 from api.services.simple_duckdb_service import SimpleDuckDBService
+from api.services.supabase_f1_service import SupabaseF1Service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = os.getenv("FASTF1_CACHE_DIR", "data/fastf1_cache")
-DB_PATH   = os.getenv("DUCKDB_PATH", "data/f1_history.duckdb")
+CACHE_DIR    = os.getenv("FASTF1_CACHE_DIR", "data/fastf1_cache")
+DB_PATH      = os.getenv("DUCKDB_PATH", "data/f1_history.duckdb")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 
 def setup_fastf1():
@@ -40,7 +42,7 @@ def setup_fastf1():
     logger.info("FastF1 cache: %s", CACHE_DIR)
 
 
-async def ingest_year(year: int, db: SimpleDuckDBService, include_laps: bool = False):
+async def ingest_year(year: int, db, include_laps: bool = False):
     logger.info("=== Ingesting %d ===", year)
     loop = asyncio.get_event_loop()
 
@@ -159,7 +161,12 @@ async def ingest_year(year: int, db: SimpleDuckDBService, include_laps: bool = F
 
 
 async def main(years: list[int], include_laps: bool = False):
-    db = SimpleDuckDBService(DB_PATH)
+    if DATABASE_URL:
+        db = SupabaseF1Service(DATABASE_URL)
+        logger.info("Target: Supabase PostgreSQL")
+    else:
+        db = SimpleDuckDBService(DB_PATH)
+        logger.info("Target: DuckDB (%s)", DB_PATH)
     await db.initialize()
     try:
         for year in years:
