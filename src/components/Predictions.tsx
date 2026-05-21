@@ -53,7 +53,7 @@ const PredictionTable: React.FC<{
     <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
       <div>
         <h3 className="text-white font-semibold text-base">{title}</h3>
-        <p className="text-gray-400 text-xs mt-0.5">{subtitle} · <span className="text-racing-red">{model}</span></p>
+        <p className="text-gray-400 text-xs mt-0.5">{subtitle}</p>
       </div>
       {gridMissing && valueKey === 'predicted_position' && (
         <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded flex items-center gap-1">
@@ -167,7 +167,7 @@ const Predictions: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-racing text-white">Race Predictions</h1>
-            <p className="text-gray-400 text-sm">XGBoost qualifying · LightGBM race finish</p>
+            <p className="text-gray-400 text-sm">ML-powered qualifying and race predictions</p>
           </div>
         </div>
       </motion.div>
