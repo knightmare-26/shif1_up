@@ -115,8 +115,16 @@ async def lifespan(app: FastAPI):
 
     redis_service = await _init_redis()
 
-    postgres_service = PostgresService(DATABASE_URL)
-    await postgres_service.initialize()
+    if DATABASE_URL:
+        try:
+            postgres_service = PostgresService(DATABASE_URL)
+            await postgres_service.initialize()
+            logger.info("✅ Postgres connected")
+        except Exception as exc:
+            logger.warning("⚠️  Postgres unavailable (%s) — auth endpoints disabled", exc)
+            postgres_service = None
+    else:
+        logger.info("ℹ️  No DATABASE_URL — skipping Postgres")
 
     duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
     await duckdb_service.initialize()

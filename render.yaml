@@ -17,11 +17,12 @@ services:
         value: INFO
       - key: PYTHONPATH
         value: /app/api
-      - key: JWT_SECRET
-        generateValue: true
-      # Set REDIS_URL to your Upstash rediss:// connection string
+      # Secrets — set these manually in the Render dashboard, never committed
       - key: REDIS_URL
         sync: false
+      - key: DATABASE_URL
+        sync: false
       # Update CORS_ORIGINS after your Vercel frontend URL is known
+      # e.g. https://shif1-up.vercel.app,http://localhost:3000
       - key: CORS_ORIGINS
-        value: http://localhost:3000
+        sync: false
