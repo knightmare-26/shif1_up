@@ -1,5 +1,7 @@
-# Build tools (required in CI environments that lack them by default)
-setuptools>=68.0
+# Minimal requirements for CI — skips ML packages (lazy-imported) and unused deps.
+# xgboost/lightgbm are lazy-imported inside prediction_service; not exercised by tests.
+# scikit-learn is listed in requirements.txt but not imported anywhere.
+# asyncpg/aioredis are unused in test env (mocks cover Redis/Postgres).
 
 # Core FastAPI and web server
 python-jose[cryptography]==3.3.0
@@ -19,9 +21,8 @@ duckdb==1.1.3
 pyarrow==14.0.1
 asyncpg==0.29.0
 
-# Redis
+# Redis (sync client only — tests fall back to MockRedisService)
 redis[hiredis]==5.0.1
-aioredis==2.0.1
 
 # HTTP and async
 aiohttp==3.9.1
@@ -40,12 +41,7 @@ python-dotenv==1.0.0
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2
-
-# ML / Predictions
-xgboost==2.0.3
-lightgbm==4.3.0
-scikit-learn==1.4.2
 
 # Utilities
 python-multipart==0.0.6
+setuptools>=68.0
