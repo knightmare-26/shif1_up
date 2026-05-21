@@ -22,7 +22,19 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
-      # Update CORS_ORIGINS after your Vercel frontend URL is known
-      # e.g. https://shif1-up.vercel.app,http://localhost:3000
+      # Set to your Render static site URL once deployed
+      # e.g. https://shif1-up.onrender.com
       - key: CORS_ORIGINS
+        sync: false
+
+  - type: web
+    name: shif1-up-frontend
+    runtime: static
+    plan: free
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./build
+    envVars:
+      # Set to your Render API URL once the backend is deployed
+      # e.g. https://shif1-up-api.onrender.com
+      - key: REACT_APP_API_URL
         sync: false
