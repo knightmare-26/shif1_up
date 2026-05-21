@@ -1,9 +1,10 @@
 services:
   - type: web
     name: shif1-up-api
-    runtime: docker
+    env: docker
     plan: free
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: DUCKDB_PATH
         value: /app/data/f1_history.duckdb
@@ -23,13 +24,13 @@ services:
       - key: DATABASE_URL
         sync: false
       # Set to your Render static site URL once deployed
-      # e.g. https://shif1-up.onrender.com
+      # e.g. https://shif1-up-frontend.onrender.com
       - key: CORS_ORIGINS
         sync: false
 
   - type: web
     name: shif1-up-frontend
-    runtime: static
+    env: static
     buildCommand: npm ci && npm run build
     staticPublishPath: ./build
     envVars:
