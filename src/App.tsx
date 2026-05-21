@@ -24,8 +24,8 @@ const AppContent: React.FC = () => {
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/predictions"  element={<Predictions />} />
           <Route path="/race-results" element={<RaceResults />} />
-          <Route path="/drivers"      element={<DriverAnalytics />} />
-          <Route path="/tracks"       element={<TrackAnalytics />} />
+          <Route path="/drivers"      element={<Navigate to="/dashboard" replace />} />
+          <Route path="/tracks"       element={<Navigate to="/dashboard" replace />} />
           <Route path="/live"         element={<LiveAnalytics />} />
           <Route path="/lap-data"     element={<LapData />} />
           <Route path="/live-monitor" element={<LiveDataMonitor />} />
