@@ -133,9 +133,8 @@ async def lifespan(app: FastAPI):
             await duckdb_service.initialize()
             logger.info("✅ Using Supabase for F1 historical data")
         except Exception as exc:
-            logger.warning("⚠️  Supabase F1 unavailable (%s) — falling back to DuckDB", exc)
-            duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
-            await duckdb_service.initialize()
+            logger.error("❌ Supabase F1 connection failed: %s", exc)
+            duckdb_service = None
     else:
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
         await duckdb_service.initialize()
