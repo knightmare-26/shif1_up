@@ -414,7 +414,7 @@ async def get_drivers(year: Optional[int] = None):
         return drivers
     except Exception as exc:
         logger.error("❌ get_drivers: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/drivers/{driver_id}")
@@ -427,7 +427,7 @@ async def get_driver_details(driver_id: str, year: Optional[int] = None):
         return data
     except Exception as exc:
         logger.error("❌ get_driver_details: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -448,7 +448,14 @@ async def get_races(year: Optional[int] = None):
         return races
     except Exception as exc:
         logger.error("❌ get_races: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _parse_race_id(race_id: str) -> tuple:
+    parts = race_id.split("_", 1)
+    if len(parts) != 2 or not parts[0].isdigit():
+        raise HTTPException(status_code=400, detail="Invalid race_id format — expected '<year>_<grand_prix>'")
+    return int(parts[0]), parts[1]
 
 
 @app.get("/race/{race_id}/results")
@@ -456,12 +463,14 @@ async def get_race_results(race_id: str):
     try:
         results = await duckdb_service.get_race_results(race_id)
         if not results:
-            year, gp = race_id.split("_", 1)
-            results = await fastf1_service.get_race_results(int(year), gp)
+            year, gp = _parse_race_id(race_id)
+            results = await fastf1_service.get_race_results(year, gp)
         return results
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("❌ get_race_results: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/race/{race_id}/laps")
@@ -469,12 +478,14 @@ async def get_race_laps(race_id: str, driver: Optional[str] = None):
     try:
         laps = await duckdb_service.get_race_laps(race_id, driver)
         if not laps:
-            year, gp = race_id.split("_", 1)
-            laps = await fastf1_service.get_session_laps(int(year), gp, "R", driver)
+            year, gp = _parse_race_id(race_id)
+            laps = await fastf1_service.get_session_laps(year, gp, "R", driver)
         return laps
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("❌ get_race_laps: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -513,7 +524,7 @@ async def get_live_state(race_id: str):
         return state
     except Exception as exc:
         logger.error("❌ get_live_state: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.websocket("/ws/live/{race_id}")
@@ -566,7 +577,7 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
         return standings
     except Exception as exc:
         logger.error("❌ legacy_driver_standings: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/constructors", response_model=List[ConstructorStanding])
@@ -587,7 +598,7 @@ async def legacy_constructor_standings(year: int = None, round: int = None, use_
         return standings
     except Exception as exc:
         logger.error("❌ legacy_constructor_standings: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/races", response_model=List[RaceEvent])
@@ -608,7 +619,7 @@ async def legacy_race_schedule(year: int = None, use_cache: bool = True):
         return schedule
     except Exception as exc:
         logger.error("❌ legacy_race_schedule: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -616,12 +627,15 @@ async def legacy_race_schedule(year: int = None, use_cache: bool = True):
 # ===========================================================================
 
 @app.post("/api/cache/clear")
-async def clear_cache():
+async def clear_cache(user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         await cache_service.clear_all()
         return {"message": "Cache cleared"}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("❌ clear_cache: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/cache/stats")
@@ -629,7 +643,8 @@ async def cache_stats():
     try:
         return await cache_service.get_stats()
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("❌ cache_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -642,7 +657,9 @@ class IngestRequest(BaseModel):
 
 
 @app.post("/admin/ingest")
-async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks):
+async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     if ingest_service.status["running"]:
         raise HTTPException(status_code=409, detail="Ingest already running")
     background_tasks.add_task(
@@ -652,13 +669,17 @@ async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks):
 
 
 @app.get("/admin/ingest/status")
-async def ingest_status():
+async def ingest_status(user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     return ingest_service.status
 
 
 @app.get("/admin/db/stats")
-async def db_stats():
+async def db_stats(user=Depends(get_current_user)):
     """Row counts for each DuckDB table — used by the Data Manager UI."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         counts = {}
         for table in ("drivers", "constructors", "races", "race_results", "laps"):
@@ -670,7 +691,8 @@ async def db_stats():
         counts["years"] = [r["year"] for r in years_rows]
         return counts
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("❌ db_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -700,7 +722,8 @@ async def simulate_live(request: Request, race_id: str):
         await redis_service.publish_update(race_id, {"type": "state_update", "state": state})
         return {"message": f"Simulation started for {race_id}"}
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        logger.error("❌ simulate_live: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 # ===========================================================================
@@ -722,8 +745,10 @@ async def predict_circuits():
 
 
 @app.post("/predict/train")
-async def predict_train(background_tasks: BackgroundTasks):
+async def predict_train(background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     """(Re-)train prediction models on current DuckDB data."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
     if prediction_service._trained:
         # Force retrain
         prediction_service._trained = False
@@ -746,7 +771,7 @@ async def predict_qualifying(circuit: str):
         raise
     except Exception as exc:
         logger.error("predict_qualifying: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/predict/race")
@@ -761,7 +786,7 @@ async def predict_race(circuit: str):
         raise
     except Exception as exc:
         logger.error("predict_race: %s", exc)
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 if __name__ == "__main__":

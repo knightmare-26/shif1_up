@@ -17,6 +17,10 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 7 days
 
 if SECRET_KEY == _DEFAULT_SECRET:
+    if os.getenv("RENDER"):
+        raise RuntimeError(
+            "JWT_SECRET env var is not set — refusing to start with the default dev secret in production"
+        )
     import logging as _log
     _log.getLogger(__name__).warning(
         "JWT_SECRET is using the default dev value — set JWT_SECRET env var in production"

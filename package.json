@@ -39,8 +39,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "backend": "python start_backend.py",
-    "dev": "concurrently \"npm run backend\" \"npm start\"",
-    "install-backend": "cd backend && pip install -r requirements.txt"
+    "dev": "concurrently \"npm run backend\" \"npm start\""
   },
   "eslintConfig": {
     "extends": [
