@@ -12,14 +12,26 @@ import sys
 import json
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
+import aiohttp
 import pandas as pd
 import fastf1
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 # Add parent directory to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from api.services.redis_service import RedisService
+
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
+
+# How many consecutive polls the lap count must stay flat, combined with a
+# terminal result status, before a session is treated as finished. FastF1's
+# live timing has known gaps, so this is a best-effort heuristic — the
+# Data Manager admin override remains the fallback if it misses a race.
+SESSION_END_STALL_POLLS = 3
 
 # Configure logging
 logging.basicConfig(
@@ -48,6 +60,7 @@ class LivePoller:
         self.last_positions = {}
         self.session = None
         self.is_polling = False
+        self.stall_polls = 0
         
     async def initialize(self):
         """Initialize the poller"""
@@ -74,9 +87,12 @@ class LivePoller:
                     if await self._is_session_live():
                         # Poll for updates
                         await self._poll_session_data()
+                        if await self._check_session_ended():
+                            await self._persist_and_stop()
+                            break
                     else:
                         logger.debug(f"⏳ Session not live yet for {self.race_id}")
-                    
+
                     # Wait before next poll
                     await asyncio.sleep(self.poll_interval)
                     
@@ -134,13 +150,52 @@ class LivePoller:
                 logger.info(f"📊 New lap data available: Lap {latest_lap}")
                 await self._process_lap_update(current_laps, latest_lap)
                 self.last_lap_number = latest_lap
-            
+                self.stall_polls = 0
+            else:
+                self.stall_polls += 1
+
             # Always update positions and state
             await self._update_live_state(current_laps)
             
         except Exception as e:
             logger.error(f"❌ Error polling session data: {str(e)}")
-    
+
+    async def _check_session_ended(self) -> bool:
+        """Best-effort session-end heuristic: lap count has stalled for a
+        few consecutive polls and the session's results show a terminal
+        status for the leader (not blank/"Running")."""
+        if self.stall_polls < SESSION_END_STALL_POLLS:
+            return False
+        if self.session is None or self.session.results is None or self.session.results.empty:
+            return False
+        try:
+            leader_status = str(self.session.results.iloc[0].get("Status", "")).strip()
+        except Exception:
+            return False
+        return bool(leader_status) and leader_status.lower() != "running"
+
+    async def _persist_and_stop(self):
+        """Push this session's results into the database via the API, then
+        stop polling — the race is over."""
+        logger.info(f"🏁 Session end detected for {self.race_id}, persisting results…")
+        headers = {"Content-Type": "application/json"}
+        if INTERNAL_API_KEY:
+            headers["X-Internal-Key"] = INTERNAL_API_KEY
+        payload = {"year": self.race_year, "event": self.race_gp, "laps": False}
+        try:
+            async with aiohttp.ClientSession() as http:
+                async with http.post(
+                    f"{API_BASE_URL}/admin/ingest/race", json=payload, headers=headers, timeout=30
+                ) as resp:
+                    if resp.status == 200:
+                        logger.info(f"✅ Ingest triggered for {self.race_id}")
+                    else:
+                        body = await resp.text()
+                        logger.error(f"❌ Ingest trigger failed ({resp.status}): {body}")
+        except Exception as e:
+            logger.error(f"❌ Error calling /admin/ingest/race: {str(e)}")
+        self.is_polling = False
+
     async def _process_lap_update(self, laps: pd.DataFrame, lap_number: int):
         """Process new lap data"""
         try:
@@ -267,11 +322,11 @@ class LivePoller:
 async def main():
     """Main poller function"""
     parser = argparse.ArgumentParser(description='Live F1 Data Poller')
-    parser.add_argument('--race-year', type=int, default=2024, help='Race year')
-    parser.add_argument('--race-gp', type=str, default='Bahrain', help='Race Grand Prix')
-    parser.add_argument('--poll-interval', type=int, default=5, help='Poll interval in seconds')
-    parser.add_argument('--redis-url', default='redis://localhost:6379', help='Redis URL')
-    parser.add_argument('--cache-dir', default='data/fastf1_cache', help='FastF1 cache directory')
+    parser.add_argument('--race-year', type=int, default=int(os.environ.get('RACE_YEAR', 2024)), help='Race year')
+    parser.add_argument('--race-gp', type=str, default=os.environ.get('RACE_GP', 'Bahrain'), help='Race Grand Prix')
+    parser.add_argument('--poll-interval', type=int, default=int(os.environ.get('POLL_INTERVAL', 5)), help='Poll interval in seconds')
+    parser.add_argument('--redis-url', default=os.environ.get('REDIS_URL', 'redis://localhost:6379'), help='Redis URL')
+    parser.add_argument('--cache-dir', default=os.environ.get('FASTF1_CACHE_DIR', 'data/fastf1_cache'), help='FastF1 cache directory')
     
     args = parser.parse_args()
     

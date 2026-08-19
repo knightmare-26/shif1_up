@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -15,7 +16,7 @@ import uvicorn
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -77,6 +78,9 @@ CORS_ORIGINS = os.getenv(
 
 # Years where FastF1 has complete session data
 FASTF1_YEARS = [2020, 2021, 2022, 2023, 2024]
+
+# Shared secret for service-to-service calls (e.g. live/poller.py -> /admin/ingest/race)
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Global service instances
@@ -241,6 +245,22 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(_
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+async def require_admin_or_internal(
+    x_internal_key: Optional[str] = Header(None, alias="X-Internal-Key"),
+    authorization: Optional[str] = Header(None),
+):
+    """Allow either the internal service key (live/poller.py) or an admin JWT."""
+    if INTERNAL_API_KEY and x_internal_key == INTERNAL_API_KEY:
+        return {"internal": True}
+    if authorization and authorization.lower().startswith("bearer "):
+        payload = decode_token(authorization.split(" ", 1)[1])
+        if payload:
+            user = await postgres_service.get_user_by_id(payload.get("sub", ""))
+            if user and user.get("is_admin"):
+                return user
+    raise HTTPException(status_code=403, detail="Admin access required")
 
 
 # ---------------------------------------------------------------------------
@@ -458,14 +478,89 @@ def _parse_race_id(race_id: str) -> tuple:
     return int(parts[0]), parts[1]
 
 
+# Approximate official team colors (hex, no '#'), keyed by constructor_id.
+TEAM_COLORS = {
+    "red_bull": "3671C6",
+    "ferrari": "E8002D",
+    "mercedes": "00D2BE",
+    "mclaren": "FF8000",
+    "aston_martin": "229971",
+    "alpine": "2293D1",
+    "williams": "64C4FF",
+    "haas": "B6BABD",
+    "rb": "6692FF",
+    "sauber": "52E252",
+    "alphatauri": "2B4562",
+    "alfa": "981E32",
+}
+
+# driver_id -> headshot URL (empty when unknown; frontend hides broken images)
+DRIVER_HEADSHOTS: Dict[str, str] = {}
+
+_TIMEDELTA_RE = re.compile(r"(?:(\d+)\s+days?,?\s*)?(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def _parse_timedelta_seconds(value: str) -> float:
+    """Best-effort parse of a pandas Timedelta repr (e.g. '0 days 01:31:44.742000') into seconds."""
+    if not value:
+        return 0.0
+    match = _TIMEDELTA_RE.search(value)
+    if not match:
+        return 0.0
+    days, hours, minutes, seconds = match.groups()
+    total = float(seconds) + int(minutes) * 60 + int(hours) * 3600
+    if days:
+        total += int(days) * 86400
+    return total
+
+
+def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
+    """DB rows are a reduced snake_case shape; the frontend table expects the
+    same PascalCase fields FastF1's session.results DataFrame provides. This
+    conforms DB-sourced rows to that shape so both data sources render the
+    same way."""
+    normalized = []
+    for row in rows:
+        driver_id = row.get("driver_id") or ""
+        full_name = row.get("driver_name") or ""
+        first_name, _, last_name = full_name.partition(" ")
+        status = row.get("status") or ""
+        position = row.get("position")
+        grid = row.get("grid")
+        unclassified_terms = ("retired", "did not finish", "disqualified", "did not start", "withdrawn")
+        is_unclassified = any(term in status.lower() for term in unclassified_terms)
+        normalized.append({
+            "DriverNumber": str(row.get("driver_number") or ""),
+            "BroadcastName": "",
+            "Abbreviation": driver_id.upper(),
+            "DriverId": driver_id,
+            "TeamName": row.get("constructor_name") or "",
+            "TeamColor": TEAM_COLORS.get(row.get("constructor_id") or "", "666666"),
+            "TeamId": row.get("constructor_id") or "",
+            "FirstName": first_name,
+            "LastName": last_name,
+            "FullName": full_name,
+            "HeadshotUrl": DRIVER_HEADSHOTS.get(driver_id, ""),
+            "CountryCode": row.get("country_code") or "",
+            "Position": str(position) if position is not None else "",
+            "ClassifiedPosition": str(position) if "finish" in status.lower() else (status[:3].upper() or "NC"),
+            "GridPosition": str(grid) if grid is not None else "",
+            "Time": _parse_timedelta_seconds(row.get("time") or ""),
+            "Status": status,
+            "Points": str(row.get("points", "")),
+            "Laps": "",
+        })
+    return normalized
+
+
 @app.get("/race/{race_id}/results")
 async def get_race_results(race_id: str):
     try:
         results = await duckdb_service.get_race_results(race_id)
-        if not results:
-            year, gp = _parse_race_id(race_id)
-            results = await fastf1_service.get_race_results(year, gp)
-        return results
+        if results:
+            return _normalize_db_results(results)
+        year, gp = _parse_race_id(race_id)
+        return await fastf1_service.get_race_results(year, gp)
     except HTTPException:
         raise
     except Exception as exc:
@@ -666,6 +761,27 @@ async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks, u
         ingest_service.run_ingest, duckdb_service, body.years, body.laps
     )
     return {"message": f"Ingest started for years {body.years}", "laps": body.laps}
+
+
+class IngestRaceRequest(BaseModel):
+    year: int
+    event: str  # GP name (e.g. "Bahrain") or round number as a string
+    laps: bool = False
+
+
+@app.post("/admin/ingest/race")
+async def ingest_race(
+    body: IngestRaceRequest,
+    background_tasks: BackgroundTasks,
+    _auth=Depends(require_admin_or_internal),
+):
+    """Ingest a single race's results — used by an admin backfill or the live
+    poller once it detects a session has ended."""
+    event = int(body.event) if body.event.isdigit() else body.event
+    background_tasks.add_task(
+        ingest_service.ingest_single_race, duckdb_service, body.year, event, body.laps
+    )
+    return {"message": f"Ingest started for {body.year} {body.event}"}
 
 
 @app.get("/admin/ingest/status")

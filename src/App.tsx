@@ -12,6 +12,8 @@ import LapData from './components/LapData';
 import DataManager from './components/DataManager';
 import LiveDataMonitor from './components/LiveDataMonitor';
 import Predictions from './components/Predictions';
+import LoginPage from './components/LoginPage';
+import SignupPage from './components/SignupPage';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -30,6 +32,8 @@ const AppContent: React.FC = () => {
           <Route path="/lap-data"     element={<LapData />} />
           <Route path="/live-monitor" element={<LiveDataMonitor />} />
           <Route path="/data-manager" element={<DataManager />} />
+          <Route path="/login"        element={<LoginPage />} />
+          <Route path="/signup"       element={<SignupPage />} />
           <Route path="*"             element={<Navigate to="/" replace />} />
         </Routes>
       </main>

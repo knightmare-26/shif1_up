@@ -266,8 +266,10 @@ class SimpleDuckDBService:
         try:
             if self.connection:
                 query = """
-                    SELECT rr.position, d.full_name as driver_name, c.constructor_name,
-                           rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+                    SELECT rr.position, rr.driver_id, d.full_name as driver_name,
+                           d.number as driver_number, d.nationality as country_code,
+                           rr.constructor_id, c.constructor_name,
+                           rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
                     FROM race_results rr
                     LEFT JOIN drivers d ON rr.driver_id = d.driver_id
                     LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
