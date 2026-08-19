@@ -138,7 +138,9 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `DATABASE_URL` | — | Supabase PostgreSQL connection string |
 | `FASTF1_CACHE_DIR` | `data/fastf1_cache` | FastF1 session cache |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed CORS origins |
-| `RACE_YEAR` / `RACE_GP` | — | For `live/poller.py` |
+| `RACE_YEAR` / `RACE_GP` / `POLL_INTERVAL` | 2024 / Bahrain / 5 | For `live/poller.py` |
+| `API_BASE_URL` | `http://localhost:8000` | Where `live/poller.py` calls back to trigger post-race ingest |
+| `INTERNAL_API_KEY` | — | Shared secret so `live/poller.py` can call `POST /admin/ingest/race` without a user login |
 | `REACT_APP_API_URL` | `http://localhost:8000` | Frontend API base URL |
 | `JWT_SECRET` | — | Auth JWT signing key — see `CLAUDE.local.md` |
 | `LOG_FORMAT` | plain text | Set to `json` for structured JSON logging |

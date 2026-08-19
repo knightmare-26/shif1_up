@@ -15,6 +15,7 @@ export interface AuthUser {
   username: string;
   email: string;
   preferences: UserPreferences;
+  is_admin?: boolean;
 }
 
 export interface AuthResponse {

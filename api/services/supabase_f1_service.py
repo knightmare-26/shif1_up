@@ -160,8 +160,10 @@ class SupabaseF1Service:
 
     async def get_race_results(self, race_id: str) -> List[Dict]:
         return await self._run_query("""
-            SELECT rr.position, d.full_name AS driver_name, c.constructor_name,
-                   rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+            SELECT rr.position, rr.driver_id, d.full_name AS driver_name,
+                   d.number AS driver_number, d.nationality AS country_code,
+                   rr.constructor_id, c.constructor_name,
+                   rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
             FROM race_results rr
             LEFT JOIN drivers      d ON rr.driver_id      = d.driver_id
             LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id

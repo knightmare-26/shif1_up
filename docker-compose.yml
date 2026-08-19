@@ -24,6 +24,7 @@ services:
       - FASTF1_CACHE_DIR=/app/data/fastf1_cache
       - MODEL_DIR=/app/data/models
       - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     volumes:
       - ./data:/app/data
     depends_on:
@@ -38,6 +39,8 @@ services:
       - RACE_YEAR=2024
       - RACE_GP=Bahrain
       - POLL_INTERVAL=5
+      - API_BASE_URL=http://api:8000
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     volumes:
       - ./data:/app/data
     depends_on:
