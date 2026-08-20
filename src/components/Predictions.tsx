@@ -344,7 +344,6 @@ const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
   const [selected, setSelected]       = useState('');
   const [loading, setLoading]         = useState(false);
-  const [training, setTraining]       = useState(false);
   const [qualiResult, setQualiResult] = useState<PredictionResult | null>(null);
   const [raceResult, setRaceResult]   = useState<PredictionResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
@@ -376,19 +375,6 @@ const Predictions: React.FC = () => {
       setError(e.message || 'Prediction failed. Make sure data is ingested and backend is running.');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const retrain = async () => {
-    setTraining(true);
-    try {
-      await backendApi.triggerModelTraining();
-      setTimeout(() => {
-        backendApi.getPredictionStatus().then(setStatus).catch(() => {});
-        setTraining(false);
-      }, 3000);
-    } catch {
-      setTraining(false);
     }
   };
 
@@ -480,17 +466,6 @@ const Predictions: React.FC = () => {
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
           {loading ? 'Predicting…' : 'Generate Predictions'}
-        </button>
-
-        {/* Retrain button */}
-        <button
-          onClick={retrain}
-          disabled={training}
-          className="flex items-center gap-2 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 disabled:opacity-50 transition-colors"
-          title="Retrain prediction models on latest data"
-        >
-          <RefreshCw className={`w-4 h-4 ${training ? 'animate-spin' : ''}`} />
-          {training ? 'Retraining…' : 'Retrain Models'}
         </button>
 
         {/* Status pills */}

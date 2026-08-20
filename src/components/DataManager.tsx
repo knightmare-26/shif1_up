@@ -11,10 +11,12 @@ import {
   Users,
   Trophy,
   Lock,
+  BrainCircuit,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getStoredToken } from '../services/authApi';
-import { triggerIngest, getIngestStatus, getDbStats, clearServerCache, IngestStatus, DbStats } from '../services/adminApi';
+import { triggerIngest, getIngestStatus, getDbStats, clearServerCache, triggerModelTraining, IngestStatus, DbStats } from '../services/adminApi';
+import { backendApi } from '../services/backendApi';
 
 const EMPTY_STATS: DbStats = { drivers: 0, constructors: 0, races: 0, race_results: 0, laps: 0, years: [] };
 
@@ -27,14 +29,21 @@ const DataManager: React.FC = () => {
   const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null);
   const [dbStats, setDbStats] = useState<DbStats>(EMPTY_STATS);
   const [error, setError] = useState<string | null>(null);
+  const [predictStatus, setPredictStatus] = useState<any>(null);
+  const [training, setTraining] = useState(false);
 
   const refreshStats = useCallback(async () => {
     const token = getStoredToken();
     if (!token) return;
     try {
-      const [status, stats] = await Promise.all([getIngestStatus(token), getDbStats(token)]);
+      const [status, stats, predict] = await Promise.all([
+        getIngestStatus(token),
+        getDbStats(token),
+        backendApi.getPredictionStatus(),
+      ]);
       setIngestStatus(status);
       setDbStats(stats);
+      setPredictStatus(predict);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load admin data');
     }
@@ -75,6 +84,23 @@ const DataManager: React.FC = () => {
       await clearServerCache(token);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear cache');
+    }
+  };
+
+  const retrain = async () => {
+    const token = getStoredToken();
+    if (!token) return;
+    setError(null);
+    setTraining(true);
+    try {
+      await triggerModelTraining(token);
+      setTimeout(async () => {
+        setPredictStatus(await backendApi.getPredictionStatus().catch(() => null));
+        setTraining(false);
+      }, 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to start training');
+      setTraining(false);
     }
   };
 
@@ -252,6 +278,45 @@ const DataManager: React.FC = () => {
               <Database className="w-5 h-5" />
               <span>Clear Server Cache</span>
             </button>
+          </div>
+        </motion.div>
+
+        {/* Model Training */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25 }}
+          className="bg-gray-900 rounded-xl p-6 shadow-2xl mb-8"
+        >
+          <h3 className="text-lg font-semibold text-pure-white mb-1">Prediction Models</h3>
+          <p className="text-sm text-gray-400 mb-4">
+            Models retrain automatically once a race finishes ingesting (live from the poller, or a
+            backfill above). Use this only to force a retrain on demand.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={retrain}
+              disabled={training}
+              className="bg-racing-red text-pure-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+            >
+              <BrainCircuit className={`w-5 h-5 ${training ? 'animate-pulse' : ''}`} />
+              <span>{training ? 'Retraining...' : 'Retrain Models'}</span>
+            </button>
+            {predictStatus && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-xs px-2 py-1 rounded ${predictStatus.race_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                  Race: {predictStatus.race_model_ready ? 'ready' : 'not trained'}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded ${predictStatus.quali_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                  Quali: {predictStatus.quali_model_ready ? 'ready' : 'needs grid data'}
+                </span>
+                {predictStatus.training_rows > 0 && (
+                  <span className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400">
+                    {predictStatus.training_rows} rows · {predictStatus.circuits} circuits
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </motion.div>
 

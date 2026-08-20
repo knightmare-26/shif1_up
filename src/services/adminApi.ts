@@ -64,3 +64,8 @@ export async function clearServerCache(token: string): Promise<{ message: string
   const res = await authedFetch('/api/cache/clear', token, { method: 'POST' });
   return res.json();
 }
+
+export async function triggerModelTraining(token: string): Promise<{ message: string }> {
+  const res = await authedFetch('/predict/train', token, { method: 'POST' });
+  return res.json();
+}

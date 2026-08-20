@@ -466,11 +466,6 @@ class BackendApiService {
     return data;
   }
 
-  async triggerModelTraining(): Promise<{ message: string }> {
-    const response = await fetch(`${this.baseUrl}/predict/train`, { method: 'POST' });
-    return response.json();
-  }
-
   // Utility methods
   clearLocalCache(): void {
     this.cache.clear();

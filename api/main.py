@@ -751,15 +751,20 @@ class IngestRequest(BaseModel):
     laps: bool = False
 
 
+async def _run_ingest_and_retrain(years: List[int], laps: bool):
+    await ingest_service.run_ingest(duckdb_service, years, laps)
+    if not ingest_service.status.get("error"):
+        result = await prediction_service.train(duckdb_service)
+        logger.info("Post-ingest retrain (years=%s): %s", years, result)
+
+
 @app.post("/admin/ingest")
 async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     if ingest_service.status["running"]:
         raise HTTPException(status_code=409, detail="Ingest already running")
-    background_tasks.add_task(
-        ingest_service.run_ingest, duckdb_service, body.years, body.laps
-    )
+    background_tasks.add_task(_run_ingest_and_retrain, body.years, body.laps)
     return {"message": f"Ingest started for years {body.years}", "laps": body.laps}
 
 
@@ -769,18 +774,24 @@ class IngestRaceRequest(BaseModel):
     laps: bool = False
 
 
+async def _ingest_race_and_retrain(year: int, event, laps: bool):
+    result = await ingest_service.ingest_single_race(duckdb_service, year, event, laps)
+    if result.get("stored"):
+        train_result = await prediction_service.train(duckdb_service)
+        logger.info("Post-ingest retrain (%s): %s", result.get("race_id"), train_result)
+
+
 @app.post("/admin/ingest/race")
 async def ingest_race(
     body: IngestRaceRequest,
     background_tasks: BackgroundTasks,
     _auth=Depends(require_admin_or_internal),
 ):
-    """Ingest a single race's results — used by an admin backfill or the live
-    poller once it detects a session has ended."""
+    """Ingest a single race's results, then retrain the prediction models on
+    the fresh data — used by an admin backfill or the live poller once it
+    detects a session has ended."""
     event = int(body.event) if body.event.isdigit() else body.event
-    background_tasks.add_task(
-        ingest_service.ingest_single_race, duckdb_service, body.year, event, body.laps
-    )
+    background_tasks.add_task(_ingest_race_and_retrain, body.year, event, body.laps)
     return {"message": f"Ingest started for {body.year} {body.event}"}
 
 
