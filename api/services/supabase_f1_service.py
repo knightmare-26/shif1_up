@@ -4,6 +4,7 @@ Uses asyncpg + PostgreSQL (Supabase) instead of DuckDB for F1 historical data.
 Same public interface as SimpleDuckDBService so all callers work unchanged.
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -84,6 +85,16 @@ class SupabaseF1Service:
                     status           TEXT,
                     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (race_id, position)
+                )
+            """)
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS prediction_cache (
+                    circuit_name     TEXT NOT NULL,
+                    session_type     TEXT NOT NULL,
+                    model_trained_at TEXT,
+                    result_json      JSONB NOT NULL,
+                    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (circuit_name, session_type)
                 )
             """)
             await conn.execute("""
@@ -288,6 +299,53 @@ class SupabaseF1Service:
             return True
         except Exception as exc:
             logger.error("❌ Error storing race results: %s", exc)
+            return False
+
+    async def get_prediction_cache(self, circuit_name: str, session_type: str) -> Optional[Dict]:
+        """Fetch a cached prediction result, if one exists for this circuit/session."""
+        rows = await self._run_query(
+            "SELECT model_trained_at, result_json FROM prediction_cache "
+            "WHERE circuit_name = $1 AND session_type = $2",
+            (circuit_name, session_type),
+        )
+        if not rows:
+            return None
+        result_json = rows[0]["result_json"]
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        return {"model_trained_at": rows[0]["model_trained_at"], "result": result}
+
+    async def set_prediction_cache(self, circuit_name: str, session_type: str,
+                                    model_trained_at: str, result: Dict) -> bool:
+        """Cache a computed prediction result for a circuit/session."""
+        if not self.pool:
+            return True
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """INSERT INTO prediction_cache (circuit_name, session_type, model_trained_at, result_json)
+                       VALUES ($1, $2, $3, $4::jsonb)
+                       ON CONFLICT (circuit_name, session_type) DO UPDATE SET
+                           model_trained_at = EXCLUDED.model_trained_at,
+                           result_json      = EXCLUDED.result_json,
+                           created_at       = CURRENT_TIMESTAMP""",
+                    circuit_name, session_type, model_trained_at, json.dumps(result),
+                )
+            return True
+        except Exception as exc:
+            logger.error("❌ Error writing prediction cache: %s", exc)
+            return False
+
+    async def clear_prediction_cache(self) -> bool:
+        """Drop all cached predictions — called after a retrain since old
+        cached output no longer reflects the current model."""
+        if not self.pool:
+            return True
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("DELETE FROM prediction_cache")
+            return True
+        except Exception as exc:
+            logger.error("❌ Error clearing prediction cache: %s", exc)
             return False
 
     async def store_laps(self, race_id: str, laps: List[Dict]) -> bool:

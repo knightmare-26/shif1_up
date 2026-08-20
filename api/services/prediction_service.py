@@ -152,7 +152,7 @@ class PredictionService:
             SELECT
                 rr.race_id, rr.driver_id, rr.constructor_id,
                 rr.position, rr.grid, rr.points, rr.status,
-                r.circuit_name, r.year, r.round,
+                r.circuit_name, r.year, r.round, r.gp AS race_name,
                 d.full_name  AS driver_name,
                 c.constructor_name
             FROM race_results rr
@@ -294,6 +294,7 @@ class PredictionService:
             }
 
             self._save_to_disk()
+            await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
             return {"success": True, **result}
 
@@ -358,6 +359,11 @@ class PredictionService:
                 "predictions": [],
             }
 
+        trained_at = self._meta.get("trained_at")
+        cached = await duckdb_service.get_prediction_cache(circuit_name, "qualifying")
+        if cached and cached.get("model_trained_at") == trained_at:
+            return cached["result"]
+
         feat  = self._build_prediction_rows(circuit_name)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[QUALI_FEATURES].fillna(10))
@@ -377,19 +383,26 @@ class PredictionService:
                 "rolling_avg_grid": round(float(row["driver_rolling_grid"]), 2)     if pd.notna(row.get("driver_rolling_grid"))      else None,
             })
 
-        return {
+        result = {
             "success": True,
             "circuit": circuit_name,
             "model": "XGBoost",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
+        await duckdb_service.set_prediction_cache(circuit_name, "qualifying", trained_at, result)
+        return result
 
     async def predict_race(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._race_model is None:
             return {"success": False, "error": "Race model unavailable.", "predictions": []}
+
+        trained_at = self._meta.get("trained_at")
+        cached = await duckdb_service.get_prediction_cache(circuit_name, "race")
+        if cached and cached.get("model_trained_at") == trained_at:
+            return cached["result"]
 
         feat = self._build_prediction_rows(circuit_name)
 
@@ -418,13 +431,93 @@ class PredictionService:
                 "predicted_grid":     round(float(row["grid"]), 2),
             })
 
-        return {
+        result = {
             "success": True,
             "circuit": circuit_name,
             "model": "LightGBM",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
+        await duckdb_service.set_prediction_cache(circuit_name, "race", trained_at, result)
+        return result
+
+    # ------------------------------------------------------------------
+    # Backtest: predicted vs actual for real past races
+    # ------------------------------------------------------------------
+
+    def backtest(self, years_back: int = 3) -> Dict[str, Any]:
+        """Score the current models against real results from the last
+        `years_back` seasons.
+
+        Each row in self._df already has point-in-time-correct features —
+        _engineer() builds driver/constructor rolling and circuit averages
+        with .shift(1) before rolling/expanding, so a given race's row only
+        reflects races before it, never after. That means running these
+        historical rows back through the model isn't affected by feature
+        leakage. The one caveat: the models themselves were fit once on the
+        full dataset (time-decayed, not walk-forward retrained per race), so
+        this is a retrospective scoring of the current model rather than a
+        strict walk-forward backtest.
+        """
+        if self._df is None or self._df.empty:
+            return {"races": []}
+
+        cutoff_year = datetime.utcnow().year - years_back
+        df = self._df[self._df["year"] >= cutoff_year]
+        if df.empty:
+            return {"races": []}
+
+        races_out = []
+        for (year, rnd, race_id), group in df.groupby(["year", "round", "race_id"], sort=False):
+            drivers: Dict[str, Dict[str, Any]] = {}
+
+            if self._quali_model is not None:
+                qdf = group.dropna(subset=QUALI_FEATURES + ["grid"])
+                if not qdf.empty:
+                    preds = self._quali_model.predict(qdf[QUALI_FEATURES].fillna(10))
+                    for (_, row), pred in zip(qdf.iterrows(), preds):
+                        d = drivers.setdefault(row["driver_id"], {
+                            "driver_id": row["driver_id"],
+                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                        })
+                        d["predicted_grid"] = round(float(pred), 2)
+                        d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
+
+            if self._race_model is not None:
+                rdf = group.dropna(subset=self._race_features + ["position"])
+                if not rdf.empty:
+                    preds = self._race_model.predict(rdf[self._race_features].fillna(10))
+                    for (_, row), pred in zip(rdf.iterrows(), preds):
+                        d = drivers.setdefault(row["driver_id"], {
+                            "driver_id": row["driver_id"],
+                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                        })
+                        d["predicted_position"] = round(float(pred), 2)
+                        d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
+
+            if not drivers:
+                continue
+
+            driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
+
+            quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
+                          if d.get("predicted_grid") is not None and d.get("actual_grid") is not None]
+            race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
+                         if d.get("predicted_position") is not None and d.get("actual_position") is not None]
+
+            races_out.append({
+                "year": int(year),
+                "round": int(rnd),
+                "race_id": race_id,
+                "race_name": group["race_name"].iloc[0],
+                "circuit_name": group["circuit_name"].iloc[0],
+                "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
+                "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+                "drivers": driver_rows,
+            })
+
+        races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
+        return {"races": races_out}
 
     # ------------------------------------------------------------------
     # Status / introspection

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown } from 'lucide-react';
-import { backendApi, PredictableRace } from '../services/backendApi';
+import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown, History } from 'lucide-react';
+import { backendApi, PredictableRace, BacktestRace } from '../services/backendApi';
 
 interface PredictionRow {
   predicted_rank: number;
@@ -104,6 +104,122 @@ const PredictionTable: React.FC<{
   </div>
 );
 
+const errorColor = (err: number | null | undefined): string => {
+  if (err == null) return 'text-gray-500';
+  if (err <= 1.5) return 'text-green-400';
+  if (err <= 3) return 'text-yellow-400';
+  return 'text-red-400';
+};
+
+const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-800/40 transition-colors"
+      >
+        <div className="flex items-center gap-3 text-left">
+          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+          <div>
+            <span className="text-white text-sm font-medium">Round {race.round} — {race.race_name}</span>
+            <span className="text-gray-500 text-xs ml-2">{race.circuit_name} · {race.year}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <span className={`text-xs font-mono px-2 py-1 rounded bg-gray-800 ${errorColor(race.quali_mae)}`}>
+            Quali err {race.quali_mae != null ? race.quali_mae.toFixed(2) : '—'}
+          </span>
+          <span className={`text-xs font-mono px-2 py-1 rounded bg-gray-800 ${errorColor(race.race_mae)}`}>
+            Race err {race.race_mae != null ? race.race_mae.toFixed(2) : '—'}
+          </span>
+        </div>
+      </button>
+      {open && (
+        <div className="overflow-x-auto border-t border-gray-800">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
+                <th className="px-4 py-2 text-left">Driver</th>
+                <th className="px-4 py-2 text-right">Pred. Grid</th>
+                <th className="px-4 py-2 text-right">Actual Grid</th>
+                <th className="px-4 py-2 text-right">Pred. Finish</th>
+                <th className="px-4 py-2 text-right">Actual Finish</th>
+              </tr>
+            </thead>
+            <tbody>
+              {race.drivers.map((d) => (
+                <tr key={d.driver_id} className="border-b border-gray-800/50">
+                  <td className="px-4 py-2 text-white text-sm">{d.driver_name}</td>
+                  <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
+                    {d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-xs text-white">
+                    {d.actual_grid != null ? `P${d.actual_grid}` : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
+                    {d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}
+                  </td>
+                  <td className="px-4 py-2 text-right font-mono text-xs text-white">
+                    {d.actual_position != null ? `P${d.actual_position}` : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const BacktestTab: React.FC = () => {
+  const [races, setRaces]   = useState<BacktestRace[] | null>(null);
+  const [error, setError]   = useState<string | null>(null);
+
+  useEffect(() => {
+    backendApi.getPredictionBacktest()
+      .then((r) => setRaces(r.races))
+      .catch((e) => setError(e.message || 'Failed to load backtest results'));
+  }, []);
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
+        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (!races) {
+    return (
+      <div className="flex items-center justify-center py-24 text-gray-500 text-sm gap-2">
+        <RefreshCw className="w-4 h-4 animate-spin" /> Loading past 3 seasons…
+      </div>
+    );
+  }
+
+  if (races.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center">
+        <History className="w-12 h-12 text-gray-700 mb-4" />
+        <p className="text-gray-500 text-sm">No completed races with predictions in the last 3 seasons yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-gray-500 text-xs">
+        Each race's predictions use only data available before it was run — the current model
+        scored retrospectively against real results from the last 3 seasons.
+      </p>
+      {races.map((r) => <BacktestRaceCard key={r.race_id} race={r} />)}
+    </div>
+  );
+};
+
 const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
   const [selected, setSelected]       = useState('');
@@ -113,6 +229,7 @@ const Predictions: React.FC = () => {
   const [raceResult, setRaceResult]   = useState<PredictionResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
+  const [tab, setTab]                 = useState<'upcoming' | 'backtest'>('upcoming');
 
   useEffect(() => {
     backendApi.getPredictionStatus().then(setStatus).catch(() => {});
@@ -172,6 +289,34 @@ const Predictions: React.FC = () => {
         </div>
       </motion.div>
 
+      {/* Tab switcher */}
+      <div className="flex items-center gap-1 mb-6 border-b border-gray-800">
+        <button
+          onClick={() => setTab('upcoming')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'upcoming'
+              ? 'border-racing-red text-white'
+              : 'border-transparent text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Upcoming Predictions
+        </button>
+        <button
+          onClick={() => setTab('backtest')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            tab === 'backtest'
+              ? 'border-racing-red text-white'
+              : 'border-transparent text-gray-500 hover:text-gray-300'
+          }`}
+        >
+          Predicted vs Actual
+        </button>
+      </div>
+
+      {tab === 'backtest' && <BacktestTab />}
+
+      {tab === 'upcoming' && (
+      <>
       {/* Warning banner when grid data is missing */}
       {gridMissing && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
@@ -304,6 +449,8 @@ const Predictions: React.FC = () => {
           <p className="text-gray-500 text-sm">Select a circuit and click <strong className="text-gray-400">Generate Predictions</strong></p>
           <p className="text-gray-600 text-xs mt-1">Predictions are generated from historical F1 race data</p>
         </motion.div>
+      )}
+      </>
       )}
     </div>
   );

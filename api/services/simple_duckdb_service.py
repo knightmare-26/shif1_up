@@ -140,6 +140,20 @@ class SimpleDuckDBService:
                 )
             """)
 
+            # Prediction cache table — first live prediction for a circuit is
+            # computed from the model, then cached here keyed to the model
+            # that produced it so a retrain naturally invalidates old rows.
+            self.connection.execute("""
+                CREATE TABLE IF NOT EXISTS prediction_cache (
+                    circuit_name VARCHAR NOT NULL,
+                    session_type VARCHAR NOT NULL,
+                    model_trained_at VARCHAR,
+                    result_json VARCHAR NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (circuit_name, session_type)
+                )
+            """)
+
             # Migrate: add grid column if missing (added in Phase 5)
             existing = [
                 r[0] for r in self.connection.execute(
@@ -408,6 +422,50 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error storing race results: {str(e)}")
             return False
     
+    async def get_prediction_cache(self, circuit_name: str, session_type: str) -> Optional[Dict]:
+        """Fetch a cached prediction result, if one exists for this circuit/session."""
+        try:
+            if not self.connection:
+                return None
+            rows = await self._run_query(
+                "SELECT model_trained_at, result_json FROM prediction_cache "
+                "WHERE circuit_name = ? AND session_type = ?",
+                (circuit_name, session_type),
+            )
+            if not rows:
+                return None
+            return {"model_trained_at": rows[0]["model_trained_at"], "result": json.loads(rows[0]["result_json"])}
+        except Exception as e:
+            logger.error(f"❌ Error reading prediction cache: {str(e)}")
+            return None
+
+    async def set_prediction_cache(self, circuit_name: str, session_type: str,
+                                    model_trained_at: str, result: Dict) -> bool:
+        """Cache a computed prediction result for a circuit/session."""
+        try:
+            if not self.connection:
+                return True
+            self.connection.execute(
+                "INSERT OR REPLACE INTO prediction_cache "
+                "(circuit_name, session_type, model_trained_at, result_json) VALUES (?, ?, ?, ?)",
+                (circuit_name, session_type, model_trained_at, json.dumps(result)),
+            )
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error writing prediction cache: {str(e)}")
+            return False
+
+    async def clear_prediction_cache(self) -> bool:
+        """Drop all cached predictions — called after a retrain since old
+        cached output no longer reflects the current model."""
+        try:
+            if self.connection:
+                self.connection.execute("DELETE FROM prediction_cache")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error clearing prediction cache: {str(e)}")
+            return False
+
     async def store_laps(self, race_id: str, laps: List[Dict]) -> bool:
         """Store lap data in DuckDB or memory"""
         try:

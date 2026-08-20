@@ -924,5 +924,17 @@ async def predict_race(circuit: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@app.get("/predict/backtest")
+async def predict_backtest():
+    """Score the current models against real results from the past 3 seasons —
+    powers the Predictions page's Predicted vs Actual tab."""
+    try:
+        await prediction_service._ensure_trained(duckdb_service)
+        return prediction_service.backtest(years_back=3)
+    except Exception as exc:
+        logger.error("predict_backtest: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True, log_level="info")

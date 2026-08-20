@@ -53,6 +53,30 @@ export interface PredictableRace {
   date: string;
 }
 
+export interface BacktestDriverRow {
+  driver_id: string;
+  driver_name: string;
+  predicted_grid?: number | null;
+  actual_grid?: number | null;
+  predicted_position?: number | null;
+  actual_position?: number | null;
+}
+
+export interface BacktestRace {
+  year: number;
+  round: number;
+  race_id: string;
+  race_name: string;
+  circuit_name: string;
+  quali_mae: number | null;
+  race_mae: number | null;
+  drivers: BacktestDriverRow[];
+}
+
+export interface BacktestResult {
+  races: BacktestRace[];
+}
+
 export interface SessionData {
   year: number;
   round: number;
@@ -408,6 +432,10 @@ class BackendApiService {
 
   async getPredictionCircuits(): Promise<PredictableRace[]> {
     return this.getCachedOrFetch('/predict/circuits', {}, 300);
+  }
+
+  async getPredictionBacktest(): Promise<BacktestResult> {
+    return this.getCachedOrFetch('/predict/backtest', {}, 300);
   }
 
   async predictQualifying(circuit: string): Promise<any> {
