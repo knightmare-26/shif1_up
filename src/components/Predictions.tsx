@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown, History } from 'lucide-react';
-import { backendApi, PredictableRace, BacktestRace } from '../services/backendApi';
+import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
 
 interface PredictionRow {
   predicted_rank: number;
@@ -111,8 +111,62 @@ const errorColor = (err: number | null | undefined): string => {
   return 'text-red-400';
 };
 
+type SortKey = 'driver_name' | 'predicted_grid' | 'actual_grid' | 'predicted_position' | 'actual_position';
+type SortDir = 'asc' | 'desc';
+
+const SortableHeader: React.FC<{
+  label: string;
+  col: SortKey;
+  align?: 'left' | 'right';
+  sortKey: SortKey;
+  sortDir: SortDir;
+  onSort: (col: SortKey) => void;
+}> = ({ label, col, align = 'right', sortKey, sortDir, onSort }) => {
+  const active = sortKey === col;
+  const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <th className={`px-4 py-2 ${align === 'left' ? 'text-left' : 'text-right'}`}>
+      <button
+        onClick={() => onSort(col)}
+        className={`flex items-center gap-1 hover:text-white transition-colors ${align === 'right' ? 'ml-auto' : ''} ${active ? 'text-white' : 'text-gray-500'}`}
+      >
+        {label} <Icon className="w-3 h-3" />
+      </button>
+    </th>
+  );
+};
+
+const sortValue = (d: BacktestDriverRow, key: SortKey): number | string => {
+  const v = d[key];
+  if (key === 'driver_name') return (v as string) ?? '';
+  return v == null ? Number.POSITIVE_INFINITY : (v as number);
+};
+
 const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]       = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('actual_position');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const onSort = (col: SortKey) => {
+    if (col === sortKey) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(col);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedDrivers = useMemo(() => {
+    const rows = [...race.drivers];
+    rows.sort((a, b) => {
+      const av = sortValue(a, sortKey);
+      const bv = sortValue(b, sortKey);
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return rows;
+  }, [race.drivers, sortKey, sortDir]);
+
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
       <button
@@ -140,15 +194,15 @@ const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
           <table className="w-full text-sm">
             <thead>
               <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-                <th className="px-4 py-2 text-left">Driver</th>
-                <th className="px-4 py-2 text-right">Pred. Grid</th>
-                <th className="px-4 py-2 text-right">Actual Grid</th>
-                <th className="px-4 py-2 text-right">Pred. Finish</th>
-                <th className="px-4 py-2 text-right">Actual Finish</th>
+                <SortableHeader label="Driver"        col="driver_name"        align="left"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Pred. Grid"     col="predicted_grid"                   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Actual Grid"    col="actual_grid"                      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Pred. Finish"   col="predicted_position"               sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+                <SortableHeader label="Actual Finish"  col="actual_position"                  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
               </tr>
             </thead>
             <tbody>
-              {race.drivers.map((d) => (
+              {sortedDrivers.map((d) => (
                 <tr key={d.driver_id} className="border-b border-gray-800/50">
                   <td className="px-4 py-2 text-white text-sm">{d.driver_name}</td>
                   <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
@@ -174,14 +228,36 @@ const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
 };
 
 const BacktestTab: React.FC = () => {
-  const [races, setRaces]   = useState<BacktestRace[] | null>(null);
-  const [error, setError]   = useState<string | null>(null);
+  const [races, setRaces]           = useState<BacktestRace[] | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+  const [yearFilter, setYearFilter] = useState<string>('all');
+  const [raceFilter, setRaceFilter] = useState<string>('all');
 
   useEffect(() => {
     backendApi.getPredictionBacktest()
       .then((r) => setRaces(r.races))
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
   }, []);
+
+  const years = useMemo(
+    () => Array.from(new Set((races ?? []).map((r) => r.year))).sort((a, b) => b - a),
+    [races]
+  );
+
+  const raceOptions = useMemo(
+    () => (races ?? [])
+      .filter((r) => yearFilter === 'all' || r.year === Number(yearFilter))
+      .sort((a, b) => b.year - a.year || b.round - a.round),
+    [races, yearFilter]
+  );
+
+  const filteredRaces = useMemo(
+    () => (races ?? []).filter((r) =>
+      (yearFilter === 'all' || r.year === Number(yearFilter)) &&
+      (raceFilter === 'all' || r.race_id === raceFilter)
+    ),
+    [races, yearFilter, raceFilter]
+  );
 
   if (error) {
     return (
@@ -215,7 +291,51 @@ const BacktestTab: React.FC = () => {
         Each race's predictions use only data available before it was run — the current model
         scored retrospectively against real results from the last 3 seasons.
       </p>
-      {races.map((r) => <BacktestRaceCard key={r.race_id} race={r} />)}
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-end gap-4 mb-1">
+        <div className="flex flex-col gap-1">
+          <label className="text-gray-400 text-xs uppercase tracking-wide">Year</label>
+          <div className="relative">
+            <select
+              value={yearFilter}
+              onChange={(e) => { setYearFilter(e.target.value); setRaceFilter('all'); }}
+              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[140px]"
+            >
+              <option value="all">All years</option>
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-gray-400 text-xs uppercase tracking-wide">Circuit / Round</label>
+          <div className="relative">
+            <select
+              value={raceFilter}
+              onChange={(e) => setRaceFilter(e.target.value)}
+              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[260px]"
+            >
+              <option value="all">All races</option>
+              {raceOptions.map((r) => (
+                <option key={r.race_id} value={r.race_id}>
+                  {yearFilter === 'all' ? `${r.year} — ` : ''}Round {r.round} — {r.race_name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          </div>
+        </div>
+      </div>
+
+      {filteredRaces.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-gray-500 text-sm">No races match the selected filters</p>
+        </div>
+      ) : (
+        filteredRaces.map((r) => <BacktestRaceCard key={r.race_id} race={r} />)
+      )}
     </div>
   );
 };
