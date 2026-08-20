@@ -142,8 +142,7 @@ const sortValue = (d: BacktestDriverRow, key: SortKey): number | string => {
   return v == null ? Number.POSITIVE_INFINITY : (v as number);
 };
 
-const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
-  const [open, setOpen]       = useState(false);
+const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
   const [sortKey, setSortKey] = useState<SortKey>('actual_position');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
@@ -169,16 +168,10 @@ const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
 
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-gray-800/40 transition-colors"
-      >
-        <div className="flex items-center gap-3 text-left">
-          <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`} />
-          <div>
-            <span className="text-white text-sm font-medium">Round {race.round} — {race.race_name}</span>
-            <span className="text-gray-500 text-xs ml-2">{race.circuit_name} · {race.year}</span>
-          </div>
+      <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-800">
+        <div>
+          <span className="text-white text-sm font-medium">Round {race.round} — {race.race_name}</span>
+          <span className="text-gray-500 text-xs ml-2">{race.circuit_name} · {race.year}</span>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <span className={`text-xs font-mono px-2 py-1 rounded bg-gray-800 ${errorColor(race.quali_mae)}`}>
@@ -188,54 +181,59 @@ const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
             Race err {race.race_mae != null ? race.race_mae.toFixed(2) : '—'}
           </span>
         </div>
-      </button>
-      {open && (
-        <div className="overflow-x-auto border-t border-gray-800">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-                <SortableHeader label="Driver"        col="driver_name"        align="left"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Pred. Grid"     col="predicted_grid"                   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Actual Grid"    col="actual_grid"                      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Pred. Finish"   col="predicted_position"               sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-                <SortableHeader label="Actual Finish"  col="actual_position"                  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
+              <SortableHeader label="Driver"        col="driver_name"        align="left"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortableHeader label="Pred. Grid"     col="predicted_grid"                   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortableHeader label="Actual Grid"    col="actual_grid"                      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortableHeader label="Pred. Finish"   col="predicted_position"               sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+              <SortableHeader label="Actual Finish"  col="actual_position"                  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            </tr>
+          </thead>
+          <tbody>
+            {sortedDrivers.map((d) => (
+              <tr key={d.driver_id} className="border-b border-gray-800/50">
+                <td className="px-4 py-2 text-white text-sm">{d.driver_name}</td>
+                <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
+                  {d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-xs text-white">
+                  {d.actual_grid != null ? `P${d.actual_grid}` : '—'}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
+                  {d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}
+                </td>
+                <td className="px-4 py-2 text-right font-mono text-xs text-white">
+                  {d.actual_position != null ? `P${d.actual_position}` : '—'}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {sortedDrivers.map((d) => (
-                <tr key={d.driver_id} className="border-b border-gray-800/50">
-                  <td className="px-4 py-2 text-white text-sm">{d.driver_name}</td>
-                  <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
-                    {d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-xs text-white">
-                    {d.actual_grid != null ? `P${d.actual_grid}` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
-                    {d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}
-                  </td>
-                  <td className="px-4 py-2 text-right font-mono text-xs text-white">
-                    {d.actual_position != null ? `P${d.actual_position}` : '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
 
 const BacktestTab: React.FC = () => {
-  const [races, setRaces]           = useState<BacktestRace[] | null>(null);
-  const [error, setError]           = useState<string | null>(null);
-  const [yearFilter, setYearFilter]       = useState<string>('all');
-  const [circuitFilter, setCircuitFilter] = useState<string>('all');
+  const [races, setRaces]                 = useState<BacktestRace[] | null>(null);
+  const [error, setError]                 = useState<string | null>(null);
+  const [yearFilter, setYearFilter]       = useState<number | null>(null);
+  const [circuitFilter, setCircuitFilter] = useState<string>('');
 
   useEffect(() => {
     backendApi.getPredictionBacktest()
-      .then((r) => setRaces(r.races))
+      .then((r) => {
+        setRaces(r.races);
+        // Backend returns most-recent-first — default to the latest race.
+        if (r.races.length > 0) {
+          setYearFilter(r.races[0].year);
+          setCircuitFilter(r.races[0].circuit_name);
+        }
+      })
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
   }, []);
 
@@ -244,22 +242,27 @@ const BacktestTab: React.FC = () => {
     [races]
   );
 
-  // Distinct circuits within the selected year (or all years) — not every
-  // individual race, so this stays a short list even across many seasons.
+  // One entry per circuit within the selected year, ordered by round —
+  // not every individual race, so this stays a short, chronological list.
   const circuitOptions = useMemo(
-    () => Array.from(new Set(
-      (races ?? [])
-        .filter((r) => yearFilter === 'all' || r.year === Number(yearFilter))
-        .map((r) => r.circuit_name)
-    )).sort(),
+    () => (races ?? [])
+      .filter((r) => yearFilter == null || r.year === yearFilter)
+      .slice()
+      .sort((a, b) => a.round - b.round),
     [races, yearFilter]
   );
 
-  const filteredRaces = useMemo(
-    () => (races ?? []).filter((r) =>
-      (yearFilter === 'all' || r.year === Number(yearFilter)) &&
-      (circuitFilter === 'all' || r.circuit_name === circuitFilter)
-    ),
+  // Keep the circuit selection valid whenever the year changes.
+  useEffect(() => {
+    if (circuitOptions.length && !circuitOptions.some((r) => r.circuit_name === circuitFilter)) {
+      setCircuitFilter(circuitOptions[0].circuit_name);
+    }
+  }, [circuitOptions, circuitFilter]);
+
+  const selectedRace = useMemo(
+    () => (races ?? []).find((r) =>
+      (yearFilter == null || r.year === yearFilter) && r.circuit_name === circuitFilter
+    ) ?? null,
     [races, yearFilter, circuitFilter]
   );
 
@@ -302,11 +305,10 @@ const BacktestTab: React.FC = () => {
           <label className="text-gray-400 text-xs uppercase tracking-wide">Year</label>
           <div className="relative">
             <select
-              value={yearFilter}
-              onChange={(e) => { setYearFilter(e.target.value); setCircuitFilter('all'); }}
+              value={yearFilter ?? ''}
+              onChange={(e) => setYearFilter(Number(e.target.value))}
               className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[140px]"
             >
-              <option value="all">All years</option>
               {years.map((y) => <option key={y} value={y}>{y}</option>)}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
@@ -319,22 +321,25 @@ const BacktestTab: React.FC = () => {
             <select
               value={circuitFilter}
               onChange={(e) => setCircuitFilter(e.target.value)}
-              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[200px]"
+              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[240px]"
             >
-              <option value="all">All circuits</option>
-              {circuitOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+              {circuitOptions.map((r) => (
+                <option key={r.race_id} value={r.circuit_name}>
+                  Round {r.round} — {r.circuit_name}
+                </option>
+              ))}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
       </div>
 
-      {filteredRaces.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-gray-500 text-sm">No races match the selected filters</p>
-        </div>
+      {selectedRace ? (
+        <BacktestRaceDetail race={selectedRace} />
       ) : (
-        filteredRaces.map((r) => <BacktestRaceCard key={r.race_id} race={r} />)
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <p className="text-gray-500 text-sm">No race matches the selected filters</p>
+        </div>
       )}
     </div>
   );
