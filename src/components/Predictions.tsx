@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown } from 'lucide-react';
-import { backendApi } from '../services/backendApi';
+import { backendApi, PredictableRace } from '../services/backendApi';
 
 interface PredictionRow {
   predicted_rank: number;
@@ -105,7 +105,7 @@ const PredictionTable: React.FC<{
 );
 
 const Predictions: React.FC = () => {
-  const [circuits, setCircuits]       = useState<string[]>([]);
+  const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
   const [selected, setSelected]       = useState('');
   const [loading, setLoading]         = useState(false);
   const [training, setTraining]       = useState(false);
@@ -118,7 +118,7 @@ const Predictions: React.FC = () => {
     backendApi.getPredictionStatus().then(setStatus).catch(() => {});
     backendApi.getPredictionCircuits().then((c) => {
       setCircuits(c);
-      if (c.length) setSelected(c[0]);
+      if (c.length) setSelected(c[0].circuit_name);
     }).catch(() => {});
   }, []);
 
@@ -196,9 +196,11 @@ const Predictions: React.FC = () => {
               onChange={(e) => setSelected(e.target.value)}
               className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2.5 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[240px]"
             >
-              {circuits.length === 0 && <option value="">No circuits — ingest data first</option>}
+              {circuits.length === 0 && <option value="">No upcoming races on the calendar</option>}
               {circuits.map((c) => (
-                <option key={c} value={c}>{c}</option>
+                <option key={c.circuit_name} value={c.circuit_name}>
+                  Round {c.round} — {c.race_name}
+                </option>
               ))}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />

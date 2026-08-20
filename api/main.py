@@ -854,10 +854,29 @@ async def predict_status():
 
 @app.get("/predict/circuits")
 async def predict_circuits():
-    """List all circuits available in the training data."""
+    """List races on the current season calendar that haven't happened yet —
+    predicting an already-run race isn't useful, so past rounds are excluded."""
     if not prediction_service._trained:
         await prediction_service.train(duckdb_service)
-    return prediction_service.available_circuits()
+
+    year = datetime.now().year
+    try:
+        # Always use FastF1's schedule here (not the FASTF1_YEARS-gated
+        # routing used elsewhere) — its circuit_name convention (event
+        # Location, e.g. "Zandvoort") is what ingest_service stores on
+        # race_results, so predictions can match circuit-specific history.
+        # Ergast's circuitName ("Circuit Park Zandvoort") wouldn't match.
+        schedule = await fastf1_service.get_race_schedule(year)
+    except Exception as exc:
+        logger.error("❌ predict_circuits: failed to load %s schedule: %s", year, exc)
+        return []
+
+    today = datetime.utcnow().date().isoformat()
+    upcoming = sorted((r for r in schedule if r.date >= today), key=lambda r: r.round)
+    return [
+        {"round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name, "date": r.date}
+        for r in upcoming
+    ]
 
 
 @app.post("/predict/train")

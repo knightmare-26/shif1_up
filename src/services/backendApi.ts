@@ -46,6 +46,13 @@ export interface RaceEvent {
   url?: string;
 }
 
+export interface PredictableRace {
+  round: number;
+  race_name: string;
+  circuit_name: string;
+  date: string;
+}
+
 export interface SessionData {
   year: number;
   round: number;
@@ -399,7 +406,7 @@ class BackendApiService {
     return this.getCachedOrFetch('/predict/status', {}, 10);
   }
 
-  async getPredictionCircuits(): Promise<string[]> {
+  async getPredictionCircuits(): Promise<PredictableRace[]> {
     return this.getCachedOrFetch('/predict/circuits', {}, 300);
   }
 
