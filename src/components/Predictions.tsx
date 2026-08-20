@@ -230,8 +230,8 @@ const BacktestRaceCard: React.FC<{ race: BacktestRace }> = ({ race }) => {
 const BacktestTab: React.FC = () => {
   const [races, setRaces]           = useState<BacktestRace[] | null>(null);
   const [error, setError]           = useState<string | null>(null);
-  const [yearFilter, setYearFilter] = useState<string>('all');
-  const [raceFilter, setRaceFilter] = useState<string>('all');
+  const [yearFilter, setYearFilter]       = useState<string>('all');
+  const [circuitFilter, setCircuitFilter] = useState<string>('all');
 
   useEffect(() => {
     backendApi.getPredictionBacktest()
@@ -244,19 +244,23 @@ const BacktestTab: React.FC = () => {
     [races]
   );
 
-  const raceOptions = useMemo(
-    () => (races ?? [])
-      .filter((r) => yearFilter === 'all' || r.year === Number(yearFilter))
-      .sort((a, b) => b.year - a.year || b.round - a.round),
+  // Distinct circuits within the selected year (or all years) — not every
+  // individual race, so this stays a short list even across many seasons.
+  const circuitOptions = useMemo(
+    () => Array.from(new Set(
+      (races ?? [])
+        .filter((r) => yearFilter === 'all' || r.year === Number(yearFilter))
+        .map((r) => r.circuit_name)
+    )).sort(),
     [races, yearFilter]
   );
 
   const filteredRaces = useMemo(
     () => (races ?? []).filter((r) =>
       (yearFilter === 'all' || r.year === Number(yearFilter)) &&
-      (raceFilter === 'all' || r.race_id === raceFilter)
+      (circuitFilter === 'all' || r.circuit_name === circuitFilter)
     ),
-    [races, yearFilter, raceFilter]
+    [races, yearFilter, circuitFilter]
   );
 
   if (error) {
@@ -299,7 +303,7 @@ const BacktestTab: React.FC = () => {
           <div className="relative">
             <select
               value={yearFilter}
-              onChange={(e) => { setYearFilter(e.target.value); setRaceFilter('all'); }}
+              onChange={(e) => { setYearFilter(e.target.value); setCircuitFilter('all'); }}
               className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[140px]"
             >
               <option value="all">All years</option>
@@ -310,19 +314,15 @@ const BacktestTab: React.FC = () => {
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-gray-400 text-xs uppercase tracking-wide">Circuit / Round</label>
+          <label className="text-gray-400 text-xs uppercase tracking-wide">Circuit</label>
           <div className="relative">
             <select
-              value={raceFilter}
-              onChange={(e) => setRaceFilter(e.target.value)}
-              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[260px]"
+              value={circuitFilter}
+              onChange={(e) => setCircuitFilter(e.target.value)}
+              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[200px]"
             >
-              <option value="all">All races</option>
-              {raceOptions.map((r) => (
-                <option key={r.race_id} value={r.race_id}>
-                  {yearFilter === 'all' ? `${r.year} — ` : ''}Round {r.round} — {r.race_name}
-                </option>
-              ))}
+              <option value="all">All circuits</option>
+              {circuitOptions.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
