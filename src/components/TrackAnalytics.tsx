@@ -76,11 +76,26 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
   };
 
   // Helper functions for track information
-  const getTrackLength = (trackName: string): string => {
+  // Different schedule sources spell the same location differently (the
+  // static public/data/schedule files use "Montreal"/"Monte Carlo"/"Spa"/
+  // "Abu Dhabi"; FastF1's live Location field uses "Montréal"/"Monaco"/
+  // "Spa-Francorchamps"/"Yas Island"). Normalize to the latter before
+  // looking anything up below.
+  const LOCATION_ALIASES: { [key: string]: string } = {
+    'Montreal': 'Montréal',
+    'Monte Carlo': 'Monaco',
+    'Spa': 'Spa-Francorchamps',
+    'Abu Dhabi': 'Yas Island',
+    'Sao Paulo': 'São Paulo',
+  };
+  const normalizeLocation = (name: string): string => LOCATION_ALIASES[name] || name;
+
+  const getTrackLength = (rawTrackName: string): string => {
+    const trackName = normalizeLocation(rawTrackName);
     if (!trackName || trackName === 'Unavailable') {
       return 'Track Length Unavailable';
     }
-    
+
     // Keyed by FastF1's event Location field (e.g. "Sakhir", "Zandvoort") —
     // that's what circuit_name actually holds throughout this app, not the
     // official circuit name.
@@ -113,11 +128,12 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
     return trackLengths[trackName] || 'Track Length Unavailable';
   };
 
-  const getTrackCorners = (trackName: string): number => {
+  const getTrackCorners = (rawTrackName: string): number => {
+    const trackName = normalizeLocation(rawTrackName);
     if (!trackName || trackName === 'Unavailable') {
       return 0;
     }
-    
+
     const trackCorners: { [key: string]: number } = {
       'Sakhir': 15,
       'Jeddah': 27,
@@ -147,11 +163,12 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
     return trackCorners[trackName] || 0;
   };
 
-  const getTrackRecord = (trackName: string): { time: string; holder: string; year: number } => {
+  const getTrackRecord = (rawTrackName: string): { time: string; holder: string; year: number } => {
+    const trackName = normalizeLocation(rawTrackName);
     if (!trackName || trackName === 'Unavailable') {
       return { time: 'Track Record Unavailable', holder: 'N/A', year: 0 };
     }
-    
+
     const trackRecords: { [key: string]: { time: string; holder: string; year: number } } = {
       'Sakhir': { time: '1:31.447', holder: 'Max Verstappen', year: 2024 },
       'Jeddah': { time: '1:27.791', holder: 'Lewis Hamilton', year: 2021 },
@@ -314,8 +331,8 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
             </div>
             <div>
               <p className="text-sm opacity-90">Track Details</p>
-              <p className="text-lg font-semibold">{getTrackLength(nextRace.circuitName)}</p>
-              <p className="text-sm opacity-90">{getTrackCorners(nextRace.circuitName)} corners</p>
+              <p className="text-lg font-semibold">{getTrackLength(nextRace.location)}</p>
+              <p className="text-sm opacity-90">{getTrackCorners(nextRace.location)} corners</p>
             </div>
           </div>
         </motion.div>
@@ -333,7 +350,7 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
         </h2>
         <div className="space-y-4">
           {raceSchedule.map((race, index) => {
-            const trackRecord = getTrackRecord(race.circuitName);
+            const trackRecord = getTrackRecord(race.location);
             const isUpcoming = new Date(race.date) > new Date();
             
             return (
