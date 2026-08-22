@@ -353,8 +353,10 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
         <div className="space-y-4">
           {raceSchedule.map((race, index) => {
             const trackRecord = getTrackRecord(race.location);
+            const trackLength = getTrackLength(race.location);
+            const trackCorners = getTrackCorners(race.location);
             const isUpcoming = new Date(race.date) > new Date();
-            
+
             return (
               <motion.div
                 key={race.round}
@@ -362,12 +364,12 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 * index }}
                 className={`p-4 rounded-lg transition-all ${
-                  isUpcoming 
-                    ? 'bg-gradient-to-r from-turbo-teal to-blue-600 text-pure-white' 
+                  isUpcoming
+                    ? 'bg-gradient-to-r from-turbo-teal to-blue-600 text-pure-white'
                     : 'bg-pure-white hover:shadow-md'
                 }`}
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-y-3">
                   <div className="flex items-center space-x-4">
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
                       isUpcoming ? 'bg-pure-white text-turbo-teal' : 'bg-racing-red text-pure-white'
@@ -391,6 +393,13 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
                         {formatDate(race.date)}
                       </p>
                     </div>
+                  </div>
+                  <div className={`text-right ${
+                    isUpcoming ? 'text-pure-white' : 'text-carbon-black'
+                  }`}>
+                    <div className="text-sm opacity-80">Track Details</div>
+                    <div className="font-semibold">{trackLength}</div>
+                    <div className="text-xs opacity-70">{trackCorners} corners</div>
                   </div>
                   <div className={`text-right ${
                     isUpcoming ? 'text-pure-white' : 'text-carbon-black'
