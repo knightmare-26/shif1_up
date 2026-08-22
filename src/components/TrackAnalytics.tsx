@@ -100,6 +100,7 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
     // that's what circuit_name actually holds throughout this app, not the
     // official circuit name.
     const trackLengths: { [key: string]: string } = {
+      'Madrid': '5.474 km', // Madring — new for 2026, no race run yet so no lap record
       'Sakhir': '5.412 km',
       'Jeddah': '6.174 km',
       'Melbourne': '5.278 km',
@@ -135,6 +136,7 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
     }
 
     const trackCorners: { [key: string]: number } = {
+      'Madrid': 20, // Madring — new for 2026
       'Sakhir': 15,
       'Jeddah': 27,
       'Melbourne': 16,
