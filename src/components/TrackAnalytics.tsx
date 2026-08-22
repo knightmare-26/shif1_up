@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MapPin, Calendar, Clock, Flag, RefreshCw, TrendingUp } from 'lucide-react';
+import { MapPin, Calendar, Clock, Flag, TrendingUp } from 'lucide-react';
 import { backendApi, RaceEvent } from '../services/backendApi';
 
 const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
@@ -73,10 +73,6 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
       ...race,
       date: race.date.replace('2024', year.toString())
     }));
-  };
-
-  const refreshData = () => {
-    loadData();
   };
 
   // Helper functions for track information
@@ -251,33 +247,23 @@ const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
         transition={{ duration: 0.6 }}
         className="mb-8"
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-racing text-racing-red mb-2">
-              Track Analytics
-            </h1>
-            <p className="text-pure-white text-lg">
-              Formula 1 circuit information and race schedule
-            </p>
-            {selectedYear === new Date().getFullYear() && (
-              <div className="flex items-center space-x-4 mt-2">
-                <div className="flex items-center space-x-2 text-sm">
-                  <Calendar className="w-4 h-4 text-turbo-teal" />
-                  <span className="text-turbo-teal font-semibold">
-                    Current Season
-                  </span>
-                </div>
+        <div>
+          <h1 className="text-4xl font-racing text-racing-red mb-2">
+            Track Analytics
+          </h1>
+          <p className="text-pure-white text-lg">
+            Formula 1 circuit information and race schedule
+          </p>
+          {selectedYear === new Date().getFullYear() && (
+            <div className="flex items-center space-x-4 mt-2">
+              <div className="flex items-center space-x-2 text-sm">
+                <Calendar className="w-4 h-4 text-turbo-teal" />
+                <span className="text-turbo-teal font-semibold">
+                  Current Season
+                </span>
               </div>
-            )}
-          </div>
-          <button
-            onClick={refreshData}
-            disabled={isLoading}
-            className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
-          </button>
+            </div>
+          )}
         </div>
       </motion.div>
 

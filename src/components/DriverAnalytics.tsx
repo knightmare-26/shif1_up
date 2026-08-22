@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Award, Flag, RefreshCw, Calendar } from 'lucide-react';
+import { Users, TrendingUp, Award, Flag, Calendar } from 'lucide-react';
 import { backendApi, DriverStanding, ConstructorStanding } from '../services/backendApi';
 import { f1DataExtractor } from '../services/f1DataExtractor';
 import { Driver, Team } from '../types/f1';
@@ -108,10 +108,6 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => 
     return currentTeams;
   };
 
-  const refreshData = () => {
-    loadData();
-  };
-
   const getTeamColor = (teamName: string): string => {
     // Handle unavailable team names
     if (!teamName || teamName === 'Unavailable') {
@@ -174,33 +170,23 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => 
         transition={{ duration: 0.6 }}
         className="mb-8"
       >
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-racing text-racing-red mb-2">
-              Driver Analytics
-            </h1>
-            <p className="text-pure-white text-lg">
-              Formula 1 driver standings and performance data
-            </p>
-            {selectedYear === new Date().getFullYear() && (
-              <div className="flex items-center space-x-4 mt-2">
-                <div className="flex items-center space-x-2 text-sm">
-                  <Calendar className="w-4 h-4 text-turbo-teal" />
-                  <span className="text-turbo-teal font-semibold">
-                    Current Season
-                  </span>
-                </div>
+        <div>
+          <h1 className="text-4xl font-racing text-racing-red mb-2">
+            Driver Analytics
+          </h1>
+          <p className="text-pure-white text-lg">
+            Formula 1 driver standings and performance data
+          </p>
+          {selectedYear === new Date().getFullYear() && (
+            <div className="flex items-center space-x-4 mt-2">
+              <div className="flex items-center space-x-2 text-sm">
+                <Calendar className="w-4 h-4 text-turbo-teal" />
+                <span className="text-turbo-teal font-semibold">
+                  Current Season
+                </span>
               </div>
-            )}
-          </div>
-          <button
-            onClick={refreshData}
-            disabled={isLoading}
-            className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
-          </button>
+            </div>
+          )}
         </div>
       </motion.div>
 
