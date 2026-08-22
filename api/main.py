@@ -554,13 +554,31 @@ def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
 
 
 @app.get("/race/{race_id}/results")
-async def get_race_results(race_id: str):
+async def get_race_results(race_id: str, session: str = "R"):
+    """`session` is one of R/S/Q/SQ/FP1/FP2/FP3. Tries the DB first; on a
+    miss, fetches that session from FastF1 and writes it through to the DB
+    (via the same path admin ingest uses) so the next request for it is
+    fast — avoids either a slow live fetch on every call or a huge upfront
+    backfill for every session type across every season."""
+    session_type = ingest_service.SESSION_TYPE_MAP.get(session, "race")
     try:
-        results = await duckdb_service.get_race_results(race_id)
+        results = await duckdb_service.get_race_results(race_id, session_type=session_type)
+        if not results:
+            year, gp = _parse_race_id(race_id)
+            try:
+                ingested = await ingest_service.ingest_single_race(
+                    duckdb_service, year, gp, include_laps=False, session=session
+                )
+            except Exception as exc:
+                # Most commonly: this weekend has no such session (e.g. Sprint
+                # requested for a non-sprint round) — not a server error.
+                logger.info("No %s session for %s: %s", session_type, race_id, exc)
+                ingested = {"stored": False}
+            if ingested.get("stored"):
+                results = await duckdb_service.get_race_results(race_id, session_type=session_type)
         if results:
             return _normalize_db_results(results)
-        year, gp = _parse_race_id(race_id)
-        return await fastf1_service.get_race_results(year, gp)
+        raise HTTPException(status_code=404, detail=f"No {session_type} results found for {race_id}")
     except HTTPException:
         raise
     except Exception as exc:

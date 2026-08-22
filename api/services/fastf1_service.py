@@ -423,50 +423,6 @@ class FastF1Service:
         # Implementation would depend on data_type
         pass
     
-    # New endpoints following the FastF1 API pattern from the example
-    async def get_race_results(self, year: int, gp: str) -> Dict[str, Any]:
-        """Get race results for a specific year and Grand Prix.
-        Example: /race/2024/Bahrain/results
-        """
-        if not FASTF1_AVAILABLE:
-            return {"error": "FastF1 not available"}
-        
-        try:
-            loop = asyncio.get_event_loop()
-            results = await loop.run_in_executor(
-                self.executor,
-                self._fetch_race_results_sync,
-                year,
-                gp
-            )
-            return results
-        except Exception as e:
-            logger.error(f"Error fetching race results: {e}")
-            traceback.print_exc()
-            return {"error": str(e)}
-    
-    def _fetch_race_results_sync(self, year: int, gp: str) -> Dict[str, Any]:
-        """Synchronous race results fetch following the example pattern"""
-        try:
-            # FastF1 expects the GP name as used by the library (e.g., 'Bahrain', 'Monaco')
-            session = get_session(year, gp, 'R')  # Race session
-            session.load()  # loads results, laps, telemetry, etc.
-            
-            if not hasattr(session, 'results') or session.results is None:
-                return {"error": "Results not found for this session"}
-            
-            # session.results is a pandas DataFrame
-            records = df_to_records(session.results)
-            return {
-                "year": year,
-                "gp": gp,
-                "session": 'R',
-                "results": records
-            }
-        except Exception as e:
-            traceback.print_exc()
-            return {"error": str(e)}
-    
     async def get_session_laps(self, year: int, gp: str, session_type: str, driver: Optional[str] = None) -> Dict[str, Any]:
         """Get laps for a session. session can be 'P1','P2','Q','R' etc.
         Optional query param driver (driver code e.g. 'VER') to filter by driver.

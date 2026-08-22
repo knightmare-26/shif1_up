@@ -391,29 +391,31 @@ class BackendApiService {
   }
 
   // Race detail endpoints — backend race_id format: "{year}_{gp}" e.g. "2024_Bahrain"
-  async getRaceResults(year: number, gp: string): Promise<any> {
-    // Try static files first — filenames: {year}_{round:02d}_{gp}.json
+  async getRaceResults(year: number, gp: string, session: string = 'R'): Promise<any> {
+    // Try static files first (main race only) — filenames: {year}_{round:02d}_{gp}.json
     // We don't know the round here, so glob via schedule
-    const scheduleStatic = await this.fetchStatic<RaceEvent[]>(`/data/schedule/${year}.json`);
-    if (scheduleStatic) {
-      const gpSlug = gp.replace(/ /g, '_').replace(/\//g, '-');
-      const race = scheduleStatic.find(r =>
-        r.race_name.replace(/ /g, '_').replace(/\//g, '-') === gpSlug
-      );
-      if (race) {
-        const round = String(race.round).padStart(2, '0');
-        const staticData = await this.fetchStatic<any>(
-          `/data/results/${year}_${round}_${gpSlug}.json`
+    if (session === 'R') {
+      const scheduleStatic = await this.fetchStatic<RaceEvent[]>(`/data/schedule/${year}.json`);
+      if (scheduleStatic) {
+        const gpSlug = gp.replace(/ /g, '_').replace(/\//g, '-');
+        const race = scheduleStatic.find(r =>
+          r.race_name.replace(/ /g, '_').replace(/\//g, '-') === gpSlug
         );
-        if (staticData) {
-          console.log(`📄 Static results for ${year} R${round} ${gp}`);
-          return staticData;
+        if (race) {
+          const round = String(race.round).padStart(2, '0');
+          const staticData = await this.fetchStatic<any>(
+            `/data/results/${year}_${round}_${gpSlug}.json`
+          );
+          if (staticData) {
+            console.log(`📄 Static results for ${year} R${round} ${gp}`);
+            return staticData;
+          }
         }
       }
     }
 
     const raceId = `${year}_${gp.replace(/ /g, '_')}`;
-    return this.getCachedOrFetch(`/race/${raceId}/results`, {}, 1800); // 30 minutes cache
+    return this.getCachedOrFetch(`/race/${raceId}/results`, { session }, 1800); // 30 minutes cache
   }
 
   async getSessionLaps(year: number, gp: string, _session: string, driver?: string): Promise<any> {

@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Flag, Clock, Trophy, Users, MapPin, RefreshCw, ExternalLink } from 'lucide-react';
-import { backendApi } from '../services/backendApi';
+import { Flag, Clock, Trophy, Users, MapPin, RefreshCw, ExternalLink, ChevronDown } from 'lucide-react';
+import { backendApi, RaceEvent } from '../services/backendApi';
+
+const SESSIONS: { id: string; label: string }[] = [
+  { id: 'R',   label: 'Race' },
+  { id: 'Q',   label: 'Qualifying' },
+  { id: 'S',   label: 'Sprint' },
+  { id: 'SQ',  label: 'Sprint Qualifying' },
+  { id: 'FP1', label: 'Practice 1' },
+  { id: 'FP2', label: 'Practice 2' },
+  { id: 'FP3', label: 'Practice 3' },
+];
 
 interface RaceResult {
   DriverNumber: string;
@@ -36,33 +46,44 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
   const [raceData, setRaceData] = useState<RaceResultsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedGP, setSelectedGP] = useState('Bahrain');
+  const [notFound, setNotFound] = useState(false);
+  const [schedule, setSchedule] = useState<RaceEvent[]>([]);
+  const [selectedGP, setSelectedGP] = useState('');
+  const [selectedSession, setSelectedSession] = useState('R');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const availableGPs = [
-    'Bahrain', 'Saudi Arabia', 'Australia', 'Japan', 'China', 'Miami', 'Emilia Romagna',
-    'Monaco', 'Canada', 'Spain', 'Austria', 'Great Britain', 'Hungary', 'Belgium',
-    'Netherlands', 'Italy', 'Azerbaijan', 'Singapore', 'United States', 'Mexico',
-    'Brazil', 'Las Vegas', 'Qatar', 'Abu Dhabi'
-  ];
+  // The schedule's race_name (e.g. "Dutch Grand Prix") isn't what results
+  // are keyed by — ingestion strips " Grand Prix" (e.g. "Dutch"), so that's
+  // the token that has to be sent to the backend.
+  const gpToken = (raceName: string) => raceName.replace(' Grand Prix', '').trim();
 
   useEffect(() => {
-    loadRaceResults();
+    backendApi.getRaceSchedule(selectedYear)
+      .then((events) => {
+        const list = Array.isArray(events) ? events : [];
+        setSchedule(list);
+        if (list.length) setSelectedGP(gpToken(list[0].race_name));
+      })
+      .catch(() => setSchedule([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear, selectedGP]);
+  }, [selectedYear]);
+
+  useEffect(() => {
+    if (selectedGP) loadRaceResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear, selectedGP, selectedSession]);
 
   const loadRaceResults = async () => {
     setIsLoading(true);
     setError(null);
-    
+    setNotFound(false);
+
     try {
-      console.log(`🚀 Loading race results for ${selectedYear} ${selectedGP}...`);
-      
-      const results = await backendApi.getRaceResults(selectedYear, selectedGP);
+      const results = await backendApi.getRaceResults(selectedYear, selectedGP, selectedSession);
 
       // Backend returns a flat array; normalise into the expected shape
       const normalized: RaceResultsData = Array.isArray(results)
-        ? { year: selectedYear, gp: selectedGP, session: 'R', results }
+        ? { year: selectedYear, gp: selectedGP, session: selectedSession, results }
         : results;
 
       if ((normalized as any).error) {
@@ -71,11 +92,14 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
 
       setRaceData(normalized);
       setLastUpdated(new Date());
-      console.log(`✅ Loaded race results for ${selectedYear} ${selectedGP}`);
-      
-    } catch (err) {
-      console.error('Error loading race results:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load race results');
+    } catch (err: any) {
+      if (String(err?.message || '').includes('404')) {
+        setNotFound(true);
+        setRaceData(null);
+      } else {
+        console.error('Error loading race results:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load race results');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -156,22 +180,13 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-4xl font-racing text-racing-red mb-2">
-                Race Results
-              </h1>
-              <p className="text-gray-400">
-                Detailed race classification and lap data
-              </p>
-            </div>
-            <button
-              onClick={refreshData}
-              className="bg-racing-red text-pure-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Refresh</span>
-            </button>
+          <div className="mb-6">
+            <h1 className="text-4xl font-racing text-racing-red mb-2">
+              Race Results
+            </h1>
+            <p className="text-gray-400">
+              Detailed race classification and lap data
+            </p>
           </div>
 
           {/* Filters */}
@@ -183,10 +198,29 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
                 onChange={(e) => setSelectedGP(e.target.value)}
                 className="bg-gray-800 text-pure-white px-3 py-2 rounded-lg border border-gray-600 focus:border-racing-red focus:outline-none"
               >
-                {availableGPs.map(gp => (
-                  <option key={gp} value={gp}>{gp}</option>
+                {schedule.length === 0 && <option value="">No schedule for {selectedYear}</option>}
+                {schedule.map(r => (
+                  <option key={r.round} value={gpToken(r.race_name)}>
+                    Round {r.round} — {r.race_name}
+                  </option>
                 ))}
               </select>
+            </div>
+
+            <div className="flex items-center space-x-2 relative">
+              <Clock className="w-5 h-5 text-racing-red" />
+              <div className="relative">
+                <select
+                  value={selectedSession}
+                  onChange={(e) => setSelectedSession(e.target.value)}
+                  className="appearance-none bg-gray-800 text-pure-white pl-3 pr-9 py-2 rounded-lg border border-gray-600 focus:border-racing-red focus:outline-none"
+                >
+                  {SESSIONS.map(s => (
+                    <option key={s.id} value={s.id}>{s.label}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
             </div>
           </div>
 
@@ -196,6 +230,15 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
             </p>
           )}
         </motion.div>
+
+        {/* No data for this session (e.g. Sprint filter on a non-sprint weekend) */}
+        {notFound && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-16">
+            <p className="text-gray-500">
+              No {SESSIONS.find(s => s.id === selectedSession)?.label.toLowerCase()} results for this race.
+            </p>
+          </motion.div>
+        )}
 
         {/* Race Results */}
         {raceData && (
@@ -207,16 +250,12 @@ const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
           >
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-racing-red mb-2">
-                {selectedYear} {selectedGP} Grand Prix - Race Results
+                {selectedYear} {selectedGP} Grand Prix — {SESSIONS.find(s => s.id === raceData.session)?.label ?? raceData.session}
               </h2>
               <div className="flex items-center space-x-6 text-sm text-gray-400">
                 <div className="flex items-center space-x-2">
                   <Flag className="w-4 h-4" />
                   <span>{raceData.results.length} drivers</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Clock className="w-4 h-4" />
-                  <span>Session: {raceData.session}</span>
                 </div>
               </div>
             </div>
