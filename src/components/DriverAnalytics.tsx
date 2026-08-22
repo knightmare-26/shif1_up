@@ -5,41 +5,16 @@ import { backendApi, DriverStanding, ConstructorStanding } from '../services/bac
 import { f1DataExtractor } from '../services/f1DataExtractor';
 import { Driver, Team } from '../types/f1';
 
-const DriverAnalytics: React.FC = () => {
+const DriverAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
   useEffect(() => {
-    initializeYears();
     loadData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedYear) {
-      loadData();
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
-
-  const initializeYears = () => {
-    // First try to get years from the data extractor
-    const cachedYears = f1DataExtractor.getAvailableYears();
-    if (cachedYears.length > 0) {
-      setAvailableYears(cachedYears);
-      return;
-    }
-    
-    // Fallback to generating years if no cached data
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let year = 2000; year <= currentYear; year++) {
-      years.push(year);
-    }
-    setAvailableYears(years);
-  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -218,29 +193,14 @@ const DriverAnalytics: React.FC = () => {
               </div>
             )}
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-pure-white text-sm font-medium">Year:</label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="px-3 py-2 bg-carbon-black border border-racing-red text-pure-white rounded-lg focus:outline-none focus:ring-2 focus:ring-racing-red"
-                disabled={isLoading}
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={refreshData}
-              disabled={isLoading}
-              className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
-            </button>
-          </div>
+          <button
+            onClick={refreshData}
+            disabled={isLoading}
+            className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
+          </button>
         </div>
       </motion.div>
 

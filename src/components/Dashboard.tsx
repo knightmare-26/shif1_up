@@ -1,22 +1,27 @@
 import React, { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { backendApi, DriverStanding, ConstructorStanding, RaceEvent } from '../services/backendApi';
-import { BarChart3, TrendingUp, Calendar, Users, MapPin, Flag, RefreshCw } from 'lucide-react';
+import { BarChart3, TrendingUp, Calendar, Users, MapPin, Flag, RefreshCw, ListOrdered, ChevronDown } from 'lucide-react';
 import DriverAnalytics from './DriverAnalytics';
 import TrackAnalytics from './TrackAnalytics';
+import RaceResults from './RaceResults';
 
-type Tab = 'overview' | 'drivers' | 'teams' | 'tracks';
+type Tab = 'overview' | 'drivers' | 'teams' | 'tracks' | 'results';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Overview',  icon: <BarChart3 className="w-4 h-4" /> },
-  { id: 'drivers',  label: 'Drivers',   icon: <Users className="w-4 h-4" /> },
-  { id: 'teams',    label: 'Teams',     icon: <Flag className="w-4 h-4" /> },
-  { id: 'tracks',   label: 'Tracks',    icon: <MapPin className="w-4 h-4" /> },
+  { id: 'overview', label: 'Overview',      icon: <BarChart3 className="w-4 h-4" /> },
+  { id: 'drivers',  label: 'Drivers',       icon: <Users className="w-4 h-4" /> },
+  { id: 'teams',    label: 'Teams',         icon: <Flag className="w-4 h-4" /> },
+  { id: 'tracks',   label: 'Tracks',        icon: <MapPin className="w-4 h-4" /> },
+  { id: 'results',  label: 'Race Results',  icon: <ListOrdered className="w-4 h-4" /> },
 ];
+
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2000 + 1 }, (_, i) => CURRENT_YEAR - i);
 
 const Dashboard: React.FC = () => {
   const [tab, setTab]           = useState<Tab>('overview');
-  const year                    = new Date().getFullYear();
+  const [year, setYear]         = useState(CURRENT_YEAR);
   const [drivers, setDrivers]   = useState<DriverStanding[]>([]);
   const [teams, setTeams]       = useState<ConstructorStanding[]>([]);
   const [races, setRaces]       = useState<RaceEvent[]>([]);
@@ -54,9 +59,25 @@ const Dashboard: React.FC = () => {
     <div className="min-h-screen bg-carbon-black text-white">
       {/* Header */}
       <div className="px-4 sm:px-6 lg:px-8 pt-8 pb-0">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <h1 className="text-3xl font-racing text-racing-red mb-1">F1 Dashboard</h1>
-          <p className="text-gray-400 text-sm">Formula 1 analytics — {year} season</p>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
+          className="mb-6 flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-racing text-racing-red mb-1">F1 Dashboard</h1>
+            <p className="text-gray-400 text-sm">Formula 1 analytics — {year} season</p>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-gray-400 text-xs uppercase tracking-wide">Year</label>
+            <div className="relative">
+              <select
+                value={year}
+                onChange={(e) => setYear(Number(e.target.value))}
+                className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[120px]"
+              >
+                {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+            </div>
+          </div>
         </motion.div>
 
         {/* Tabs */}
@@ -201,8 +222,9 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {tab === 'drivers' && <DriverAnalytics />}
-      {tab === 'tracks'  && <TrackAnalytics />}
+      {tab === 'drivers' && <DriverAnalytics year={year} />}
+      {tab === 'tracks'  && <TrackAnalytics year={year} />}
+      {tab === 'results' && <RaceResults year={year} />}
 
       {tab === 'teams' && (
         <div className="px-4 sm:px-6 lg:px-8 py-6">

@@ -3,32 +3,15 @@ import { motion } from 'framer-motion';
 import { MapPin, Calendar, Clock, Flag, RefreshCw, TrendingUp } from 'lucide-react';
 import { backendApi, RaceEvent } from '../services/backendApi';
 
-const TrackAnalytics: React.FC = () => {
+const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
   const [raceSchedule, setRaceSchedule] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
 
   useEffect(() => {
-    initializeYears();
     loadData();
-  }, []);
-
-  useEffect(() => {
-    if (selectedYear) {
-      loadData();
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear]);
-
-  const initializeYears = () => {
-    const currentYear = new Date().getFullYear();
-    const years = [];
-    for (let year = 2000; year <= currentYear; year++) {
-      years.push(year);
-    }
-    setAvailableYears(years);
-  };
 
   const loadData = async () => {
     setIsLoading(true);
@@ -287,29 +270,14 @@ const TrackAnalytics: React.FC = () => {
               </div>
             )}
           </div>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-pure-white text-sm font-medium">Year:</label>
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="px-3 py-2 bg-carbon-black border border-racing-red text-pure-white rounded-lg focus:outline-none focus:ring-2 focus:ring-racing-red"
-                disabled={isLoading}
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            <button
-              onClick={refreshData}
-              disabled={isLoading}
-              className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
-            </button>
-          </div>
+          <button
+            onClick={refreshData}
+            disabled={isLoading}
+            className="flex items-center space-x-2 px-4 py-2 bg-racing-red hover:bg-red-700 text-pure-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <span>{isLoading ? 'Loading...' : 'Refresh'}</span>
+          </button>
         </div>
       </motion.div>
 

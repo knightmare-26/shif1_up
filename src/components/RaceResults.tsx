@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Flag, Clock, Trophy, Users, MapPin, Calendar, RefreshCw, ExternalLink } from 'lucide-react';
+import { Flag, Clock, Trophy, Users, MapPin, RefreshCw, ExternalLink } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 
 interface RaceResult {
@@ -32,11 +32,10 @@ interface RaceResultsData {
   results: RaceResult[];
 }
 
-const RaceResults: React.FC = () => {
+const RaceResults: React.FC<{ year: number }> = ({ year: selectedYear }) => {
   const [raceData, setRaceData] = useState<RaceResultsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedYear, setSelectedYear] = useState(2024);
   const [selectedGP, setSelectedGP] = useState('Bahrain');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
@@ -47,10 +46,9 @@ const RaceResults: React.FC = () => {
     'Brazil', 'Las Vegas', 'Qatar', 'Abu Dhabi'
   ];
 
-  const availableYears = Array.from({ length: 25 }, (_, i) => 2000 + i);
-
   useEffect(() => {
     loadRaceResults();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear, selectedGP]);
 
   const loadRaceResults = async () => {
@@ -178,19 +176,6 @@ const RaceResults: React.FC = () => {
 
           {/* Filters */}
           <div className="flex flex-wrap gap-4 mb-6">
-            <div className="flex items-center space-x-2">
-              <Calendar className="w-5 h-5 text-racing-red" />
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="bg-gray-800 text-pure-white px-3 py-2 rounded-lg border border-gray-600 focus:border-racing-red focus:outline-none"
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-              </select>
-            </div>
-            
             <div className="flex items-center space-x-2">
               <MapPin className="w-5 h-5 text-racing-red" />
               <select

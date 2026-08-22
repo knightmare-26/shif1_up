@@ -7,7 +7,6 @@ import DriverAnalytics from './components/DriverAnalytics';
 import LiveAnalytics from './components/LiveAnalytics';
 import Dashboard from './components/Dashboard';
 import Navigation from './components/Navigation';
-import RaceResults from './components/RaceResults';
 import LapData from './components/LapData';
 import DataManager from './components/DataManager';
 import LiveDataMonitor from './components/LiveDataMonitor';
@@ -25,7 +24,7 @@ const AppContent: React.FC = () => {
           <Route path="/"             element={<MainPage />} />
           <Route path="/dashboard"    element={<Dashboard />} />
           <Route path="/predictions"  element={<Predictions />} />
-          <Route path="/race-results" element={<RaceResults />} />
+          <Route path="/race-results" element={<Navigate to="/dashboard" replace />} />
           <Route path="/drivers"      element={<Navigate to="/dashboard" replace />} />
           <Route path="/tracks"       element={<Navigate to="/dashboard" replace />} />
           <Route path="/live"         element={<LiveAnalytics />} />
