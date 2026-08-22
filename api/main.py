@@ -716,6 +716,12 @@ async def legacy_constructor_standings(year: int = None, round: int = None, use_
 
 @app.get("/api/races", response_model=List[RaceEvent])
 async def legacy_race_schedule(year: int = None, use_cache: bool = True):
+    """Always sourced from FastF1 (not the FASTF1_YEARS-gated routing used
+    for standings) — confirmed reliable across 2000-2026. Ergast's
+    circuit_name ("Circuit de Monaco") and FastF1's ("Monaco") don't match,
+    and circuit_name from this endpoint feeds lookups elsewhere (track
+    info, predictions) that are keyed to FastF1's convention — mixing
+    sources per-year silently broke those for any year outside 2020-2024."""
     try:
         year = year or datetime.now().year
         cache_key = f"race_schedule_{year}"
@@ -723,11 +729,7 @@ async def legacy_race_schedule(year: int = None, use_cache: bool = True):
             cached = await cache_service.get(cache_key)
             if cached:
                 return cached
-        if year in FASTF1_YEARS:
-            schedule = await fastf1_service.get_race_schedule(year)
-        else:
-            async with ergast_service as ergast:
-                schedule = await ergast.get_race_schedule(year)
+        schedule = await fastf1_service.get_race_schedule(year)
         await cache_service.set(cache_key, schedule, ttl=7200)
         return schedule
     except Exception as exc:
