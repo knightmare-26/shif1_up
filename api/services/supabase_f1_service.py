@@ -71,9 +71,13 @@ class SupabaseF1Service:
                     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # session_type distinguishes a sprint race's results from the main
+            # race's on the same weekend (same race_id, separate results), so
+            # the primary key includes it. Migrated in below for existing DBs.
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS race_results (
                     race_id          TEXT    NOT NULL,
+                    session_type     TEXT    NOT NULL DEFAULT 'race',
                     position         INTEGER NOT NULL,
                     driver_id        TEXT,
                     constructor_id   TEXT,
@@ -84,9 +88,22 @@ class SupabaseF1Service:
                     fastest_lap_time TEXT,
                     status           TEXT,
                     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (race_id, position)
+                    PRIMARY KEY (race_id, session_type, position)
                 )
             """)
+            await conn.execute(
+                "ALTER TABLE race_results ADD COLUMN IF NOT EXISTS session_type TEXT NOT NULL DEFAULT 'race'"
+            )
+            pk_cols = await conn.fetchval("""
+                SELECT array_agg(a.attname ORDER BY a.attnum)::text
+                FROM pg_index i
+                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                WHERE i.indrelid = 'race_results'::regclass AND i.indisprimary
+            """)
+            if pk_cols and "session_type" not in pk_cols:
+                await conn.execute("ALTER TABLE race_results DROP CONSTRAINT race_results_pkey")
+                await conn.execute("ALTER TABLE race_results ADD PRIMARY KEY (race_id, session_type, position)")
+                logger.info("✅ Migrated race_results: widened primary key to include session_type")
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS prediction_cache (
                     circuit_name     TEXT NOT NULL,
@@ -169,7 +186,9 @@ class SupabaseF1Service:
             FROM races WHERE year = $1 ORDER BY round
         """, (year,))
 
-    async def get_race_results(self, race_id: str) -> List[Dict]:
+    async def get_race_results(self, race_id: str, session_type: str = "race") -> List[Dict]:
+        """Main race results by default; pass session_type='sprint' for that
+        weekend's sprint results."""
         return await self._run_query("""
             SELECT rr.position, rr.driver_id, d.full_name AS driver_name,
                    d.number AS driver_number, d.nationality AS country_code,
@@ -178,9 +197,9 @@ class SupabaseF1Service:
             FROM race_results rr
             LEFT JOIN drivers      d ON rr.driver_id      = d.driver_id
             LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
-            WHERE rr.race_id = $1
+            WHERE rr.race_id = $1 AND rr.session_type = $2
             ORDER BY rr.position
-        """, (race_id,))
+        """, (race_id, session_type))
 
     async def get_race_laps(self, race_id: str, driver: Optional[str] = None) -> List[Dict]:
         if driver:
@@ -271,17 +290,20 @@ class SupabaseF1Service:
             logger.error("❌ Error storing races: %s", exc)
             return False
 
-    async def store_race_results(self, race_id: str, results: List[Dict]) -> bool:
+    async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
+        """`session_type` is 'race' or 'sprint' — a sprint's results share the
+        race_id but never collide with the main race's since the primary key
+        includes session_type."""
         if not results or not self.pool:
             return True
         try:
             async with self.pool.acquire() as conn:
                 await conn.executemany(
                     """INSERT INTO race_results
-                           (race_id, position, driver_id, constructor_id, grid, points,
+                           (race_id, session_type, position, driver_id, constructor_id, grid, points,
                             time, fastest_lap, fastest_lap_time, status)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                       ON CONFLICT (race_id, position) DO UPDATE SET
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                       ON CONFLICT (race_id, session_type, position) DO UPDATE SET
                            driver_id        = EXCLUDED.driver_id,
                            constructor_id   = EXCLUDED.constructor_id,
                            grid             = EXCLUDED.grid,
@@ -290,12 +312,12 @@ class SupabaseF1Service:
                            fastest_lap      = EXCLUDED.fastest_lap,
                            fastest_lap_time = EXCLUDED.fastest_lap_time,
                            status           = EXCLUDED.status""",
-                    [(race_id, r["position"], r["driver_id"], r.get("constructor_id"),
+                    [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),
                       r.get("grid"), r.get("points"), r.get("time"), r.get("fastest_lap"),
                       r.get("fastest_lap_time"), r.get("status"))
                      for r in results],
                 )
-            logger.info("✅ Stored %d race results for %s", len(results), race_id)
+            logger.info("✅ Stored %d %s results for %s", len(results), session_type, race_id)
             return True
         except Exception as exc:
             logger.error("❌ Error storing race results: %s", exc)

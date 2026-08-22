@@ -772,13 +772,14 @@ class IngestRaceRequest(BaseModel):
     year: int
     event: str  # GP name (e.g. "Bahrain") or round number as a string
     laps: bool = False
+    session: str = "R"  # "R" for the main race, "S" for a sprint race
 
 
-async def _ingest_race_and_retrain(year: int, event, laps: bool):
-    result = await ingest_service.ingest_single_race(duckdb_service, year, event, laps)
+async def _ingest_race_and_retrain(year: int, event, laps: bool, session: str):
+    result = await ingest_service.ingest_single_race(duckdb_service, year, event, laps, session=session)
     if result.get("stored"):
         train_result = await prediction_service.train(duckdb_service)
-        logger.info("Post-ingest retrain (%s): %s", result.get("race_id"), train_result)
+        logger.info("Post-ingest retrain (%s, session=%s): %s", result.get("race_id"), session, train_result)
 
 
 @app.post("/admin/ingest/race")
@@ -787,12 +788,12 @@ async def ingest_race(
     background_tasks: BackgroundTasks,
     _auth=Depends(require_admin_or_internal),
 ):
-    """Ingest a single race's results, then retrain the prediction models on
-    the fresh data — used by an admin backfill or the live poller once it
-    detects a session has ended."""
+    """Ingest a single race or sprint session's results, then retrain the
+    prediction models on the fresh data — used by an admin backfill or the
+    live poller once it detects a session has ended."""
     event = int(body.event) if body.event.isdigit() else body.event
-    background_tasks.add_task(_ingest_race_and_retrain, body.year, event, body.laps)
-    return {"message": f"Ingest started for {body.year} {body.event}"}
+    background_tasks.add_task(_ingest_race_and_retrain, body.year, event, body.laps, body.session)
+    return {"message": f"Ingest started for {body.year} {body.event} (session={body.session})"}
 
 
 @app.get("/admin/ingest/status")
@@ -885,7 +886,10 @@ async def predict_circuits():
     today = datetime.utcnow().date().isoformat()
     upcoming = sorted((r for r in schedule if r.date >= today), key=lambda r: r.round)
     return [
-        {"round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name, "date": r.date}
+        {
+            "round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name,
+            "date": r.date, "is_sprint": r.is_sprint,
+        }
         for r in upcoming
     ]
 
@@ -932,6 +936,21 @@ async def predict_race(circuit: str):
         raise
     except Exception as exc:
         logger.error("predict_race: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/predict/sprint")
+async def predict_sprint(circuit: str):
+    """Predict sprint race finishing positions for all drivers at a given circuit."""
+    try:
+        result = await prediction_service.predict_sprint(circuit, duckdb_service)
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("predict_sprint: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

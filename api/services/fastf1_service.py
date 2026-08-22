@@ -212,7 +212,8 @@ class FastF1Service:
                     location=row.get('Location', 'Unknown'),
                     date=row.get('EventDate', datetime.now().date()).strftime('%Y-%m-%d'),
                     time='14:00:00Z',  # Default time
-                    url=f"https://www.formula1.com/en/racing/{year}/{row.get('Location', 'unknown')}.html"
+                    url=f"https://www.formula1.com/en/racing/{year}/{row.get('Location', 'unknown')}.html",
+                    is_sprint='sprint' in str(row.get('EventFormat', '')).lower(),
                 )
                 events.append(event)
             

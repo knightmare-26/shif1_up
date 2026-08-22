@@ -48,6 +48,7 @@ class RaceEvent(BaseModel):
     date: str = Field(..., description="Race date (YYYY-MM-DD)")
     time: str = Field(..., description="Race time (HH:MM:SSZ)")
     url: Optional[str] = Field(None, description="Official race URL")
+    is_sprint: bool = Field(False, description="Whether this weekend has a sprint race")
 
 class SessionData(BaseModel):
     """F1 session data"""

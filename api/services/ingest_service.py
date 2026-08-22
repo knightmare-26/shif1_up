@@ -20,28 +20,32 @@ status = {
 }
 
 
-async def ingest_single_race(db, year: int, event: Union[int, str], include_laps: bool = False) -> dict:
-    """Fetch and persist one race's results (and optionally laps) into `db`.
+async def ingest_single_race(db, year: int, event: Union[int, str], include_laps: bool = False,
+                              session: str = "R") -> dict:
+    """Fetch and persist one session's results (and optionally laps) into `db`.
 
-    `event` is anything FastF1's `get_session(year, event, "R")` accepts —
-    a round number or a GP name string. Returns a small summary dict.
+    `event` is anything FastF1's `get_session(year, event, session)` accepts —
+    a round number or a GP name string. `session` is "R" for the main race or
+    "S" for a sprint race (same race_id, stored under a separate session_type
+    so the two never collide). Returns a small summary dict.
     """
     import fastf1
 
+    session_type = "sprint" if session == "S" else "race"
     loop = asyncio.get_event_loop()
 
     def _load():
-        s = fastf1.get_session(year, event, "R")
+        s = fastf1.get_session(year, event, session)
         s.load(laps=include_laps, telemetry=False, weather=False, messages=False)
         return s
 
-    session = await loop.run_in_executor(None, _load)
+    fastf1_session = await loop.run_in_executor(None, _load)
 
-    gp = str(getattr(session, "event", {}).get("EventName", str(event))).replace(" Grand Prix", "").strip()
+    gp = str(getattr(fastf1_session, "event", {}).get("EventName", str(event))).replace(" Grand Prix", "").strip()
     race_id = f"{year}_{gp}"
-    round_n = int(getattr(session, "event", {}).get("RoundNumber", 0))
+    round_n = int(getattr(fastf1_session, "event", {}).get("RoundNumber", 0))
 
-    if session.results is None or session.results.empty:
+    if fastf1_session.results is None or fastf1_session.results.empty:
         return {"race_id": race_id, "stored": False, "reason": "no results available"}
 
     await db.store_races([{
@@ -49,15 +53,15 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
         "year": year,
         "round": round_n,
         "gp": gp,
-        "date": str(getattr(session, "event", {}).get("Session5Date", getattr(session, "event", {}).get("EventDate", "")))[:10],
-        "circuit_name": str(getattr(session, "event", {}).get("Location", "")),
-        "country": str(getattr(session, "event", {}).get("Country", "")),
+        "date": str(getattr(fastf1_session, "event", {}).get("Session5Date", getattr(fastf1_session, "event", {}).get("EventDate", "")))[:10],
+        "circuit_name": str(getattr(fastf1_session, "event", {}).get("Location", "")),
+        "country": str(getattr(fastf1_session, "event", {}).get("Country", "")),
     }])
 
     drivers_seen: dict = {}
     constructors_seen: dict = {}
     results = []
-    for _, row in session.results.iterrows():
+    for _, row in fastf1_session.results.iterrows():
         driver_id = str(row.get("Abbreviation", "")).lower()
         constructor_id = str(row.get("TeamId", row.get("TeamName", ""))).lower().replace(" ", "_")
         drivers_seen[driver_id] = {
@@ -88,12 +92,14 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
 
     await db.store_drivers(list(drivers_seen.values()))
     await db.store_constructors(list(constructors_seen.values()))
-    await db.store_race_results(race_id, results)
+    await db.store_race_results(race_id, results, session_type=session_type)
 
     laps_stored = 0
-    if include_laps and session.laps is not None and not session.laps.empty:
+    # Laps aren't keyed by session_type — skip for sprints to avoid colliding
+    # with the main race's lap numbers under the same race_id.
+    if include_laps and session_type == "race" and fastf1_session.laps is not None and not fastf1_session.laps.empty:
         laps_data = []
-        for _, lap in session.laps.iterrows():
+        for _, lap in fastf1_session.laps.iterrows():
             if not pd.notna(lap.get("LapTime")):
                 continue
             laps_data.append({
@@ -143,9 +149,14 @@ async def run_ingest(duckdb_service, years: List[int], include_laps: bool = Fals
         for round_n in rounds:
             status["message"] = f"Processing {year} round {round_n}…"
             try:
-                await ingest_single_race(duckdb_service, year, round_n, include_laps)
+                await ingest_single_race(duckdb_service, year, round_n, include_laps, session="R")
             except Exception as e:
                 logger.warning("Skipping %s round %s: %s", year, round_n, e)
+            # Most rounds aren't a sprint weekend — this just no-ops for them.
+            try:
+                await ingest_single_race(duckdb_service, year, round_n, False, session="S")
+            except Exception as e:
+                logger.debug("No sprint for %s round %s: %s", year, round_n, e)
             status["races_done"] += 1
 
     status.update({"running": False, "message": "Done", "error": None})

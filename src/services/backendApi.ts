@@ -51,6 +51,7 @@ export interface PredictableRace {
   race_name: string;
   circuit_name: string;
   date: string;
+  is_sprint: boolean;
 }
 
 export interface BacktestDriverRow {
@@ -457,6 +458,20 @@ class BackendApiService {
     const cached = this.cache.get(key);
     if (cached && this.isCacheValid(cached.timestamp, 300)) return cached.data;
     const response = await fetch(`${this.baseUrl}/predict/race?circuit=${encodeURIComponent(circuit)}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
+    return data;
+  }
+
+  async predictSprint(circuit: string): Promise<any> {
+    const key = `/predict/sprint?circuit=${encodeURIComponent(circuit)}`;
+    const cached = this.cache.get(key);
+    if (cached && this.isCacheValid(cached.timestamp, 300)) return cached.data;
+    const response = await fetch(`${this.baseUrl}/predict/sprint?circuit=${encodeURIComponent(circuit)}`);
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       throw new Error(err.detail || `HTTP ${response.status}`);

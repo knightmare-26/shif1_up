@@ -349,8 +349,9 @@ const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
   const [selected, setSelected]       = useState('');
   const [loading, setLoading]         = useState(false);
-  const [qualiResult, setQualiResult] = useState<PredictionResult | null>(null);
-  const [raceResult, setRaceResult]   = useState<PredictionResult | null>(null);
+  const [qualiResult, setQualiResult]   = useState<PredictionResult | null>(null);
+  const [raceResult, setRaceResult]     = useState<PredictionResult | null>(null);
+  const [sprintResult, setSprintResult] = useState<PredictionResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
   const [tab, setTab]                 = useState<'upcoming' | 'backtest'>('upcoming');
@@ -363,19 +364,26 @@ const Predictions: React.FC = () => {
     }).catch(() => {});
   }, []);
 
+  const selectedRace = circuits.find((c) => c.circuit_name === selected);
+  const isSprintWeekend = !!selectedRace?.is_sprint;
+
   const runPredictions = async () => {
     if (!selected) return;
     setLoading(true);
     setError(null);
     setQualiResult(null);
     setRaceResult(null);
+    setSprintResult(null);
     try {
-      const [q, r] = await Promise.all([
+      const calls: [Promise<any>, Promise<any>, Promise<any> | null] = [
         backendApi.predictQualifying(selected),
         backendApi.predictRace(selected),
-      ]);
+        isSprintWeekend ? backendApi.predictSprint(selected) : null,
+      ];
+      const [q, r, s] = await Promise.all(calls);
       setQualiResult(q);
       setRaceResult(r);
+      if (s) setSprintResult(s);
     } catch (e: any) {
       setError(e.message || 'Prediction failed. Make sure data is ingested and backend is running.');
     } finally {
@@ -455,7 +463,7 @@ const Predictions: React.FC = () => {
               {circuits.length === 0 && <option value="">No upcoming races on the calendar</option>}
               {circuits.map((c) => (
                 <option key={c.circuit_name} value={c.circuit_name}>
-                  Round {c.round} — {c.race_name}
+                  Round {c.round} — {c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
                 </option>
               ))}
             </select>
@@ -470,7 +478,7 @@ const Predictions: React.FC = () => {
           className="flex items-center gap-2 px-5 py-2.5 bg-racing-red text-white rounded-lg font-medium text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
-          {loading ? 'Predicting…' : 'Generate Predictions'}
+          {loading ? 'Predicting…' : isSprintWeekend ? 'Generate Predictions (+ Sprint)' : 'Generate Predictions'}
         </button>
 
         {/* Status pills */}
@@ -482,6 +490,11 @@ const Predictions: React.FC = () => {
             <span className={`text-xs px-2 py-1 rounded ${status.quali_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
               Quali: {status.quali_model_ready ? 'ready' : 'needs grid data'}
             </span>
+            {isSprintWeekend && (
+              <span className={`text-xs px-2 py-1 rounded ${status.sprint_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                Sprint: {status.sprint_model_ready ? 'ready' : 'not enough sprint history'}
+              </span>
+            )}
             {status.training_rows > 0 && (
               <span className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400">
                 {status.training_rows} rows · {status.circuits} circuits
@@ -500,7 +513,7 @@ const Predictions: React.FC = () => {
       )}
 
       {/* Results */}
-      {(qualiResult || raceResult) && (
+      {(qualiResult || raceResult || sprintResult) && (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
           className="flex flex-col lg:flex-row gap-6">
           {qualiResult?.predictions.length ? (
@@ -518,6 +531,24 @@ const Predictions: React.FC = () => {
             <div className="flex-1 bg-gray-900 rounded-xl border border-gray-800 px-5 py-8 text-center text-gray-500 text-sm">
               <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-yellow-500" />
               Qualifying prediction unavailable: {qualiResult.error}
+            </div>
+          )}
+
+          {sprintResult?.predictions.length ? (
+            <PredictionTable
+              title="Sprint Prediction"
+              subtitle={sprintResult.circuit}
+              data={sprintResult.predictions}
+              valueKey="predicted_position"
+              avgKey="circuit_avg_finish"
+              rollingKey="rolling_avg_finish"
+              model={sprintResult.model}
+              gridMissing={gridMissing}
+            />
+          ) : sprintResult && (
+            <div className="flex-1 bg-gray-900 rounded-xl border border-gray-800 px-5 py-8 text-center text-gray-500 text-sm">
+              <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-yellow-500" />
+              Sprint prediction unavailable: {sprintResult.error}
             </div>
           )}
 
@@ -542,7 +573,7 @@ const Predictions: React.FC = () => {
       )}
 
       {/* Empty state */}
-      {!qualiResult && !raceResult && !error && !loading && (
+      {!qualiResult && !raceResult && !sprintResult && !error && !loading && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
           className="flex flex-col items-center justify-center py-24 text-center">
           <TrendingUp className="w-12 h-12 text-gray-700 mb-4" />
