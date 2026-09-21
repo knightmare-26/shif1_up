@@ -77,6 +77,7 @@ class DatabaseGuardian:
         disconnect: Callable[[], Awaitable[None]],
         ping: Callable[[], Awaitable[bool]],
         *,
+        on_ready: Optional[Callable[[], Awaitable[None]]] = None,
         database_url: str = "",
         access_token: Optional[str] = None,
         project_ref: Optional[str] = None,
@@ -93,6 +94,8 @@ class DatabaseGuardian:
         self._connect = connect
         self._disconnect = disconnect
         self._ping = ping
+        self._on_ready = on_ready
+        self._hooks: set = set()  # running on_ready tasks (kept so they aren't garbage-collected)
         self.access_token = access_token or None
         self.project_ref = project_ref or project_ref_from_url(database_url)
         self.api_url = api_url.rstrip("/")
@@ -163,6 +166,11 @@ class DatabaseGuardian:
             logger.info("database still connecting after %.0fs — continuing startup", initial_wait)
 
     async def stop(self) -> None:
+        hooks = list(self._hooks)
+        for hook in hooks:
+            hook.cancel()
+        if hooks:
+            await asyncio.gather(*hooks, return_exceptions=True)  # don't leave them running past shutdown
         if self._task:
             self._task.cancel()
             try:
@@ -240,6 +248,23 @@ class DatabaseGuardian:
         self._last_restore = None
         self.project_status = None
         logger.info("database connected")
+        self._fire_on_ready()
+
+    def _fire_on_ready(self) -> None:
+        """Run the on_ready hook in the background: it must never delay, or break, the connection."""
+        if self._on_ready is None:
+            return
+        task = asyncio.create_task(self._run_hook(), name="database-on-ready")
+        self._hooks.add(task)
+        task.add_done_callback(self._hooks.discard)
+
+    async def _run_hook(self) -> None:
+        try:
+            await self._on_ready()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("database on_ready hook failed")
 
     # --------------------------------------------------------------- diagnosis
 

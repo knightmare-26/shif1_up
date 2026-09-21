@@ -149,6 +149,20 @@ async def _disconnect_database() -> None:
                 logger.exception("error closing database pool")
 
 
+async def _warm_prediction_models() -> None:
+    """Train the prediction models in the background as soon as there's data to train on.
+
+    On Render the saved models live on temporary storage, so every cold start begins without
+    them and the first Predictions visit used to pay for the training (and, on a cold server,
+    briefly showed the page as "not trained"). Training runs in a worker thread, so the API
+    stays responsive while it works. A no-op when models were loaded from disk.
+    """
+    if prediction_service._trained:
+        return
+    logger.info("Training prediction models in the background…")
+    await prediction_service._ensure_trained(duckdb_service)
+
+
 async def _ping_database() -> bool:
     pool = getattr(duckdb_service, "pool", None)
     if pool is None:
@@ -166,6 +180,7 @@ async def _ping_database() -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
+    warmup_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
 
@@ -180,6 +195,7 @@ async def lifespan(app: FastAPI):
             connect=_connect_database,
             disconnect=_disconnect_database,
             ping=_ping_database,
+            on_ready=_warm_prediction_models,  # also fires after a reconnect; a no-op once trained
             database_url=DATABASE_URL,
             access_token=os.getenv("SUPABASE_ACCESS_TOKEN"),
             project_ref=os.getenv("SUPABASE_PROJECT_REF"),
@@ -198,6 +214,8 @@ async def lifespan(app: FastAPI):
 
     if not DATABASE_URL:
         await _load_sample_data()
+        # Local DuckDB is ready immediately (with Supabase the guardian fires this once connected).
+        warmup_task = asyncio.create_task(_warm_prediction_models(), name="warm-prediction-models")
 
     # Load pre-trained ML models from disk (avoids cold retrain on every restart)
     if prediction_service.load_from_disk():
@@ -209,6 +227,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
+    if warmup_task:
+        warmup_task.cancel()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
