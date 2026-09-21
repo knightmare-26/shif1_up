@@ -64,6 +64,8 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const [notFound, setNotFound] = useState(false);
   const [schedule, setSchedule] = useState<RaceEvent[]>([]);
   const [scheduleLoaded, setScheduleLoaded] = useState(false);
+  const [scheduleFailed, setScheduleFailed] = useState(false);
+  const [scheduleTry, setScheduleTry] = useState(0);
   const [selectedGP, setSelectedGP] = useState('');
   const [selectedSession, setSelectedSession] = useState('R');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -74,6 +76,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   useEffect(() => {
     let cancelled = false;
     setScheduleLoaded(false);
+    setScheduleFailed(false);
     setSelectedGP('');
     setRaceData(null);
     setLoading(true);
@@ -93,10 +96,11 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
         if (cancelled) return;
         setSchedule([]);
         setScheduleLoaded(true);
+        setScheduleFailed(true);
         setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [year, initialGp]);
+  }, [year, initialGp, scheduleTry]);
 
   const loadRaceResults = useCallback(async () => {
     if (!selectedGP) return;
@@ -157,7 +161,11 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
             : undefined}
         />
 
-        {loading ? <LoadingState label="Loading race results…" /> : error ? (
+        {scheduleFailed ? (
+          <ErrorState title="Couldn't load the race calendar"
+            message="The server didn't answer. If it was asleep it should be ready in a moment."
+            onRetry={() => setScheduleTry((n) => n + 1)} />
+        ) : loading ? <LoadingState label="Loading race results…" /> : error ? (
           <ErrorState title="Couldn't load race results" message={error} onRetry={loadRaceResults} />
         ) : notFound ? (
           <EmptyState icon={<ListOrdered className="h-10 w-10" />}
