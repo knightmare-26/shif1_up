@@ -333,3 +333,52 @@ async def test_a_lost_connection_is_noticed_and_reconnected_when_checked():
 
     await g.attempt()
     assert g.state == WAKING and len(api.posts) == 1   # noticed straight away, restore requested
+
+
+# --- on_ready hook (used to warm the prediction models once the database is usable) ----------
+
+
+async def test_on_ready_runs_when_the_database_becomes_ready_and_again_after_a_reconnect():
+    calls = []
+
+    async def hook():
+        calls.append("ready")
+
+    db = FakeDb()
+    g = make(db, on_ready=hook)
+    await g.attempt()
+    await asyncio.sleep(0)                  # let the background task run
+    assert calls == ["ready"]
+
+    db.alive = False
+    await g.check_alive()
+    db.alive = True
+    await g.attempt()
+    await asyncio.sleep(0)
+    assert calls == ["ready", "ready"]      # the hook itself is responsible for being a no-op when done
+
+
+async def test_a_slow_on_ready_hook_does_not_delay_ready():
+    started = asyncio.Event()
+
+    async def slow_hook():
+        started.set()
+        await asyncio.sleep(30)
+
+    g = make(FakeDb(), on_ready=slow_hook)
+    await asyncio.wait_for(g.attempt(), timeout=1)   # returns immediately even though the hook runs 30s
+    assert g.ready
+    await asyncio.wait_for(started.wait(), timeout=1)
+    await g.stop()                                   # cancels the hook instead of hanging
+    await asyncio.sleep(0)
+    assert not g._hooks
+
+
+async def test_a_failing_on_ready_hook_does_not_break_the_connection():
+    async def broken_hook():
+        raise RuntimeError("training blew up")
+
+    g = make(FakeDb(), on_ready=broken_hook)
+    await g.attempt()
+    await asyncio.sleep(0.01)
+    assert g.ready

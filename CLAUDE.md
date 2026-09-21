@@ -110,7 +110,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 ### Prediction service (`api/services/prediction_service.py`)
 
-- **Training**: triggered on first predict call or via `POST /predict/train`
+- **Training**: starts in the background as soon as the database is ready (`_warm_prediction_models`, fired by `DatabaseGuardian`'s `on_ready` hook; local DuckDB starts it at boot), or on the first predict call, or via `POST /predict/train`. It is single-flight (`_train_lock`: the three parallel predictions on the Predictions page share one training) and the CPU-bound fit (`_fit`) runs in a worker thread on a private copy of the state that is swapped in atomically — the event loop, and so `/health`, stays responsive. Models are saved to `MODEL_DIR`, which is temporary storage on Render's free plan, so every cold start retrains (~10s locally); `/predict/status` reports `training` while it runs and the frontend shows "Models warming up" until `trained`
 - **Qualifying model**: XGBoost Regressor — features: circuit avg qualifying position, rolling 5-race form
 - **Race model**: LightGBM Regressor — features: grid position, circuit avg finish, rolling 5-race form, DNF rate
 - **Grid data availability**: `_grid_available = grid_coverage > 0.5`; shown as status on Predictions page
