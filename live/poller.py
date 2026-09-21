@@ -50,7 +50,12 @@ class LivePoller:
         self.race_gp = race_gp
         self.poll_interval = poll_interval
         self.redis_service = RedisService(redis_url)
-        self.race_id = f"{race_year}_{race_gp}"
+        # Must match the frontend's race_id convention (LiveAnalytics.tsx,
+        # LiveDataMonitor.tsx): spaces -> underscores, slashes -> hyphens.
+        # RACE_GP can be a full FastF1-matchable name like "Dutch Grand Prix";
+        # only the id derived from it needs normalizing, not the FastF1 lookup.
+        normalized_gp = race_gp.replace(" ", "_").replace("/", "-")
+        self.race_id = f"{race_year}_{normalized_gp}"
         
         # Set FastF1 cache directory
         fastf1.Cache.enable_cache(cache_dir)

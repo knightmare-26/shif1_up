@@ -4,7 +4,11 @@
 
 import { Driver, Team, RaceResult } from '../types/f1';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+/** Fired when the API says it (or its database) is waking up, so the app can show a banner and re-check. */
+export const SERVICE_WAKING_EVENT = 'shif1:service-waking';
+const announceWaking = () => window.dispatchEvent(new Event(SERVICE_WAKING_EVENT));
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -44,6 +48,38 @@ export interface RaceEvent {
   date: string;
   time: string;
   url?: string;
+}
+
+export interface PredictableRace {
+  round: number;
+  race_name: string;
+  circuit_name: string;
+  date: string;
+  is_sprint: boolean;
+}
+
+export interface BacktestDriverRow {
+  driver_id: string;
+  driver_name: string;
+  predicted_grid?: number | null;
+  actual_grid?: number | null;
+  predicted_position?: number | null;
+  actual_position?: number | null;
+}
+
+export interface BacktestRace {
+  year: number;
+  round: number;
+  race_id: string;
+  race_name: string;
+  circuit_name: string;
+  quali_mae: number | null;
+  race_mae: number | null;
+  drivers: BacktestDriverRow[];
+}
+
+export interface BacktestResult {
+  races: BacktestRace[];
 }
 
 export interface SessionData {
@@ -115,12 +151,24 @@ class BackendApiService {
       });
 
       if (!response.ok) {
+        // While the database is asleep the API answers 503 "database_waking".
+        // Say so plainly instead of surfacing "HTTP error! status: 503".
+        if (response.status === 503) {
+          const body = await response.json().catch(() => null);
+          if (body?.detail === 'database_waking') {
+            announceWaking();
+            throw new Error(body.message || 'The database is waking up. This page will refresh when it is ready.');
+          }
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
+      // fetch() rejects with a TypeError when the server can't be reached at all
+      // (e.g. a sleeping host that is still booting).
+      if (error instanceof TypeError) announceWaking();
       console.error(`API request failed for ${endpoint}:`, error);
       throw error;
     }
@@ -185,6 +233,12 @@ class BackendApiService {
   // ---------------------------------------------------------------------------
 
   private async fetchStatic<T>(url: string): Promise<T | null> {
+    // Snapshots are only trustworthy for finished seasons. The current season
+    // changes every race weekend (and its calendar can change mid-year), so a
+    // committed snapshot would silently override fresher data from the API.
+    const season = /\/data\/(?:standings|schedule|results)\/(\d{4})/.exec(url);
+    if (season && Number(season[1]) >= new Date().getFullYear()) return null;
+
     try {
       const r = await fetch(url);
       if (!r.ok) return null;
@@ -359,29 +413,31 @@ class BackendApiService {
   }
 
   // Race detail endpoints — backend race_id format: "{year}_{gp}" e.g. "2024_Bahrain"
-  async getRaceResults(year: number, gp: string): Promise<any> {
-    // Try static files first — filenames: {year}_{round:02d}_{gp}.json
+  async getRaceResults(year: number, gp: string, session: string = 'R'): Promise<any> {
+    // Try static files first (main race only) — filenames: {year}_{round:02d}_{gp}.json
     // We don't know the round here, so glob via schedule
-    const scheduleStatic = await this.fetchStatic<RaceEvent[]>(`/data/schedule/${year}.json`);
-    if (scheduleStatic) {
-      const gpSlug = gp.replace(/ /g, '_').replace(/\//g, '-');
-      const race = scheduleStatic.find(r =>
-        r.race_name.replace(/ /g, '_').replace(/\//g, '-') === gpSlug
-      );
-      if (race) {
-        const round = String(race.round).padStart(2, '0');
-        const staticData = await this.fetchStatic<any>(
-          `/data/results/${year}_${round}_${gpSlug}.json`
+    if (session === 'R') {
+      const scheduleStatic = await this.fetchStatic<RaceEvent[]>(`/data/schedule/${year}.json`);
+      if (scheduleStatic) {
+        const gpSlug = gp.replace(/ /g, '_').replace(/\//g, '-');
+        const race = scheduleStatic.find(r =>
+          r.race_name.replace(/ /g, '_').replace(/\//g, '-') === gpSlug
         );
-        if (staticData) {
-          console.log(`📄 Static results for ${year} R${round} ${gp}`);
-          return staticData;
+        if (race) {
+          const round = String(race.round).padStart(2, '0');
+          const staticData = await this.fetchStatic<any>(
+            `/data/results/${year}_${round}_${gpSlug}.json`
+          );
+          if (staticData) {
+            console.log(`📄 Static results for ${year} R${round} ${gp}`);
+            return staticData;
+          }
         }
       }
     }
 
     const raceId = `${year}_${gp.replace(/ /g, '_')}`;
-    return this.getCachedOrFetch(`/race/${raceId}/results`, {}, 1800); // 30 minutes cache
+    return this.getCachedOrFetch(`/race/${raceId}/results`, { session }, 1800); // 30 minutes cache
   }
 
   async getSessionLaps(year: number, gp: string, _session: string, driver?: string): Promise<any> {
@@ -399,8 +455,12 @@ class BackendApiService {
     return this.getCachedOrFetch('/predict/status', {}, 10);
   }
 
-  async getPredictionCircuits(): Promise<string[]> {
+  async getPredictionCircuits(): Promise<PredictableRace[]> {
     return this.getCachedOrFetch('/predict/circuits', {}, 300);
+  }
+
+  async getPredictionBacktest(): Promise<BacktestResult> {
+    return this.getCachedOrFetch('/predict/backtest', {}, 300);
   }
 
   async predictQualifying(circuit: string): Promise<any> {
@@ -431,9 +491,18 @@ class BackendApiService {
     return data;
   }
 
-  async triggerModelTraining(): Promise<{ message: string }> {
-    const response = await fetch(`${this.baseUrl}/predict/train`, { method: 'POST' });
-    return response.json();
+  async predictSprint(circuit: string): Promise<any> {
+    const key = `/predict/sprint?circuit=${encodeURIComponent(circuit)}`;
+    const cached = this.cache.get(key);
+    if (cached && this.isCacheValid(cached.timestamp, 300)) return cached.data;
+    const response = await fetch(`${this.baseUrl}/predict/sprint?circuit=${encodeURIComponent(circuit)}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+    const data = await response.json();
+    this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
+    return data;
   }
 
   // Utility methods

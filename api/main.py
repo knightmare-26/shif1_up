@@ -18,7 +18,9 @@ load_dotenv()
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -32,6 +34,8 @@ from services.mock_redis_service import MockRedisService
 from services.fastf1_service import FastF1Service
 from services.ergast_service import ErgastService
 from services.cache_service import CacheService
+from services.db_guardian import DatabaseGuardian
+from services.redact import redact_url
 from services.auth_service import (
     hash_password, verify_password, create_access_token, decode_token, new_user_id
 )
@@ -91,6 +95,7 @@ postgres_service = None
 fastf1_service = None
 ergast_service = None
 cache_service = None
+database_guardian: Optional[DatabaseGuardian] = None
 MODEL_DIR = os.getenv("MODEL_DIR", "data/models")
 prediction_service = PredictionService(model_dir=MODEL_DIR)
 
@@ -100,7 +105,7 @@ async def _init_redis() -> Any:
     try:
         svc = RedisService(REDIS_URL)
         await svc.initialize()
-        logger.info("✅ Redis connected (%s)", REDIS_URL)
+        logger.info("✅ Redis connected (%s)", redact_url(REDIS_URL))
         return svc
     except Exception as exc:
         logger.warning("⚠️  Redis unavailable (%s) — using in-memory mock", exc)
@@ -110,36 +115,79 @@ async def _init_redis() -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Supabase connection lifecycle (owned by DatabaseGuardian — see db_guardian.py)
+# ---------------------------------------------------------------------------
+async def _connect_database() -> None:
+    """Open the Supabase pools for auth and F1 data. Raises if either can't
+    connect, leaving nothing half-open (also on cancellation, e.g. a timeout)."""
+    global duckdb_service, postgres_service
+    users = PostgresService(DATABASE_URL)
+    f1 = SupabaseF1Service(DATABASE_URL)
+    try:
+        await users.initialize()
+        await f1.initialize()
+    except BaseException:
+        for svc in (f1, users):
+            try:
+                await svc.cleanup()
+            except Exception:
+                pass
+        raise
+    postgres_service, duckdb_service = users, f1
+    logger.info("✅ Using Supabase for auth and F1 historical data")
+
+
+async def _disconnect_database() -> None:
+    global duckdb_service, postgres_service
+    old = (duckdb_service, postgres_service)
+    duckdb_service = postgres_service = None
+    for svc in old:
+        if svc:
+            try:
+                await svc.cleanup()
+            except Exception:
+                logger.exception("error closing database pool")
+
+
+async def _ping_database() -> bool:
+    pool = getattr(duckdb_service, "pool", None)
+    if pool is None:
+        return False
+    try:
+        async with pool.acquire(timeout=10) as conn:
+            return await conn.fetchval("SELECT 1", timeout=10) == 1
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_service, duckdb_service, postgres_service, fastf1_service, ergast_service, cache_service
+    global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
 
     logger.info("🚀 Starting Shif1 UP API...")
 
     redis_service = await _init_redis()
 
     if DATABASE_URL:
-        try:
-            postgres_service = PostgresService(DATABASE_URL)
-            await postgres_service.initialize()
-            logger.info("✅ Postgres connected")
-        except Exception as exc:
-            logger.warning("⚠️  Postgres unavailable (%s) — auth endpoints disabled", exc)
-            postgres_service = None
+        # The API must come up even if the database is paused, so it can answer
+        # /health and tell the frontend what's going on. The guardian makes the
+        # first attempt now (bounded), then keeps retrying — and wakes a paused
+        # Supabase project if SUPABASE_ACCESS_TOKEN is set.
+        database_guardian = DatabaseGuardian(
+            connect=_connect_database,
+            disconnect=_disconnect_database,
+            ping=_ping_database,
+            database_url=DATABASE_URL,
+            access_token=os.getenv("SUPABASE_ACCESS_TOKEN"),
+            project_ref=os.getenv("SUPABASE_PROJECT_REF"),
+            api_url=os.getenv("SUPABASE_API_URL", "https://api.supabase.com"),
+        )
+        await database_guardian.start()
     else:
-        logger.info("ℹ️  No DATABASE_URL — skipping Postgres")
-
-    if DATABASE_URL:
-        try:
-            duckdb_service = SupabaseF1Service(DATABASE_URL)
-            await duckdb_service.initialize()
-            logger.info("✅ Using Supabase for F1 historical data")
-        except Exception as exc:
-            logger.error("❌ Supabase F1 connection failed: %s", exc)
-            duckdb_service = None
-    else:
+        logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
         await duckdb_service.initialize()
 
@@ -148,7 +196,8 @@ async def lifespan(app: FastAPI):
     cache_service = CacheService()
     await cache_service.initialize()
 
-    await _load_sample_data()
+    if not DATABASE_URL:
+        await _load_sample_data()
 
     # Load pre-trained ML models from disk (avoids cold retrain on every restart)
     if prediction_service.load_from_disk():
@@ -160,6 +209,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
+    if database_guardian:
+        await database_guardian.stop()
     if redis_service:
         await redis_service.cleanup()
     if postgres_service:
@@ -188,6 +239,33 @@ RATE_LIMIT_AUTH = os.getenv("RATE_LIMIT_AUTH", "10/minute")
 limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Endpoints that read from the Supabase database. While the guardian is
+# (re)connecting they answer 503 "database_waking" — quickly, and with a message
+# the frontend can show — instead of failing with an opaque 500.
+DB_BACKED_PREFIXES = (
+    "/race/", "/admin/", "/auth/",
+    "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
+)
+
+
+async def _database_gate(request: Request, call_next):
+    guardian = database_guardian
+    if guardian and not guardian.ready and request.url.path.startswith(DB_BACKED_PREFIXES):
+        guardian.nudge()
+        snapshot = guardian.snapshot()
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "database_waking", **snapshot},
+            headers={"Retry-After": "15"},
+        )
+    return await call_next(request)
+
+
+# Registered before CORSMiddleware on purpose: middleware added later wraps
+# earlier ones, so CORS headers end up on the 503s too (otherwise the browser
+# reports an opaque network error instead of a readable response).
+app.add_middleware(BaseHTTPMiddleware, dispatch=_database_gate)
 
 app.add_middleware(
     CORSMiddleware,
@@ -386,6 +464,11 @@ async def _probe_duckdb() -> Dict[str, Any]:
 
 @app.get("/health")
 async def health_check():
+    guardian = database_guardian
+    if guardian:
+        # A visit while the database is down is a reason to retry right now, and
+        # (when connected) the probe below is activity for Supabase's idle timer.
+        guardian.nudge()
     redis_check = await _probe_redis()
     duckdb_check = await _probe_duckdb()
 
@@ -409,6 +492,10 @@ async def health_check():
             "duckdb": duckdb_check,
         },
     }
+    if guardian:
+        # Present only when running against Supabase. `state` drives the frontend's
+        # "waking up" banner; `self_healing` tells supervisors not to restart us.
+        body["checks"]["database"] = {**guardian.snapshot(), "self_healing": True}
     if overall == "error":
         raise HTTPException(status_code=503, detail=body)
     return body
@@ -548,19 +635,37 @@ def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
             "Time": _parse_timedelta_seconds(row.get("time") or ""),
             "Status": status,
             "Points": str(row.get("points", "")),
-            "Laps": "",
+            "Laps": str(row.get("laps_completed")) if row.get("laps_completed") is not None else "",
         })
     return normalized
 
 
 @app.get("/race/{race_id}/results")
-async def get_race_results(race_id: str):
+async def get_race_results(race_id: str, session: str = "R"):
+    """`session` is one of R/S/Q/SQ/FP1/FP2/FP3. Tries the DB first; on a
+    miss, fetches that session from FastF1 and writes it through to the DB
+    (via the same path admin ingest uses) so the next request for it is
+    fast — avoids either a slow live fetch on every call or a huge upfront
+    backfill for every session type across every season."""
+    session_type = ingest_service.SESSION_TYPE_MAP.get(session, "race")
     try:
-        results = await duckdb_service.get_race_results(race_id)
+        results = await duckdb_service.get_race_results(race_id, session_type=session_type)
+        if not results:
+            year, gp = _parse_race_id(race_id)
+            try:
+                ingested = await ingest_service.ingest_single_race(
+                    duckdb_service, year, gp, include_laps=False, session=session
+                )
+            except Exception as exc:
+                # Most commonly: this weekend has no such session (e.g. Sprint
+                # requested for a non-sprint round) — not a server error.
+                logger.info("No %s session for %s: %s", session_type, race_id, exc)
+                ingested = {"stored": False}
+            if ingested.get("stored"):
+                results = await duckdb_service.get_race_results(race_id, session_type=session_type)
         if results:
             return _normalize_db_results(results)
-        year, gp = _parse_race_id(race_id)
-        return await fastf1_service.get_race_results(year, gp)
+        raise HTTPException(status_code=404, detail=f"No {session_type} results found for {race_id}")
     except HTTPException:
         raise
     except Exception as exc:
@@ -698,6 +803,12 @@ async def legacy_constructor_standings(year: int = None, round: int = None, use_
 
 @app.get("/api/races", response_model=List[RaceEvent])
 async def legacy_race_schedule(year: int = None, use_cache: bool = True):
+    """Always sourced from FastF1 (not the FASTF1_YEARS-gated routing used
+    for standings) — confirmed reliable across 2000-2026. Ergast's
+    circuit_name ("Circuit de Monaco") and FastF1's ("Monaco") don't match,
+    and circuit_name from this endpoint feeds lookups elsewhere (track
+    info, predictions) that are keyed to FastF1's convention — mixing
+    sources per-year silently broke those for any year outside 2020-2024."""
     try:
         year = year or datetime.now().year
         cache_key = f"race_schedule_{year}"
@@ -705,11 +816,7 @@ async def legacy_race_schedule(year: int = None, use_cache: bool = True):
             cached = await cache_service.get(cache_key)
             if cached:
                 return cached
-        if year in FASTF1_YEARS:
-            schedule = await fastf1_service.get_race_schedule(year)
-        else:
-            async with ergast_service as ergast:
-                schedule = await ergast.get_race_schedule(year)
+        schedule = await fastf1_service.get_race_schedule(year)
         await cache_service.set(cache_key, schedule, ttl=7200)
         return schedule
     except Exception as exc:
@@ -751,15 +858,20 @@ class IngestRequest(BaseModel):
     laps: bool = False
 
 
+async def _run_ingest_and_retrain(years: List[int], laps: bool):
+    await ingest_service.run_ingest(duckdb_service, years, laps)
+    if not ingest_service.status.get("error"):
+        result = await prediction_service.train(duckdb_service)
+        logger.info("Post-ingest retrain (years=%s): %s", years, result)
+
+
 @app.post("/admin/ingest")
 async def start_ingest(body: IngestRequest, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
     if ingest_service.status["running"]:
         raise HTTPException(status_code=409, detail="Ingest already running")
-    background_tasks.add_task(
-        ingest_service.run_ingest, duckdb_service, body.years, body.laps
-    )
+    background_tasks.add_task(_run_ingest_and_retrain, body.years, body.laps)
     return {"message": f"Ingest started for years {body.years}", "laps": body.laps}
 
 
@@ -767,6 +879,14 @@ class IngestRaceRequest(BaseModel):
     year: int
     event: str  # GP name (e.g. "Bahrain") or round number as a string
     laps: bool = False
+    session: str = "R"  # "R" for the main race, "S" for a sprint race
+
+
+async def _ingest_race_and_retrain(year: int, event, laps: bool, session: str):
+    result = await ingest_service.ingest_single_race(duckdb_service, year, event, laps, session=session)
+    if result.get("stored"):
+        train_result = await prediction_service.train(duckdb_service)
+        logger.info("Post-ingest retrain (%s, session=%s): %s", result.get("race_id"), session, train_result)
 
 
 @app.post("/admin/ingest/race")
@@ -775,13 +895,12 @@ async def ingest_race(
     background_tasks: BackgroundTasks,
     _auth=Depends(require_admin_or_internal),
 ):
-    """Ingest a single race's results — used by an admin backfill or the live
-    poller once it detects a session has ended."""
+    """Ingest a single race or sprint session's results, then retrain the
+    prediction models on the fresh data — used by an admin backfill or the
+    live poller once it detects a session has ended."""
     event = int(body.event) if body.event.isdigit() else body.event
-    background_tasks.add_task(
-        ingest_service.ingest_single_race, duckdb_service, body.year, event, body.laps
-    )
-    return {"message": f"Ingest started for {body.year} {body.event}"}
+    background_tasks.add_task(_ingest_race_and_retrain, body.year, event, body.laps, body.session)
+    return {"message": f"Ingest started for {body.year} {body.event} (session={body.session})"}
 
 
 @app.get("/admin/ingest/status")
@@ -854,10 +973,32 @@ async def predict_status():
 
 @app.get("/predict/circuits")
 async def predict_circuits():
-    """List all circuits available in the training data."""
+    """List races on the current season calendar that haven't happened yet —
+    predicting an already-run race isn't useful, so past rounds are excluded."""
     if not prediction_service._trained:
         await prediction_service.train(duckdb_service)
-    return prediction_service.available_circuits()
+
+    year = datetime.now().year
+    try:
+        # Always use FastF1's schedule here (not the FASTF1_YEARS-gated
+        # routing used elsewhere) — its circuit_name convention (event
+        # Location, e.g. "Zandvoort") is what ingest_service stores on
+        # race_results, so predictions can match circuit-specific history.
+        # Ergast's circuitName ("Circuit Park Zandvoort") wouldn't match.
+        schedule = await fastf1_service.get_race_schedule(year)
+    except Exception as exc:
+        logger.error("❌ predict_circuits: failed to load %s schedule: %s", year, exc)
+        return []
+
+    today = datetime.utcnow().date().isoformat()
+    upcoming = sorted((r for r in schedule if r.date >= today), key=lambda r: r.round)
+    return [
+        {
+            "round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name,
+            "date": r.date, "is_sprint": r.is_sprint,
+        }
+        for r in upcoming
+    ]
 
 
 @app.post("/predict/train")
@@ -902,6 +1043,33 @@ async def predict_race(circuit: str):
         raise
     except Exception as exc:
         logger.error("predict_race: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/predict/sprint")
+async def predict_sprint(circuit: str):
+    """Predict sprint race finishing positions for all drivers at a given circuit."""
+    try:
+        result = await prediction_service.predict_sprint(circuit, duckdb_service)
+        if not result.get("success"):
+            raise HTTPException(status_code=422, detail=result.get("error"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("predict_sprint: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/predict/backtest")
+async def predict_backtest():
+    """Score the current models against real results from the past 3 seasons —
+    powers the Predictions page's Predicted vs Actual tab."""
+    try:
+        await prediction_service._ensure_trained(duckdb_service)
+        return prediction_service.backtest(years_back=3)
+    except Exception as exc:
+        logger.error("predict_backtest: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

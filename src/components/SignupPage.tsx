@@ -58,15 +58,16 @@ const SignupPage: React.FC = () => {
     Icon: React.ElementType,
   ) => (
     <div>
-      <label className="block text-carbon-black text-sm font-bold mb-2 flex items-center">
-        <Icon className="w-4 h-4 mr-2" />
+      <label htmlFor={`signup-${id}`} className="mb-1 flex items-center text-xs uppercase tracking-wide text-gray-400">
+        <Icon className="w-4 h-4 mr-2" aria-hidden="true" />
         {label}
       </label>
       <input
+        id={`signup-${id}`}
         type={type}
         value={formData[id]}
         onChange={(e) => setFormData({ ...formData, [id]: e.target.value })}
-        className="w-full px-4 py-3 bg-pure-white text-carbon-black rounded-lg border-2 border-turbo-teal focus:border-racing-red focus:outline-none transition-colors"
+        className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2.5 text-sm text-white placeholder-gray-600 transition-colors focus:border-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
         placeholder={placeholder}
         required
       />
@@ -93,7 +94,7 @@ const SignupPage: React.FC = () => {
         </div>
 
         {/* Form */}
-        <div className="bg-track-grey rounded-xl p-8 shadow-2xl">
+        <div className="rounded-xl border border-gray-800 bg-gray-900 p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {field('username',        'Username',         'text',     'Choose your username',  User)}
             {field('email',           'Email',            'email',    'Enter your email',      Mail)}
@@ -103,7 +104,7 @@ const SignupPage: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-6 bg-racing-red hover:bg-red-700 text-pure-white font-bold text-lg rounded-lg transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full rounded-lg bg-racing-red px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? 'Creating Account...' : 'Create Account'}
             </button>
@@ -113,14 +114,15 @@ const SignupPage: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg"
+              role="alert"
+              className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-300"
             >
               {errors.map((err, i) => <p key={i} className="text-sm">{err}</p>)}
             </motion.div>
           )}
 
           <div className="mt-6 text-center">
-            <p className="text-carbon-black text-sm">
+            <p className="text-sm text-gray-400">
               Already have an account?{' '}
               <Link to="/login" state={location.state} className="text-racing-red hover:text-red-700 font-bold">
                 Sign in here

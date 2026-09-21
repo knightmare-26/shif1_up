@@ -1,247 +1,302 @@
-import React, { useEffect, useState } from 'react';
-import { motion } from 'framer-motion';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { BarChart3, Calendar, ChevronRight, Flag, ListOrdered, MapPin, TrendingUp, Users } from 'lucide-react';
 import { backendApi, DriverStanding, ConstructorStanding, RaceEvent } from '../services/backendApi';
-import { BarChart3, TrendingUp, Calendar, Users, MapPin, Flag, RefreshCw } from 'lucide-react';
+import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
+import { gpToken, isRaceRound } from '../utils/races';
 import DriverAnalytics from './DriverAnalytics';
 import TrackAnalytics from './TrackAnalytics';
+import RaceResults from './RaceResults';
+import {
+  Card, CardHeader, DetailList, ErrorState, EmptyState, FadeIn, LoadingState, PageHeader, PageShell,
+  PositionBadge, SelectField, StatCard, TabPanel, Tabs, TableWrap, TeamChip, Td, Th, Tr, teamColor,
+} from './ui';
 
-type Tab = 'overview' | 'drivers' | 'teams' | 'tracks';
+type Tab = 'overview' | 'drivers' | 'teams' | 'tracks' | 'results';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview', label: 'Overview',  icon: <BarChart3 className="w-4 h-4" /> },
-  { id: 'drivers',  label: 'Drivers',   icon: <Users className="w-4 h-4" /> },
-  { id: 'teams',    label: 'Teams',     icon: <Flag className="w-4 h-4" /> },
-  { id: 'tracks',   label: 'Tracks',    icon: <MapPin className="w-4 h-4" /> },
+  { id: 'overview', label: 'Overview',     icon: <BarChart3 className="h-4 w-4" /> },
+  { id: 'drivers',  label: 'Drivers',      icon: <Users className="h-4 w-4" /> },
+  { id: 'teams',    label: 'Teams',        icon: <Flag className="h-4 w-4" /> },
+  { id: 'tracks',   label: 'Tracks',       icon: <MapPin className="h-4 w-4" /> },
+  { id: 'results',  label: 'Race Results', icon: <ListOrdered className="h-4 w-4" /> },
 ];
+const TAB_IDS = TABS.map((t) => t.id);
+
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2000 + 1 }, (_, i) => CURRENT_YEAR - i);
+
+const TOP_N = 5;
 
 const Dashboard: React.FC = () => {
-  const [tab, setTab]           = useState<Tab>('overview');
-  const year                    = new Date().getFullYear();
-  const [drivers, setDrivers]   = useState<DriverStanding[]>([]);
-  const [teams, setTeams]       = useState<ConstructorStanding[]>([]);
-  const [races, setRaces]       = useState<RaceEvent[]>([]);
-  const [loading, setLoading]   = useState(true);
+  // Tab and year live in the URL so refresh, back/forward and shared links all
+  // land where the user was.
+  const [params, setParams] = useSearchParams();
+  const rawTab = params.get('tab') as Tab | null;
+  const tab: Tab = rawTab && TAB_IDS.includes(rawTab) ? rawTab : 'overview';
+  const rawYear = Number(params.get('year'));
+  const year = YEAR_OPTIONS.includes(rawYear) ? rawYear : CURRENT_YEAR;
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [d, c, r] = await Promise.all([
-          backendApi.getDriverStandings(year),
-          backendApi.getConstructorStandings(year),
-          backendApi.getRaceSchedule(year),
-        ]);
-        setDrivers(Array.isArray(d) ? d : []);
-        setTeams(Array.isArray(c) ? c : []);
-        setRaces(Array.isArray(r) ? r : []);
-      } catch (e) {
-        console.error('Dashboard load error', e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+  const navigate = (changes: Record<string, string | null>) => {
+    const next = new URLSearchParams(params);
+    Object.entries(changes).forEach(([k, v]) => (v === null ? next.delete(k) : next.set(k, v)));
+    setParams(next);
+  };
+  const setTab = (t: Tab) => navigate({ tab: t === 'overview' ? null : t, gp: null });
+  const setYear = (y: number) => navigate({ year: y === CURRENT_YEAR ? null : String(y), gp: null });
+
+  const [drivers, setDrivers] = useState<DriverStanding[]>([]);
+  const [teams, setTeams]     = useState<ConstructorStanding[]>([]);
+  const [races, setRaces]     = useState<RaceEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+  const requestId = useRef(0);
+
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
+    setError(null);
+    try {
+      const [d, c, r] = await Promise.all([
+        backendApi.getDriverStandings(year),
+        backendApi.getConstructorStandings(year),
+        backendApi.getRaceSchedule(year),
+      ]);
+      if (id !== requestId.current) return; // a newer year was picked meanwhile
+      setDrivers(Array.isArray(d) ? d : []);
+      setTeams(Array.isArray(c) ? c : []);
+      setRaces(Array.isArray(r) ? r.filter(isRaceRound) : []);
+    } catch (e) {
+      if (id !== requestId.current) return;
+      setError(e instanceof Error ? e.message : 'The standings service did not respond.');
+    } finally {
+      if (id === requestId.current) setLoading(false);
+    }
   }, [year]);
 
-  const leader      = drivers[0];
-  const teamLeader  = teams[0];
-  const nextRace    = races.find(r => new Date(r.date) >= new Date());
-  const recentRaces = [...races]
-    .filter(r => new Date(r.date) < new Date())
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 3);
+  useEffect(() => { load(); }, [load]);
+
+  const completed    = races.filter((r) => isPastDate(r.date));
+  const nextRace     = races.find((r) => !isPastDate(r.date));
+  const recentRaces  = [...completed].sort((a, b) => b.round - a.round).slice(0, 3);
+  const seasonDone   = races.length > 0 && !nextRace;
+  const leader       = drivers[0];
+  const runnerUp     = drivers[1];
+  const teamLeader   = teams[0];
+  const nextIn       = nextRace ? daysUntil(nextRace.date) : null;
 
   return (
-    <div className="min-h-screen bg-carbon-black text-white">
-      {/* Header */}
-      <div className="px-4 sm:px-6 lg:px-8 pt-8 pb-0">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <h1 className="text-3xl font-racing text-racing-red mb-1">F1 Dashboard</h1>
-          <p className="text-gray-400 text-sm">Formula 1 analytics — {year} season</p>
-        </motion.div>
+    <PageShell>
+      <PageHeader
+        title="Dashboard"
+        subtitle={`Formula 1 analytics — ${year} season`}
+        actions={
+          <SelectField label="Year" value={year} onChange={(v) => setYear(Number(v))}>
+            {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </SelectField>
+        }
+      />
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-gray-800">
-          {TABS.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-t-lg transition-colors ${
-                tab === t.id
-                  ? 'bg-gray-900 text-white border border-b-gray-900 border-gray-800 -mb-px'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              {t.icon}{t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <Tabs tabs={TABS} active={tab} onChange={setTab} label="Dashboard sections" idPrefix="dash" />
 
-      {/* Tab content */}
-      {tab === 'overview' && (
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          {/* Stats Grid */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Next Race</p>
-                  {loading ? <RefreshCw className="w-4 h-4 animate-spin text-gray-500 mt-1" /> : (
-                    <>
-                      <p className="text-lg font-bold text-white mt-1">
-                        {nextRace ? `${nextRace.race_name.replace(' Grand Prix', '')} GP` : '—'}
-                      </p>
-                      {nextRace && <p className="text-xs text-gray-500">{nextRace.date}</p>}
-                    </>
-                  )}
-                </div>
-                <Calendar className="w-7 h-7 text-racing-red" />
-              </div>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Drivers Leader</p>
-                  {loading ? <RefreshCw className="w-4 h-4 animate-spin text-gray-500 mt-1" /> : (
-                    <>
-                      <p className="text-lg font-bold text-white mt-1">{leader?.driver_name ?? '—'}</p>
-                      <p className="text-xs text-gray-500">{leader?.points ?? 0} pts</p>
-                    </>
-                  )}
-                </div>
-                <Users className="w-7 h-7 text-turbo-teal" />
-              </div>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Constructors Leader</p>
-                  {loading ? <RefreshCw className="w-4 h-4 animate-spin text-gray-500 mt-1" /> : (
-                    <>
-                      <p className="text-lg font-bold text-white mt-1">{teamLeader?.constructor_name ?? leader?.constructor ?? '—'}</p>
-                      <p className="text-xs text-gray-500">{teamLeader?.points ?? '—'} pts</p>
-                    </>
-                  )}
-                </div>
-                <Flag className="w-7 h-7 text-pit-stop-yellow" />
-              </div>
-            </div>
-
-            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Leader Wins</p>
-                  {loading ? <RefreshCw className="w-4 h-4 animate-spin text-gray-500 mt-1" /> : (
-                    <p className="text-3xl font-bold text-white mt-1">{leader?.wins ?? '—'}</p>
-                  )}
-                </div>
-                <TrendingUp className="w-7 h-7 text-racing-red" />
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Recent Races + Next Race */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-              className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-racing-red" /> Recent Races
-              </h3>
-              {loading ? (
-                <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-gray-500" /></div>
-              ) : recentRaces.length > 0 ? (
-                <div className="space-y-2">
-                  {recentRaces.map(race => (
-                    <div key={race.round} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <span className="text-racing-red font-bold text-sm w-6">R{race.round}</span>
-                        <div>
-                          <p className="text-white text-sm font-medium">{race.race_name}</p>
-                          <p className="text-gray-500 text-xs">{race.country}</p>
-                        </div>
-                      </div>
-                      <span className="text-gray-500 text-xs">{race.date}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm">No completed races yet this season.</p>
-              )}
-            </motion.div>
-
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-              className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-              <h3 className="text-white font-semibold mb-4 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-turbo-teal" /> Next Race
-              </h3>
-              {loading ? (
-                <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-gray-500" /></div>
-              ) : nextRace ? (
-                <div className="space-y-2">
-                  {[
-                    ['Race', nextRace.race_name],
-                    ['Circuit', nextRace.circuit_name],
-                    ['Country', nextRace.country],
-                    ['Date', nextRace.date],
-                  ].map(([label, value]) => (
-                    <div key={label} className="flex justify-between items-center p-3 bg-gray-800/50 rounded-lg">
-                      <span className="text-gray-400 text-sm">{label}</span>
-                      <span className="text-white text-sm font-medium">{value}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-sm">No upcoming races found.</p>
-              )}
-            </motion.div>
-          </div>
-        </div>
-      )}
-
-      {tab === 'drivers' && <DriverAnalytics />}
-      {tab === 'tracks'  && <TrackAnalytics />}
-
-      {tab === 'teams' && (
-        <div className="px-4 sm:px-6 lg:px-8 py-6">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-800">
-              <h3 className="text-white font-semibold">Constructor Standings — {year}</h3>
-            </div>
-            {loading ? (
-              <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-gray-500" /></div>
-            ) : teams.length > 0 ? (
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-                    <th className="px-5 py-3 text-left w-10">#</th>
-                    <th className="px-5 py-3 text-left">Constructor</th>
-                    <th className="px-5 py-3 text-right">Points</th>
-                    <th className="px-5 py-3 text-right">Wins</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {teams.map((team, i) => (
-                    <tr key={team.constructor_id ?? i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-                      <td className="px-5 py-3 text-gray-400 font-mono">{team.position ?? i + 1}</td>
-                      <td className="px-5 py-3 text-white font-medium">{team.constructor_name}</td>
-                      <td className="px-5 py-3 text-right text-racing-red font-bold">{team.points}</td>
-                      <td className="px-5 py-3 text-right text-gray-400">{team.wins ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <div className="pt-6">
+        {tab === 'overview' && (
+          <TabPanel id="overview" idPrefix="dash">
+            {error ? (
+              <Card><ErrorState title="Couldn't load the season overview" message={error} onRetry={load} /></Card>
             ) : (
-              <p className="text-gray-500 text-sm px-5 py-8">No constructor standings available.</p>
+              <FadeIn className="space-y-6">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <StatCard
+                    label="Next Race" loading={loading} icon={<Calendar className="h-6 w-6" />}
+                    value={nextRace ? gpToken(nextRace.race_name) : seasonDone ? 'Season complete' : '—'}
+                    sub={nextRace ? `${formatDate(nextRace.date)} · ${describeDaysUntil(nextIn)}` : `${races.length} rounds`}
+                  />
+                  <StatCard
+                    label={seasonDone ? "Drivers' Champion" : "Drivers' Leader"} loading={loading}
+                    icon={<Users className="h-6 w-6" />} accent="text-turbo-teal"
+                    value={leader?.driver_name ?? '—'}
+                    sub={leader ? `${leader.points} pts${runnerUp ? ` · +${leader.points - runnerUp.points} on P2` : ''}` : undefined}
+                  />
+                  <StatCard
+                    label={seasonDone ? "Constructors' Champion" : "Constructors' Leader"} loading={loading}
+                    icon={<Flag className="h-6 w-6" />} accent="text-pit-stop-yellow"
+                    value={teamLeader?.constructor_name ?? '—'}
+                    sub={teamLeader ? `${teamLeader.points} pts` : undefined}
+                  />
+                  <StatCard
+                    label="Season Progress" loading={loading} icon={<TrendingUp className="h-6 w-6" />}
+                    value={races.length ? `${completed.length} / ${races.length}` : '—'}
+                    sub={races.length ? `${races.length - completed.length} rounds remaining` : undefined}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader
+                      title="Drivers' Championship" icon={<Users className="h-4 w-4" />}
+                      action={<ViewAll onClick={() => setTab('drivers')} />}
+                    />
+                    {loading ? <LoadingState /> : drivers.length ? (
+                      <TableWrap>
+                        <tbody>
+                          {drivers.slice(0, TOP_N).map((d) => (
+                            <Tr key={d.driver_id}>
+                              <Td className="w-14 pr-0"><PositionBadge position={d.position} /></Td>
+                              <Td className="font-medium text-white">{d.driver_name}</Td>
+                              <Td className="hidden text-gray-400 sm:table-cell"><TeamChip name={d.constructor} /></Td>
+                              <Td align="right" className="font-bold text-white">{d.points}</Td>
+                            </Tr>
+                          ))}
+                        </tbody>
+                      </TableWrap>
+                    ) : <EmptyState title="No driver standings yet" />}
+                  </Card>
+
+                  <Card>
+                    <CardHeader
+                      title="Constructors' Championship" icon={<Flag className="h-4 w-4" />}
+                      action={<ViewAll onClick={() => setTab('teams')} />}
+                    />
+                    {loading ? <LoadingState /> : teams.length ? (
+                      <TableWrap>
+                        <tbody>
+                          {teams.slice(0, TOP_N).map((t) => (
+                            <Tr key={t.constructor_id}>
+                              <Td className="w-14 pr-0"><PositionBadge position={t.position} /></Td>
+                              <Td className="font-medium text-white"><TeamChip name={t.constructor_name} /></Td>
+                              <Td align="right" className="font-bold text-white">{t.points}</Td>
+                            </Tr>
+                          ))}
+                        </tbody>
+                      </TableWrap>
+                    ) : <EmptyState title="No constructor standings yet" />}
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                  <Card>
+                    <CardHeader
+                      title="Recent Races" icon={<BarChart3 className="h-4 w-4" />}
+                      action={<ViewAll onClick={() => setTab('results')} label="All results" />}
+                    />
+                    {loading ? <LoadingState /> : recentRaces.length ? (
+                      <ul>
+                        {recentRaces.map((r) => (
+                          <li key={r.round} className="border-b border-gray-800/60 last:border-b-0">
+                            <Link
+                              to={`/dashboard?tab=results&year=${year}&gp=${encodeURIComponent(gpToken(r.race_name))}`}
+                              className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-gray-800/40 focus:outline-none focus-visible:bg-gray-800/60"
+                            >
+                              <span className="flex min-w-0 items-center gap-3">
+                                <span className="w-8 text-sm font-bold text-racing-red">R{r.round}</span>
+                                <span className="min-w-0">
+                                  <span className="block truncate text-sm font-medium text-white">{r.race_name}</span>
+                                  <span className="block text-xs text-gray-500">{r.country}</span>
+                                </span>
+                              </span>
+                              <span className="flex items-center gap-2 text-xs text-gray-500">
+                                {formatDate(r.date)}<ChevronRight className="h-4 w-4" aria-hidden="true" />
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <EmptyState title="No completed races yet this season" />}
+                  </Card>
+
+                  <Card>
+                    <CardHeader
+                      title={seasonDone ? 'Season Finale' : 'Next Race'} icon={<MapPin className="h-4 w-4" />}
+                      action={<ViewAll onClick={() => setTab('tracks')} label="Calendar" />}
+                    />
+                    {loading ? <LoadingState /> : (nextRace ?? races[races.length - 1]) ? (
+                      <DetailList
+                        rows={(() => {
+                          const r = (nextRace ?? races[races.length - 1])!;
+                          return [
+                            ['Race', r.race_name],
+                            ['Circuit', r.circuit_name],
+                            ['Country', r.country],
+                            ['Date', `${formatDate(r.date)}${nextRace ? ` · ${describeDaysUntil(nextIn)}` : ''}`],
+                          ];
+                        })()}
+                      />
+                    ) : <EmptyState title="No races on the calendar" />}
+                  </Card>
+                </div>
+              </FadeIn>
             )}
-          </motion.div>
-        </div>
-      )}
-    </div>
+          </TabPanel>
+        )}
+
+        {tab === 'drivers' && <TabPanel id="drivers" idPrefix="dash"><DriverAnalytics year={year} /></TabPanel>}
+        {tab === 'tracks'  && <TabPanel id="tracks"  idPrefix="dash"><TrackAnalytics  year={year} /></TabPanel>}
+        {tab === 'results' && (
+          <TabPanel id="results" idPrefix="dash">
+            <RaceResults year={year} initialGp={params.get('gp') ?? undefined} />
+          </TabPanel>
+        )}
+
+        {tab === 'teams' && (
+          <TabPanel id="teams" idPrefix="dash">
+            <FadeIn>
+              <Card>
+                <CardHeader title={`Constructor Standings — ${year}`} icon={<Flag className="h-4 w-4" />} />
+                {loading ? <LoadingState /> : error ? (
+                  <ErrorState title="Couldn't load constructor standings" message={error} onRetry={load} />
+                ) : teams.length ? (
+                  <TableWrap>
+                    <thead>
+                      <tr className="border-b border-gray-800">
+                        <Th className="w-14">Pos</Th>
+                        <Th>Constructor</Th>
+                        <Th align="right">Wins</Th>
+                        <Th align="right">Points</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teams.map((t) => (
+                        <Tr key={t.constructor_id}>
+                          <Td><PositionBadge position={t.position} /></Td>
+                          <Td className="font-medium text-white"><TeamChip name={t.constructor_name} /></Td>
+                          <Td align="right" className="text-gray-400">{t.wins ?? '—'}</Td>
+                          <Td align="right">
+                            <span className="flex items-center justify-end gap-3">
+                              <span className="hidden h-1.5 w-28 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
+                                <span
+                                  className="block h-full rounded"
+                                  style={{
+                                    width: `${teams[0]?.points ? (t.points / teams[0].points) * 100 : 0}%`,
+                                    backgroundColor: teamColor(t.constructor_name),
+                                  }}
+                                />
+                              </span>
+                              <span className="w-12 font-bold text-white">{t.points}</span>
+                            </span>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </tbody>
+                  </TableWrap>
+                ) : <EmptyState title="No constructor standings available" />}
+              </Card>
+            </FadeIn>
+          </TabPanel>
+        )}
+      </div>
+    </PageShell>
   );
 };
+
+const ViewAll: React.FC<{ onClick: () => void; label?: string }> = ({ onClick, label = 'View all' }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="flex items-center gap-1 rounded text-xs font-medium text-gray-400 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
+  >
+    {label}<ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+  </button>
+);
 
 export default Dashboard;

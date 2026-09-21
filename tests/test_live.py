@@ -144,7 +144,11 @@ class TestHealthEndpoint:
 
         # Per-dependency checks
         checks = body["checks"]
-        assert set(checks.keys()) == {"redis", "duckdb"}
+        # "database" is only present when running against Supabase (DATABASE_URL set).
+        assert set(checks.keys()) - {"database"} == {"redis", "duckdb"}
+        if "database" in checks:
+            assert checks["database"]["state"] in ("ready", "connecting", "waking", "unavailable")
+            assert checks["database"]["self_healing"] is True
 
     def test_health_reports_redis_kind_and_probes_duckdb(self, client):
         r = client.get("/health")

@@ -40,13 +40,31 @@ QUALI_FEATURES = [
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
+# Sprint race features mirror the race model's, but use the sprint grid
+# (from sprint qualifying) instead of the main race grid as the input —
+# everything else (form, circuit avg, dnf rate) is shared driver/constructor
+# state going into that race weekend, not sprint-specific.
+SPRINT_FEATURES_FULL = [
+    "sprint_grid", "driver_rolling_finish", "driver_circuit_avg",
+    "constructor_rolling_finish", "constructor_circuit_avg",
+    "driver_dnf_rate", "driver_enc", "constructor_enc", "circuit_enc", "round",
+]
+
+SPRINT_FEATURES_NO_GRID = [
+    "driver_rolling_finish", "driver_circuit_avg",
+    "constructor_rolling_finish", "constructor_circuit_avg",
+    "driver_dnf_rate", "driver_enc", "constructor_enc", "circuit_enc", "round",
+]
+
 
 class PredictionService:
     def __init__(self, model_dir: str = "data/models"):
         self._model_dir = model_dir
         self._race_model = None
         self._quali_model = None
+        self._sprint_model = None
         self._race_features: List[str] = RACE_FEATURES_NO_GRID
+        self._sprint_features: List[str] = SPRINT_FEATURES_NO_GRID
         self._df: Optional[pd.DataFrame] = None
         self._driver_map: Dict[str, str] = {}
         self._constructor_map: Dict[str, str] = {}
@@ -81,6 +99,8 @@ class PredictionService:
                 joblib.dump(self._race_model, os.path.join(self._model_dir, "race_model.pkl"))
             if self._quali_model is not None:
                 joblib.dump(self._quali_model, os.path.join(self._model_dir, "quali_model.pkl"))
+            if self._sprint_model is not None:
+                joblib.dump(self._sprint_model, os.path.join(self._model_dir, "sprint_model.pkl"))
 
             joblib.dump(
                 {
@@ -90,6 +110,7 @@ class PredictionService:
                     "driver_map": self._driver_map,
                     "constructor_map": self._constructor_map,
                     "race_features": self._race_features,
+                    "sprint_features": self._sprint_features,
                     "grid_available": self._grid_available,
                 },
                 os.path.join(self._model_dir, "encoders.pkl"),
@@ -122,6 +143,7 @@ class PredictionService:
             self._driver_map      = enc["driver_map"]
             self._constructor_map = enc["constructor_map"]
             self._race_features   = enc.get("race_features", RACE_FEATURES_NO_GRID)
+            self._sprint_features = enc.get("sprint_features", SPRINT_FEATURES_NO_GRID)
             self._grid_available  = enc.get("grid_available", False)
 
             if os.path.exists(race_path):
@@ -130,6 +152,10 @@ class PredictionService:
             quali_path = os.path.join(self._model_dir, "quali_model.pkl")
             if os.path.exists(quali_path):
                 self._quali_model = joblib.load(quali_path)
+
+            sprint_path = os.path.join(self._model_dir, "sprint_model.pkl")
+            if os.path.exists(sprint_path):
+                self._sprint_model = joblib.load(sprint_path)
 
             if os.path.exists(meta_path):
                 with open(meta_path) as f:
@@ -151,8 +177,8 @@ class PredictionService:
         rows = await duckdb_service._run_query("""
             SELECT
                 rr.race_id, rr.driver_id, rr.constructor_id,
-                rr.position, rr.grid, rr.points, rr.status,
-                r.circuit_name, r.year, r.round,
+                rr.position, rr.grid, rr.points, rr.status, rr.session_type,
+                r.circuit_name, r.year, r.round, r.gp AS race_name,
                 d.full_name  AS driver_name,
                 c.constructor_name
             FROM race_results rr
@@ -162,7 +188,10 @@ class PredictionService:
             WHERE rr.position IS NOT NULL
             ORDER BY r.year, r.round
         """)
-        return pd.DataFrame(rows) if rows else pd.DataFrame()
+        df = pd.DataFrame(rows) if rows else pd.DataFrame()
+        if not df.empty and "session_type" not in df.columns:
+            df["session_type"] = "race"  # pre-migration rows with no column at all
+        return df
 
     # ------------------------------------------------------------------
     # Feature engineering
@@ -234,11 +263,29 @@ class PredictionService:
                                         .drop_duplicates("constructor_id")
                                         .set_index("constructor_id")["constructor_name"].to_dict())
 
-            df = self._engineer(raw)
+            # Sprint rows are pulled out before feature engineering — rolling
+            # form / circuit averages are computed from race results only, so
+            # a sprint (shorter, different dynamics) never pollutes them.
+            raw_race   = raw[raw["session_type"] == "race"].copy()
+            raw_sprint = (raw[raw["session_type"] == "sprint"]
+                          [["race_id", "driver_id", "position", "grid"]]
+                          .rename(columns={"position": "sprint_position", "grid": "sprint_grid"}))
+
+            df = self._engineer(raw_race)
             self._le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
             self._le_constructor = sorted(df["constructor_id"].fillna("unknown").unique().tolist())
             self._le_circuit     = sorted(df["circuit_name"].fillna("unknown").unique().tolist())
             df = self._encode(df)
+
+            # Attach each weekend's sprint result (if any) onto that weekend's
+            # already-engineered race-form row — same driver/constructor state
+            # going into the weekend, just a different target to predict.
+            if not raw_sprint.empty:
+                df = df.merge(raw_sprint, on=["race_id", "driver_id"], how="left")
+            else:
+                df["sprint_position"] = np.nan
+                df["sprint_grid"] = np.nan
+
             self._df = df
 
             result: Dict[str, Any] = {
@@ -282,6 +329,29 @@ class PredictionService:
             else:
                 result["quali_model"] = "skipped — grid column is NULL. Re-ingest data to populate grid positions."
 
+            # ---- Sprint model (LightGBM) ----
+            # Sprints are much rarer than full races (roughly half a dozen a
+            # season, only since 2021), so this trains on far fewer rows than
+            # the race model — expect lower confidence until more are ingested.
+            sprint_grid_coverage = df["sprint_grid"].notna().mean() if df["sprint_position"].notna().any() else 0.0
+            sprint_grid_available = bool(sprint_grid_coverage > 0.5)
+            self._sprint_features = SPRINT_FEATURES_FULL if sprint_grid_available else SPRINT_FEATURES_NO_GRID
+            result["sprint_grid_coverage"] = f"{sprint_grid_coverage:.0%}"
+
+            sprint_df = df.dropna(subset=self._sprint_features + ["sprint_position"])
+            if len(sprint_df) >= 20:
+                X_s = sprint_df[self._sprint_features].astype(float)
+                y_s = sprint_df["sprint_position"].astype(float).values
+                w_s = self._time_weights(sprint_df).astype(np.float64)
+                self._sprint_model = lgb.LGBMRegressor(
+                    n_estimators=300, learning_rate=0.05, max_depth=6,
+                    num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
+                )
+                self._sprint_model.fit(X_s, y_s, sample_weight=w_s)
+                result["sprint_training_rows"] = len(sprint_df)
+            else:
+                result["sprint_model"] = f"skipped — only {len(sprint_df)} historical sprint rows (need 20+). Ingest more sprint weekends."
+
             self._trained = True
             self._meta = {
                 "trained_at": datetime.utcnow().isoformat(),
@@ -291,9 +361,11 @@ class PredictionService:
                 "grid_coverage": result["grid_coverage"],
                 "race_model_ready": self._race_model is not None,
                 "quali_model_ready": self._quali_model is not None,
+                "sprint_model_ready": self._sprint_model is not None,
             }
 
             self._save_to_disk()
+            await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
             return {"success": True, **result}
 
@@ -358,6 +430,11 @@ class PredictionService:
                 "predictions": [],
             }
 
+        trained_at = self._meta.get("trained_at")
+        cached = await duckdb_service.get_prediction_cache(circuit_name, "qualifying")
+        if cached and cached.get("model_trained_at") == trained_at:
+            return cached["result"]
+
         feat  = self._build_prediction_rows(circuit_name)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[QUALI_FEATURES].fillna(10))
@@ -377,19 +454,26 @@ class PredictionService:
                 "rolling_avg_grid": round(float(row["driver_rolling_grid"]), 2)     if pd.notna(row.get("driver_rolling_grid"))      else None,
             })
 
-        return {
+        result = {
             "success": True,
             "circuit": circuit_name,
             "model": "XGBoost",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
+        await duckdb_service.set_prediction_cache(circuit_name, "qualifying", trained_at, result)
+        return result
 
     async def predict_race(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._race_model is None:
             return {"success": False, "error": "Race model unavailable.", "predictions": []}
+
+        trained_at = self._meta.get("trained_at")
+        cached = await duckdb_service.get_prediction_cache(circuit_name, "race")
+        if cached and cached.get("model_trained_at") == trained_at:
+            return cached["result"]
 
         feat = self._build_prediction_rows(circuit_name)
 
@@ -418,13 +502,149 @@ class PredictionService:
                 "predicted_grid":     round(float(row["grid"]), 2),
             })
 
-        return {
+        result = {
             "success": True,
             "circuit": circuit_name,
             "model": "LightGBM",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
+        await duckdb_service.set_prediction_cache(circuit_name, "race", trained_at, result)
+        return result
+
+    async def predict_sprint(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
+        await self._ensure_trained(duckdb_service)
+
+        if self._sprint_model is None:
+            return {
+                "success": False,
+                "error": "Sprint model unavailable — not enough historical sprint results ingested yet.",
+                "predictions": [],
+            }
+
+        trained_at = self._meta.get("trained_at")
+        cached = await duckdb_service.get_prediction_cache(circuit_name, "sprint")
+        if cached and cached.get("model_trained_at") == trained_at:
+            return cached["result"]
+
+        feat = self._build_prediction_rows(circuit_name)
+
+        # No separate sprint-qualifying model (too little data to train one
+        # reliably) — the main qualifying model's prediction is used as a
+        # proxy for sprint grid, since both measure one-lap pace.
+        if self._quali_model is not None:
+            feat_q      = self._encode(feat.copy())
+            quali_preds = self._quali_model.predict(feat_q[QUALI_FEATURES].fillna(10))
+            feat["sprint_grid"] = quali_preds
+        else:
+            feat["sprint_grid"] = feat.get("grid", 10)
+
+        feat  = self._encode(feat)
+        preds = self._sprint_model.predict(feat[self._sprint_features].fillna(10))
+        feat["predicted_position"] = preds
+        feat  = feat.sort_values("predicted_position").reset_index(drop=True)
+
+        output = []
+        for rank, row in feat.iterrows():
+            output.append({
+                "predicted_rank":     rank + 1,
+                "driver_id":          row["driver_id"],
+                "driver_name":        self._driver_map.get(row["driver_id"], row["driver_id"]),
+                "constructor_id":     row["constructor_id"],
+                "constructor_name":   self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
+                "predicted_position": round(float(row["predicted_position"]), 2),
+                "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
+                "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
+                "predicted_grid":     round(float(row["sprint_grid"]), 2),
+            })
+
+        result = {
+            "success": True,
+            "circuit": circuit_name,
+            "model": "LightGBM (sprint)",
+            "grid_data_available": self._grid_available,
+            "predictions": output,
+        }
+        await duckdb_service.set_prediction_cache(circuit_name, "sprint", trained_at, result)
+        return result
+
+    # ------------------------------------------------------------------
+    # Backtest: predicted vs actual for real past races
+    # ------------------------------------------------------------------
+
+    def backtest(self, years_back: int = 3) -> Dict[str, Any]:
+        """Score the current models against real results from the last
+        `years_back` seasons.
+
+        Each row in self._df already has point-in-time-correct features —
+        _engineer() builds driver/constructor rolling and circuit averages
+        with .shift(1) before rolling/expanding, so a given race's row only
+        reflects races before it, never after. That means running these
+        historical rows back through the model isn't affected by feature
+        leakage. The one caveat: the models themselves were fit once on the
+        full dataset (time-decayed, not walk-forward retrained per race), so
+        this is a retrospective scoring of the current model rather than a
+        strict walk-forward backtest.
+        """
+        if self._df is None or self._df.empty:
+            return {"races": []}
+
+        cutoff_year = datetime.utcnow().year - years_back
+        df = self._df[self._df["year"] >= cutoff_year]
+        if df.empty:
+            return {"races": []}
+
+        races_out = []
+        for (year, rnd, race_id), group in df.groupby(["year", "round", "race_id"], sort=False):
+            drivers: Dict[str, Dict[str, Any]] = {}
+
+            if self._quali_model is not None:
+                qdf = group.dropna(subset=QUALI_FEATURES + ["grid"])
+                if not qdf.empty:
+                    preds = self._quali_model.predict(qdf[QUALI_FEATURES].fillna(10))
+                    for (_, row), pred in zip(qdf.iterrows(), preds):
+                        d = drivers.setdefault(row["driver_id"], {
+                            "driver_id": row["driver_id"],
+                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                        })
+                        d["predicted_grid"] = round(float(pred), 2)
+                        d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
+
+            if self._race_model is not None:
+                rdf = group.dropna(subset=self._race_features + ["position"])
+                if not rdf.empty:
+                    preds = self._race_model.predict(rdf[self._race_features].fillna(10))
+                    for (_, row), pred in zip(rdf.iterrows(), preds):
+                        d = drivers.setdefault(row["driver_id"], {
+                            "driver_id": row["driver_id"],
+                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                        })
+                        d["predicted_position"] = round(float(pred), 2)
+                        d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
+
+            if not drivers:
+                continue
+
+            driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
+
+            quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
+                          if d.get("predicted_grid") is not None and d.get("actual_grid") is not None]
+            race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
+                         if d.get("predicted_position") is not None and d.get("actual_position") is not None]
+
+            races_out.append({
+                "year": int(year),
+                "round": int(rnd),
+                "race_id": race_id,
+                "race_name": group["race_name"].iloc[0],
+                "circuit_name": group["circuit_name"].iloc[0],
+                "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
+                "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+                "drivers": driver_rows,
+            })
+
+        races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
+        return {"races": races_out}
 
     # ------------------------------------------------------------------
     # Status / introspection
@@ -437,12 +657,17 @@ class PredictionService:
 
     def training_status(self) -> Dict[str, Any]:
         years = self._meta.get("years", [])
+        sprint_rows = 0
+        if self._df is not None and "sprint_position" in self._df.columns:
+            sprint_rows = int(self._df["sprint_position"].notna().sum())
         return {
             "trained":             bool(self._trained),
             "race_model_ready":    bool(self._race_model is not None),
             "quali_model_ready":   bool(self._quali_model is not None),
+            "sprint_model_ready":  bool(self._sprint_model is not None),
             "grid_data_available": bool(self._grid_available),
             "training_rows":       int(len(self._df)) if self._df is not None else 0,
+            "sprint_training_rows": sprint_rows,
             "circuits":            int(len(self.available_circuits())),
             "years":               [int(y) for y in years],
             "trained_at":          str(self._meta.get("trained_at") or ""),

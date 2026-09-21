@@ -4,6 +4,7 @@ Uses asyncpg + PostgreSQL (Supabase) instead of DuckDB for F1 historical data.
 Same public interface as SimpleDuckDBService so all callers work unchanged.
 """
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -70,9 +71,13 @@ class SupabaseF1Service:
                     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            # session_type distinguishes a sprint race's results from the main
+            # race's on the same weekend (same race_id, separate results), so
+            # the primary key includes it. Migrated in below for existing DBs.
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS race_results (
                     race_id          TEXT    NOT NULL,
+                    session_type     TEXT    NOT NULL DEFAULT 'race',
                     position         INTEGER NOT NULL,
                     driver_id        TEXT,
                     constructor_id   TEXT,
@@ -82,8 +87,35 @@ class SupabaseF1Service:
                     fastest_lap      BOOLEAN,
                     fastest_lap_time TEXT,
                     status           TEXT,
+                    laps_completed   INTEGER,
                     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (race_id, position)
+                    PRIMARY KEY (race_id, session_type, position)
+                )
+            """)
+            await conn.execute(
+                "ALTER TABLE race_results ADD COLUMN IF NOT EXISTS session_type TEXT NOT NULL DEFAULT 'race'"
+            )
+            await conn.execute(
+                "ALTER TABLE race_results ADD COLUMN IF NOT EXISTS laps_completed INTEGER"
+            )
+            pk_cols = await conn.fetchval("""
+                SELECT array_agg(a.attname ORDER BY a.attnum)::text
+                FROM pg_index i
+                JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+                WHERE i.indrelid = 'race_results'::regclass AND i.indisprimary
+            """)
+            if pk_cols and "session_type" not in pk_cols:
+                await conn.execute("ALTER TABLE race_results DROP CONSTRAINT race_results_pkey")
+                await conn.execute("ALTER TABLE race_results ADD PRIMARY KEY (race_id, session_type, position)")
+                logger.info("✅ Migrated race_results: widened primary key to include session_type")
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS prediction_cache (
+                    circuit_name     TEXT NOT NULL,
+                    session_type     TEXT NOT NULL,
+                    model_trained_at TEXT,
+                    result_json      JSONB NOT NULL,
+                    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (circuit_name, session_type)
                 )
             """)
             await conn.execute("""
@@ -158,18 +190,21 @@ class SupabaseF1Service:
             FROM races WHERE year = $1 ORDER BY round
         """, (year,))
 
-    async def get_race_results(self, race_id: str) -> List[Dict]:
+    async def get_race_results(self, race_id: str, session_type: str = "race") -> List[Dict]:
+        """Main race results by default; pass session_type='sprint' for that
+        weekend's sprint results."""
         return await self._run_query("""
             SELECT rr.position, rr.driver_id, d.full_name AS driver_name,
                    d.number AS driver_number, d.nationality AS country_code,
                    rr.constructor_id, c.constructor_name,
-                   rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+                   rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status,
+                   rr.laps_completed
             FROM race_results rr
             LEFT JOIN drivers      d ON rr.driver_id      = d.driver_id
             LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
-            WHERE rr.race_id = $1
+            WHERE rr.race_id = $1 AND rr.session_type = $2
             ORDER BY rr.position
-        """, (race_id,))
+        """, (race_id, session_type))
 
     async def get_race_laps(self, race_id: str, driver: Optional[str] = None) -> List[Dict]:
         if driver:
@@ -260,17 +295,20 @@ class SupabaseF1Service:
             logger.error("❌ Error storing races: %s", exc)
             return False
 
-    async def store_race_results(self, race_id: str, results: List[Dict]) -> bool:
+    async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
+        """`session_type` is 'race' or 'sprint' — a sprint's results share the
+        race_id but never collide with the main race's since the primary key
+        includes session_type."""
         if not results or not self.pool:
             return True
         try:
             async with self.pool.acquire() as conn:
                 await conn.executemany(
                     """INSERT INTO race_results
-                           (race_id, position, driver_id, constructor_id, grid, points,
-                            time, fastest_lap, fastest_lap_time, status)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                       ON CONFLICT (race_id, position) DO UPDATE SET
+                           (race_id, session_type, position, driver_id, constructor_id, grid, points,
+                            time, fastest_lap, fastest_lap_time, status, laps_completed)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                       ON CONFLICT (race_id, session_type, position) DO UPDATE SET
                            driver_id        = EXCLUDED.driver_id,
                            constructor_id   = EXCLUDED.constructor_id,
                            grid             = EXCLUDED.grid,
@@ -278,16 +316,64 @@ class SupabaseF1Service:
                            time             = EXCLUDED.time,
                            fastest_lap      = EXCLUDED.fastest_lap,
                            fastest_lap_time = EXCLUDED.fastest_lap_time,
-                           status           = EXCLUDED.status""",
-                    [(race_id, r["position"], r["driver_id"], r.get("constructor_id"),
+                           status           = EXCLUDED.status,
+                           laps_completed   = EXCLUDED.laps_completed""",
+                    [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),
                       r.get("grid"), r.get("points"), r.get("time"), r.get("fastest_lap"),
-                      r.get("fastest_lap_time"), r.get("status"))
+                      r.get("fastest_lap_time"), r.get("status"), r.get("laps_completed"))
                      for r in results],
                 )
-            logger.info("✅ Stored %d race results for %s", len(results), race_id)
+            logger.info("✅ Stored %d %s results for %s", len(results), session_type, race_id)
             return True
         except Exception as exc:
             logger.error("❌ Error storing race results: %s", exc)
+            return False
+
+    async def get_prediction_cache(self, circuit_name: str, session_type: str) -> Optional[Dict]:
+        """Fetch a cached prediction result, if one exists for this circuit/session."""
+        rows = await self._run_query(
+            "SELECT model_trained_at, result_json FROM prediction_cache "
+            "WHERE circuit_name = $1 AND session_type = $2",
+            (circuit_name, session_type),
+        )
+        if not rows:
+            return None
+        result_json = rows[0]["result_json"]
+        result = json.loads(result_json) if isinstance(result_json, str) else result_json
+        return {"model_trained_at": rows[0]["model_trained_at"], "result": result}
+
+    async def set_prediction_cache(self, circuit_name: str, session_type: str,
+                                    model_trained_at: str, result: Dict) -> bool:
+        """Cache a computed prediction result for a circuit/session."""
+        if not self.pool:
+            return True
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute(
+                    """INSERT INTO prediction_cache (circuit_name, session_type, model_trained_at, result_json)
+                       VALUES ($1, $2, $3, $4::jsonb)
+                       ON CONFLICT (circuit_name, session_type) DO UPDATE SET
+                           model_trained_at = EXCLUDED.model_trained_at,
+                           result_json      = EXCLUDED.result_json,
+                           created_at       = CURRENT_TIMESTAMP""",
+                    circuit_name, session_type, model_trained_at, json.dumps(result),
+                )
+            return True
+        except Exception as exc:
+            logger.error("❌ Error writing prediction cache: %s", exc)
+            return False
+
+    async def clear_prediction_cache(self) -> bool:
+        """Drop all cached predictions — called after a retrain since old
+        cached output no longer reflects the current model."""
+        if not self.pool:
+            return True
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("DELETE FROM prediction_cache")
+            return True
+        except Exception as exc:
+            logger.error("❌ Error clearing prediction cache: %s", exc)
             return False
 
     async def store_laps(self, race_id: str, laps: List[Dict]) -> bool:

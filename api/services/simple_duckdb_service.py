@@ -104,10 +104,13 @@ class SimpleDuckDBService:
                 )
             """)
             
-            # Race results table
+            # Race results table — session_type distinguishes the main race
+            # from a sprint race on the same weekend (same race_id, separate
+            # results), so the primary key includes it.
             self.connection.execute("""
                 CREATE TABLE IF NOT EXISTS race_results (
                     race_id VARCHAR NOT NULL,
+                    session_type VARCHAR NOT NULL DEFAULT 'race',
                     position INTEGER NOT NULL,
                     driver_id VARCHAR,
                     constructor_id VARCHAR,
@@ -117,8 +120,9 @@ class SimpleDuckDBService:
                     fastest_lap BOOLEAN,
                     fastest_lap_time VARCHAR,
                     status VARCHAR,
+                    laps_completed INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY (race_id, position)
+                    PRIMARY KEY (race_id, session_type, position)
                 )
             """)
 
@@ -140,6 +144,20 @@ class SimpleDuckDBService:
                 )
             """)
 
+            # Prediction cache table — first live prediction for a circuit is
+            # computed from the model, then cached here keyed to the model
+            # that produced it so a retrain naturally invalidates old rows.
+            self.connection.execute("""
+                CREATE TABLE IF NOT EXISTS prediction_cache (
+                    circuit_name VARCHAR NOT NULL,
+                    session_type VARCHAR NOT NULL,
+                    model_trained_at VARCHAR,
+                    result_json VARCHAR NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (circuit_name, session_type)
+                )
+            """)
+
             # Migrate: add grid column if missing (added in Phase 5)
             existing = [
                 r[0] for r in self.connection.execute(
@@ -149,6 +167,51 @@ class SimpleDuckDBService:
             if "grid" not in existing:
                 self.connection.execute("ALTER TABLE race_results ADD COLUMN grid INTEGER")
                 logger.info("✅ Migrated race_results: added grid column")
+
+            # Migrate: add session_type + widen the primary key to include it,
+            # so a sprint race's results (same race_id) don't collide with the
+            # main race's. DuckDB can't ALTER a primary key in place, so the
+            # table is rebuilt with existing rows tagged as 'race'.
+            if "session_type" not in existing:
+                self.connection.execute("ALTER TABLE race_results ADD COLUMN session_type VARCHAR DEFAULT 'race'")
+                self.connection.execute("UPDATE race_results SET session_type = 'race' WHERE session_type IS NULL")
+                self.connection.execute("""
+                    CREATE TABLE race_results_new (
+                        race_id VARCHAR NOT NULL,
+                        session_type VARCHAR NOT NULL DEFAULT 'race',
+                        position INTEGER NOT NULL,
+                        driver_id VARCHAR,
+                        constructor_id VARCHAR,
+                        grid INTEGER,
+                        points FLOAT,
+                        time VARCHAR,
+                        fastest_lap BOOLEAN,
+                        fastest_lap_time VARCHAR,
+                        status VARCHAR,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (race_id, session_type, position)
+                    )
+                """)
+                self.connection.execute("""
+                    INSERT INTO race_results_new
+                    SELECT race_id, session_type, position, driver_id, constructor_id, grid,
+                           points, time, fastest_lap, fastest_lap_time, status, created_at
+                    FROM race_results
+                """)
+                self.connection.execute("DROP TABLE race_results")
+                self.connection.execute("ALTER TABLE race_results_new RENAME TO race_results")
+                logger.info("✅ Migrated race_results: added session_type, widened primary key")
+
+            # Migrate: add laps_completed if missing (re-check columns — the
+            # session_type migration above may have just rebuilt the table)
+            existing = [
+                r[0] for r in self.connection.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name='race_results'"
+                ).fetchall()
+            ]
+            if "laps_completed" not in existing:
+                self.connection.execute("ALTER TABLE race_results ADD COLUMN laps_completed INTEGER")
+                logger.info("✅ Migrated race_results: added laps_completed column")
 
             logger.info("✅ DuckDB tables created successfully")
 
@@ -261,25 +324,27 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error fetching races by year: {str(e)}")
             return []
     
-    async def get_race_results(self, race_id: str) -> List[Dict]:
-        """Get race results for a specific race"""
+    async def get_race_results(self, race_id: str, session_type: str = "race") -> List[Dict]:
+        """Get race results for a specific race (main race by default; pass
+        session_type='sprint' for that weekend's sprint results)."""
         try:
             if self.connection:
                 query = """
                     SELECT rr.position, rr.driver_id, d.full_name as driver_name,
                            d.number as driver_number, d.nationality as country_code,
                            rr.constructor_id, c.constructor_name,
-                           rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+                           rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status,
+                           rr.laps_completed
                     FROM race_results rr
                     LEFT JOIN drivers d ON rr.driver_id = d.driver_id
                     LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
-                    WHERE rr.race_id = ?
+                    WHERE rr.race_id = ? AND rr.session_type = ?
                     ORDER BY rr.position
                 """
-                return await self._run_query(query, (race_id,))
+                return await self._run_query(query, (race_id, session_type))
             else:
                 # Fallback to in-memory data
-                return self.in_memory_data["race_results"].get(race_id, [])
+                return self.in_memory_data["race_results"].get(f"{race_id}:{session_type}", [])
                 
         except Exception as e:
             logger.error(f"❌ Error fetching race results: {str(e)}")
@@ -383,8 +448,10 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error storing races: {str(e)}")
             return False
     
-    async def store_race_results(self, race_id: str, results: List[Dict]) -> bool:
-        """Store race results in DuckDB or memory"""
+    async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
+        """Store race results in DuckDB or memory. `session_type` is 'race' or
+        'sprint' — a sprint's results share the race_id but never collide
+        with the main race's since the primary key includes session_type."""
         try:
             if not results:
                 return True
@@ -392,22 +459,66 @@ class SimpleDuckDBService:
             if self.connection:
                 self.connection.executemany(
                     """INSERT OR REPLACE INTO race_results
-                       (race_id, position, driver_id, constructor_id, grid, points, time, fastest_lap, fastest_lap_time, status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    [(race_id, r["position"], r["driver_id"], r.get("constructor_id"),
+                       (race_id, session_type, position, driver_id, constructor_id, grid, points, time, fastest_lap, fastest_lap_time, status, laps_completed)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),
                       r.get("grid"), r.get("points"), r.get("time"), r.get("fastest_lap"),
-                      r.get("fastest_lap_time"), r.get("status")) for r in results],
+                      r.get("fastest_lap_time"), r.get("status"), r.get("laps_completed")) for r in results],
                 )
             else:
-                self.in_memory_data["race_results"][race_id] = results
+                self.in_memory_data["race_results"][f"{race_id}:{session_type}"] = results
 
-            logger.info(f"✅ Stored {len(results)} race results for {race_id}")
+            logger.info(f"✅ Stored {len(results)} {session_type} results for {race_id}")
             return True
 
         except Exception as e:
             logger.error(f"❌ Error storing race results: {str(e)}")
             return False
     
+    async def get_prediction_cache(self, circuit_name: str, session_type: str) -> Optional[Dict]:
+        """Fetch a cached prediction result, if one exists for this circuit/session."""
+        try:
+            if not self.connection:
+                return None
+            rows = await self._run_query(
+                "SELECT model_trained_at, result_json FROM prediction_cache "
+                "WHERE circuit_name = ? AND session_type = ?",
+                (circuit_name, session_type),
+            )
+            if not rows:
+                return None
+            return {"model_trained_at": rows[0]["model_trained_at"], "result": json.loads(rows[0]["result_json"])}
+        except Exception as e:
+            logger.error(f"❌ Error reading prediction cache: {str(e)}")
+            return None
+
+    async def set_prediction_cache(self, circuit_name: str, session_type: str,
+                                    model_trained_at: str, result: Dict) -> bool:
+        """Cache a computed prediction result for a circuit/session."""
+        try:
+            if not self.connection:
+                return True
+            self.connection.execute(
+                "INSERT OR REPLACE INTO prediction_cache "
+                "(circuit_name, session_type, model_trained_at, result_json) VALUES (?, ?, ?, ?)",
+                (circuit_name, session_type, model_trained_at, json.dumps(result)),
+            )
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error writing prediction cache: {str(e)}")
+            return False
+
+    async def clear_prediction_cache(self) -> bool:
+        """Drop all cached predictions — called after a retrain since old
+        cached output no longer reflects the current model."""
+        try:
+            if self.connection:
+                self.connection.execute("DELETE FROM prediction_cache")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Error clearing prediction cache: {str(e)}")
+            return False
+
     async def store_laps(self, race_id: str, laps: List[Dict]) -> bool:
         """Store lap data in DuckDB or memory"""
         try:

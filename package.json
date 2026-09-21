@@ -39,7 +39,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "backend": "python start_backend.py",
-    "dev": "concurrently \"npm run backend\" \"npm start\""
+    "dev": "concurrently \"npm run backend\" \"npm start\"",
+    "up": "python scripts/health_poller.py"
   },
   "eslintConfig": {
     "extends": [

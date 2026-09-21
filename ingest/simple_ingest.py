@@ -108,6 +108,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
 
                 pos = row.get("Position")
                 grid = row.get("GridPosition")
+                laps_val = row.get("Laps")
                 results.append({
                     "position": int(pos) if pd.notna(pos) else 99,
                     "driver_id": driver_id,
@@ -118,6 +119,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
                     "fastest_lap": bool(row.get("FastestLap", False)),
                     "fastest_lap_time": str(row.get("FastestLapTime", "")),
                     "status": str(row.get("Status", "")),
+                    "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
                 })
 
             await db.store_race_results(race_id, results)
@@ -147,6 +149,51 @@ async def ingest_year(year: int, db, include_laps: bool = False):
         except Exception as e:
             logger.warning("  Skipping %s: %s", race_id, e)
             continue
+
+        # --- Sprint results (most weekends don't have one — that's expected) ---
+        try:
+            def _load_sprint(yr, rnd):
+                s = fastf1.get_session(yr, rnd, "S")
+                s.load(laps=False, telemetry=False, weather=False, messages=False)
+                return s
+
+            sprint_session = await loop.run_in_executor(None, _load_sprint, year, round_n)
+
+            if sprint_session.results is not None and not sprint_session.results.empty:
+                sprint_results = []
+                for _, row in sprint_session.results.iterrows():
+                    driver_id      = str(row.get("Abbreviation", "")).lower()
+                    constructor_id = str(row.get("TeamId", row.get("TeamName", ""))).lower().replace(" ", "_")
+                    drivers_seen.setdefault(driver_id, {
+                        "driver_id": driver_id,
+                        "full_name": f"{row.get('FirstName', '')} {row.get('LastName', '')}".strip(),
+                        "nationality": str(row.get("CountryCode", "")),
+                        "number": int(row.get("DriverNumber", 0)) if pd.notna(row.get("DriverNumber")) else 0,
+                    })
+                    constructors_seen.setdefault(constructor_id, {
+                        "constructor_id": constructor_id,
+                        "constructor_name": str(row.get("TeamName", "")),
+                        "nationality": "",
+                    })
+                    pos = row.get("Position")
+                    grid = row.get("GridPosition")
+                    laps_val = row.get("Laps")
+                    sprint_results.append({
+                        "position": int(pos) if pd.notna(pos) else 99,
+                        "driver_id": driver_id,
+                        "constructor_id": constructor_id,
+                        "grid": int(grid) if pd.notna(grid) else None,
+                        "points": float(row.get("Points", 0)),
+                        "time": str(row.get("Time", "")),
+                        "fastest_lap": bool(row.get("FastestLap", False)),
+                        "fastest_lap_time": str(row.get("FastestLapTime", "")),
+                        "status": str(row.get("Status", "")),
+                        "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
+                    })
+                await db.store_race_results(race_id, sprint_results, session_type="sprint")
+                logger.info("  Stored %d sprint results for %s", len(sprint_results), race_id)
+        except Exception as e:
+            logger.debug("  No sprint for %s: %s", race_id, e)
 
     # --- Drivers & Constructors ---
     if drivers_seen:

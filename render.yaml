@@ -23,6 +23,13 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      # Lets the API wake a paused Supabase project itself when someone opens the
+      # site (free projects pause after a week idle). Create one in the Supabase
+      # dashboard: Account -> Access Tokens. Optional SUPABASE_PROJECT_REF is
+      # otherwise parsed from DATABASE_URL. Without it the API still retries the
+      # connection, but a paused project has to be restored by hand.
+      - key: SUPABASE_ACCESS_TOKEN
+        sync: false
       # Set to your Render static site URL once deployed
       # e.g. https://shif1-up-frontend.onrender.com
       - key: CORS_ORIGINS
