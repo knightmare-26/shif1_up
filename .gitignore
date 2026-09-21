@@ -50,3 +50,6 @@ CLAUDE.local.md
 # FastF1 HTTP cache
 api/data/fastf1_cache/
 *.sqlite
+
+# Health poller child-process logs
+logs/
