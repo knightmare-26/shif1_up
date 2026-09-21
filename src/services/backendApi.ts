@@ -451,7 +451,9 @@ class BackendApiService {
   // Prediction endpoints
   // ---------------------------------------------------------------------------
 
-  async getPredictionStatus(): Promise<any> {
+  /** `force` skips the short cache — needed right after a prediction, which is what trains a cold instance's models. */
+  async getPredictionStatus(force = false): Promise<any> {
+    if (force) this.cache.delete(this.getCacheKey('/predict/status', {}));
     return this.getCachedOrFetch('/predict/status', {}, 10);
   }
 
