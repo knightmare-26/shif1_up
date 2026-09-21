@@ -18,7 +18,9 @@ load_dotenv()
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -32,6 +34,8 @@ from services.mock_redis_service import MockRedisService
 from services.fastf1_service import FastF1Service
 from services.ergast_service import ErgastService
 from services.cache_service import CacheService
+from services.db_guardian import DatabaseGuardian
+from services.redact import redact_url
 from services.auth_service import (
     hash_password, verify_password, create_access_token, decode_token, new_user_id
 )
@@ -91,6 +95,7 @@ postgres_service = None
 fastf1_service = None
 ergast_service = None
 cache_service = None
+database_guardian: Optional[DatabaseGuardian] = None
 MODEL_DIR = os.getenv("MODEL_DIR", "data/models")
 prediction_service = PredictionService(model_dir=MODEL_DIR)
 
@@ -100,7 +105,7 @@ async def _init_redis() -> Any:
     try:
         svc = RedisService(REDIS_URL)
         await svc.initialize()
-        logger.info("✅ Redis connected (%s)", REDIS_URL)
+        logger.info("✅ Redis connected (%s)", redact_url(REDIS_URL))
         return svc
     except Exception as exc:
         logger.warning("⚠️  Redis unavailable (%s) — using in-memory mock", exc)
@@ -110,36 +115,79 @@ async def _init_redis() -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Supabase connection lifecycle (owned by DatabaseGuardian — see db_guardian.py)
+# ---------------------------------------------------------------------------
+async def _connect_database() -> None:
+    """Open the Supabase pools for auth and F1 data. Raises if either can't
+    connect, leaving nothing half-open (also on cancellation, e.g. a timeout)."""
+    global duckdb_service, postgres_service
+    users = PostgresService(DATABASE_URL)
+    f1 = SupabaseF1Service(DATABASE_URL)
+    try:
+        await users.initialize()
+        await f1.initialize()
+    except BaseException:
+        for svc in (f1, users):
+            try:
+                await svc.cleanup()
+            except Exception:
+                pass
+        raise
+    postgres_service, duckdb_service = users, f1
+    logger.info("✅ Using Supabase for auth and F1 historical data")
+
+
+async def _disconnect_database() -> None:
+    global duckdb_service, postgres_service
+    old = (duckdb_service, postgres_service)
+    duckdb_service = postgres_service = None
+    for svc in old:
+        if svc:
+            try:
+                await svc.cleanup()
+            except Exception:
+                logger.exception("error closing database pool")
+
+
+async def _ping_database() -> bool:
+    pool = getattr(duckdb_service, "pool", None)
+    if pool is None:
+        return False
+    try:
+        async with pool.acquire(timeout=10) as conn:
+            return await conn.fetchval("SELECT 1", timeout=10) == 1
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global redis_service, duckdb_service, postgres_service, fastf1_service, ergast_service, cache_service
+    global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
 
     logger.info("🚀 Starting Shif1 UP API...")
 
     redis_service = await _init_redis()
 
     if DATABASE_URL:
-        try:
-            postgres_service = PostgresService(DATABASE_URL)
-            await postgres_service.initialize()
-            logger.info("✅ Postgres connected")
-        except Exception as exc:
-            logger.warning("⚠️  Postgres unavailable (%s) — auth endpoints disabled", exc)
-            postgres_service = None
+        # The API must come up even if the database is paused, so it can answer
+        # /health and tell the frontend what's going on. The guardian makes the
+        # first attempt now (bounded), then keeps retrying — and wakes a paused
+        # Supabase project if SUPABASE_ACCESS_TOKEN is set.
+        database_guardian = DatabaseGuardian(
+            connect=_connect_database,
+            disconnect=_disconnect_database,
+            ping=_ping_database,
+            database_url=DATABASE_URL,
+            access_token=os.getenv("SUPABASE_ACCESS_TOKEN"),
+            project_ref=os.getenv("SUPABASE_PROJECT_REF"),
+            api_url=os.getenv("SUPABASE_API_URL", "https://api.supabase.com"),
+        )
+        await database_guardian.start()
     else:
-        logger.info("ℹ️  No DATABASE_URL — skipping Postgres")
-
-    if DATABASE_URL:
-        try:
-            duckdb_service = SupabaseF1Service(DATABASE_URL)
-            await duckdb_service.initialize()
-            logger.info("✅ Using Supabase for F1 historical data")
-        except Exception as exc:
-            logger.error("❌ Supabase F1 connection failed: %s", exc)
-            duckdb_service = None
-    else:
+        logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
         await duckdb_service.initialize()
 
@@ -148,7 +196,8 @@ async def lifespan(app: FastAPI):
     cache_service = CacheService()
     await cache_service.initialize()
 
-    await _load_sample_data()
+    if not DATABASE_URL:
+        await _load_sample_data()
 
     # Load pre-trained ML models from disk (avoids cold retrain on every restart)
     if prediction_service.load_from_disk():
@@ -160,6 +209,8 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
+    if database_guardian:
+        await database_guardian.stop()
     if redis_service:
         await redis_service.cleanup()
     if postgres_service:
@@ -188,6 +239,33 @@ RATE_LIMIT_AUTH = os.getenv("RATE_LIMIT_AUTH", "10/minute")
 limiter = Limiter(key_func=get_remote_address, default_limits=[RATE_LIMIT])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Endpoints that read from the Supabase database. While the guardian is
+# (re)connecting they answer 503 "database_waking" — quickly, and with a message
+# the frontend can show — instead of failing with an opaque 500.
+DB_BACKED_PREFIXES = (
+    "/race/", "/admin/", "/auth/",
+    "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
+)
+
+
+async def _database_gate(request: Request, call_next):
+    guardian = database_guardian
+    if guardian and not guardian.ready and request.url.path.startswith(DB_BACKED_PREFIXES):
+        guardian.nudge()
+        snapshot = guardian.snapshot()
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "database_waking", **snapshot},
+            headers={"Retry-After": "15"},
+        )
+    return await call_next(request)
+
+
+# Registered before CORSMiddleware on purpose: middleware added later wraps
+# earlier ones, so CORS headers end up on the 503s too (otherwise the browser
+# reports an opaque network error instead of a readable response).
+app.add_middleware(BaseHTTPMiddleware, dispatch=_database_gate)
 
 app.add_middleware(
     CORSMiddleware,
@@ -386,6 +464,11 @@ async def _probe_duckdb() -> Dict[str, Any]:
 
 @app.get("/health")
 async def health_check():
+    guardian = database_guardian
+    if guardian:
+        # A visit while the database is down is a reason to retry right now, and
+        # (when connected) the probe below is activity for Supabase's idle timer.
+        guardian.nudge()
     redis_check = await _probe_redis()
     duckdb_check = await _probe_duckdb()
 
@@ -409,6 +492,10 @@ async def health_check():
             "duckdb": duckdb_check,
         },
     }
+    if guardian:
+        # Present only when running against Supabase. `state` drives the frontend's
+        # "waking up" banner; `self_healing` tells supervisors not to restart us.
+        body["checks"]["database"] = {**guardian.snapshot(), "self_healing": True}
     if overall == "error":
         raise HTTPException(status_code=503, detail=body)
     return body

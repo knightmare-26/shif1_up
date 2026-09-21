@@ -9,6 +9,8 @@ import logging
 from typing import Dict, Any, List, Optional, AsyncGenerator
 from datetime import datetime, timedelta
 
+from services.redact import redact_url
+
 logger = logging.getLogger(__name__)
 
 class RedisService:
@@ -27,7 +29,7 @@ class RedisService:
             # Test connection
             await self.redis_client.ping()
             
-            logger.info(f"✅ Redis connected at {self.redis_url}")
+            logger.info(f"✅ Redis connected at {redact_url(self.redis_url)}")
             
         except Exception as e:
             logger.error(f"❌ Error connecting to Redis: {str(e)}")
