@@ -108,6 +108,7 @@
 - [ ] Live page shows "no data" until the next session (Azerbaijan, 2026-09-26) — expected; real-session smoke test still open (Phase 4)
 
 ### Deployment (Render + Supabase + Upstash) — verify after the first deploy
+- [ ] **Live check 2026-09-21:** after the first deploy the API's guardian reported `unavailable` (not `waking`) while the project was paused, i.e. it wasn't restoring — most likely no/invalid `SUPABASE_ACCESS_TOKEN` on the Render API service. After redeploying, open `https://shif1-up.onrender.com/health` and read `checks.database` (`can_restore`, `project_status`) to confirm
 - [ ] **Set `SUPABASE_ACCESS_TOKEN` in the Render dashboard** (Supabase → Account → Access Tokens). Without it a paused project can't be woken automatically — the API just keeps retrying and the site shows "waking up the database" until someone restores it by hand
 - [ ] Confirm `REACT_APP_API_URL` is set on the static site (it is baked in at build time) and `CORS_ORIGINS` on the API includes the frontend URL
 - [ ] Not tested here: the real Supabase Management API restore call (only against a fake, though the endpoint/statuses match Supabase's published OpenAPI spec), the Docker image build (Docker Desktop wasn't running; dependency pins match the tested environment), and Render's actual cold start. After deploying, pause the project from the Supabase dashboard, open the site, and watch it recover
