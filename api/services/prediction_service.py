@@ -8,6 +8,7 @@ F1 Race & Qualifying Prediction Service
 
 import json
 import logging
+import asyncio
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -58,8 +59,19 @@ SPRINT_FEATURES_NO_GRID = [
 
 
 class PredictionService:
+    # Everything a training run produces. Fitting happens on a private copy holding these
+    # and the result is swapped in all at once, so requests never see half-updated models.
+    _FITTED = (
+        "_race_model", "_quali_model", "_sprint_model", "_race_features", "_sprint_features",
+        "_df", "_driver_map", "_constructor_map", "_le_driver", "_le_constructor", "_le_circuit",
+        "_trained", "_grid_available", "_meta",
+    )
+
     def __init__(self, model_dir: str = "data/models"):
         self._model_dir = model_dir
+        # One training at a time: the Predictions page asks for qualifying, race and sprint
+        # predictions in parallel, and each used to start its own training on a cold server.
+        self._train_lock = asyncio.Lock()
         self._race_model = None
         self._quali_model = None
         self._sprint_model = None
@@ -246,6 +258,11 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     async def train(self, duckdb_service) -> Dict[str, Any]:
+        """Train (or retrain) the models. Serialised: a second caller waits for the first."""
+        async with self._train_lock:
+            return await self._train_locked(duckdb_service)
+
+    async def _train_locked(self, duckdb_service) -> Dict[str, Any]:
         try:
             import xgboost as xgb
             import lightgbm as lgb
@@ -257,114 +274,12 @@ class PredictionService:
             if raw.empty or len(raw) < 20:
                 return {"success": False, "error": f"Insufficient data ({len(raw)} rows). Run ingest first."}
 
-            years_in_data = sorted(raw["year"].unique().tolist())
-            self._driver_map      = raw.drop_duplicates("driver_id").set_index("driver_id")["driver_name"].to_dict()
-            self._constructor_map = (raw.dropna(subset=["constructor_id"])
-                                        .drop_duplicates("constructor_id")
-                                        .set_index("constructor_id")["constructor_name"].to_dict())
-
-            # Sprint rows are pulled out before feature engineering — rolling
-            # form / circuit averages are computed from race results only, so
-            # a sprint (shorter, different dynamics) never pollutes them.
-            raw_race   = raw[raw["session_type"] == "race"].copy()
-            raw_sprint = (raw[raw["session_type"] == "sprint"]
-                          [["race_id", "driver_id", "position", "grid"]]
-                          .rename(columns={"position": "sprint_position", "grid": "sprint_grid"}))
-
-            df = self._engineer(raw_race)
-            self._le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
-            self._le_constructor = sorted(df["constructor_id"].fillna("unknown").unique().tolist())
-            self._le_circuit     = sorted(df["circuit_name"].fillna("unknown").unique().tolist())
-            df = self._encode(df)
-
-            # Attach each weekend's sprint result (if any) onto that weekend's
-            # already-engineered race-form row — same driver/constructor state
-            # going into the weekend, just a different target to predict.
-            if not raw_sprint.empty:
-                df = df.merge(raw_sprint, on=["race_id", "driver_id"], how="left")
-            else:
-                df["sprint_position"] = np.nan
-                df["sprint_grid"] = np.nan
-
-            self._df = df
-
-            result: Dict[str, Any] = {
-                "rows": len(df),
-                "years": years_in_data,
-                "decay_factor": TIME_DECAY,
-            }
-
-            # ---- Race model (LightGBM) ----
-            grid_coverage = df["grid"].notna().mean()
-            self._grid_available  = bool(grid_coverage > 0.5)
-            self._race_features   = RACE_FEATURES_FULL if self._grid_available else RACE_FEATURES_NO_GRID
-            result["grid_coverage"] = f"{grid_coverage:.0%}"
-
-            race_df = df.dropna(subset=self._race_features + ["position"])
-            if len(race_df) >= 20:
-                X_r = race_df[self._race_features].astype(float)
-                y_r = race_df["position"].astype(float).values
-                w_r = self._time_weights(race_df).astype(np.float64)
-                self._race_model = lgb.LGBMRegressor(
-                    n_estimators=300, learning_rate=0.05, max_depth=6,
-                    num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
-                )
-                self._race_model.fit(X_r, y_r, sample_weight=w_r)
-                result["race_training_rows"] = len(race_df)
-            else:
-                result["race_model"] = "skipped — not enough complete rows"
-
-            # ---- Qualifying model (XGBoost) ----
-            quali_df = df.dropna(subset=QUALI_FEATURES + ["grid"])
-            if len(quali_df) >= 20:
-                X_q = quali_df[QUALI_FEATURES].astype(float)
-                y_q = quali_df["grid"].astype(float).values
-                w_q = self._time_weights(quali_df).astype(np.float64)
-                self._quali_model = xgb.XGBRegressor(
-                    n_estimators=300, learning_rate=0.05, max_depth=6,
-                    random_state=42, verbosity=0,
-                )
-                self._quali_model.fit(X_q, y_q, sample_weight=w_q)
-                result["quali_training_rows"] = len(quali_df)
-            else:
-                result["quali_model"] = "skipped — grid column is NULL. Re-ingest data to populate grid positions."
-
-            # ---- Sprint model (LightGBM) ----
-            # Sprints are much rarer than full races (roughly half a dozen a
-            # season, only since 2021), so this trains on far fewer rows than
-            # the race model — expect lower confidence until more are ingested.
-            sprint_grid_coverage = df["sprint_grid"].notna().mean() if df["sprint_position"].notna().any() else 0.0
-            sprint_grid_available = bool(sprint_grid_coverage > 0.5)
-            self._sprint_features = SPRINT_FEATURES_FULL if sprint_grid_available else SPRINT_FEATURES_NO_GRID
-            result["sprint_grid_coverage"] = f"{sprint_grid_coverage:.0%}"
-
-            sprint_df = df.dropna(subset=self._sprint_features + ["sprint_position"])
-            if len(sprint_df) >= 20:
-                X_s = sprint_df[self._sprint_features].astype(float)
-                y_s = sprint_df["sprint_position"].astype(float).values
-                w_s = self._time_weights(sprint_df).astype(np.float64)
-                self._sprint_model = lgb.LGBMRegressor(
-                    n_estimators=300, learning_rate=0.05, max_depth=6,
-                    num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
-                )
-                self._sprint_model.fit(X_s, y_s, sample_weight=w_s)
-                result["sprint_training_rows"] = len(sprint_df)
-            else:
-                result["sprint_model"] = f"skipped — only {len(sprint_df)} historical sprint rows (need 20+). Ingest more sprint weekends."
-
-            self._trained = True
-            self._meta = {
-                "trained_at": datetime.utcnow().isoformat(),
-                "rows": len(df),
-                "years": years_in_data,
-                "decay_factor": TIME_DECAY,
-                "grid_coverage": result["grid_coverage"],
-                "race_model_ready": self._race_model is not None,
-                "quali_model_ready": self._quali_model is not None,
-                "sprint_model_ready": self._sprint_model is not None,
-            }
-
-            self._save_to_disk()
+            # Fitting is CPU-bound and used to run right on the event loop, stalling every
+            # request (including /health) for its whole duration. Run it in a worker thread,
+            # on a private copy of the state, and swap the result in when it's done.
+            scratch = self._scratch_copy()
+            result = await asyncio.to_thread(scratch._fit, raw, xgb, lgb)
+            self._adopt(scratch)
             await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
             return {"success": True, **result}
@@ -372,6 +287,128 @@ class PredictionService:
         except Exception as exc:
             logger.error("Training failed: %s", exc, exc_info=True)
             return {"success": False, "error": str(exc)}
+
+    def _scratch_copy(self) -> "PredictionService":
+        scratch = PredictionService(self._model_dir)
+        for name in self._FITTED:
+            setattr(scratch, name, getattr(self, name))
+        return scratch
+
+    def _adopt(self, scratch: "PredictionService") -> None:
+        for name in self._FITTED:
+            setattr(self, name, getattr(scratch, name))
+
+    def _fit(self, raw: pd.DataFrame, xgb, lgb) -> Dict[str, Any]:
+        """The CPU-bound part of training. Runs in a worker thread on a scratch copy."""
+        years_in_data = sorted(raw["year"].unique().tolist())
+        self._driver_map      = raw.drop_duplicates("driver_id").set_index("driver_id")["driver_name"].to_dict()
+        self._constructor_map = (raw.dropna(subset=["constructor_id"])
+                                    .drop_duplicates("constructor_id")
+                                    .set_index("constructor_id")["constructor_name"].to_dict())
+
+        # Sprint rows are pulled out before feature engineering — rolling
+        # form / circuit averages are computed from race results only, so
+        # a sprint (shorter, different dynamics) never pollutes them.
+        raw_race   = raw[raw["session_type"] == "race"].copy()
+        raw_sprint = (raw[raw["session_type"] == "sprint"]
+                      [["race_id", "driver_id", "position", "grid"]]
+                      .rename(columns={"position": "sprint_position", "grid": "sprint_grid"}))
+
+        df = self._engineer(raw_race)
+        self._le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
+        self._le_constructor = sorted(df["constructor_id"].fillna("unknown").unique().tolist())
+        self._le_circuit     = sorted(df["circuit_name"].fillna("unknown").unique().tolist())
+        df = self._encode(df)
+
+        # Attach each weekend's sprint result (if any) onto that weekend's
+        # already-engineered race-form row — same driver/constructor state
+        # going into the weekend, just a different target to predict.
+        if not raw_sprint.empty:
+            df = df.merge(raw_sprint, on=["race_id", "driver_id"], how="left")
+        else:
+            df["sprint_position"] = np.nan
+            df["sprint_grid"] = np.nan
+
+        self._df = df
+
+        result: Dict[str, Any] = {
+            "rows": len(df),
+            "years": years_in_data,
+            "decay_factor": TIME_DECAY,
+        }
+
+        # ---- Race model (LightGBM) ----
+        grid_coverage = df["grid"].notna().mean()
+        self._grid_available  = bool(grid_coverage > 0.5)
+        self._race_features   = RACE_FEATURES_FULL if self._grid_available else RACE_FEATURES_NO_GRID
+        result["grid_coverage"] = f"{grid_coverage:.0%}"
+
+        race_df = df.dropna(subset=self._race_features + ["position"])
+        if len(race_df) >= 20:
+            X_r = race_df[self._race_features].astype(float)
+            y_r = race_df["position"].astype(float).values
+            w_r = self._time_weights(race_df).astype(np.float64)
+            self._race_model = lgb.LGBMRegressor(
+                n_estimators=300, learning_rate=0.05, max_depth=6,
+                num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
+            )
+            self._race_model.fit(X_r, y_r, sample_weight=w_r)
+            result["race_training_rows"] = len(race_df)
+        else:
+            result["race_model"] = "skipped — not enough complete rows"
+
+        # ---- Qualifying model (XGBoost) ----
+        quali_df = df.dropna(subset=QUALI_FEATURES + ["grid"])
+        if len(quali_df) >= 20:
+            X_q = quali_df[QUALI_FEATURES].astype(float)
+            y_q = quali_df["grid"].astype(float).values
+            w_q = self._time_weights(quali_df).astype(np.float64)
+            self._quali_model = xgb.XGBRegressor(
+                n_estimators=300, learning_rate=0.05, max_depth=6,
+                random_state=42, verbosity=0,
+            )
+            self._quali_model.fit(X_q, y_q, sample_weight=w_q)
+            result["quali_training_rows"] = len(quali_df)
+        else:
+            result["quali_model"] = "skipped — grid column is NULL. Re-ingest data to populate grid positions."
+
+        # ---- Sprint model (LightGBM) ----
+        # Sprints are much rarer than full races (roughly half a dozen a
+        # season, only since 2021), so this trains on far fewer rows than
+        # the race model — expect lower confidence until more are ingested.
+        sprint_grid_coverage = df["sprint_grid"].notna().mean() if df["sprint_position"].notna().any() else 0.0
+        sprint_grid_available = bool(sprint_grid_coverage > 0.5)
+        self._sprint_features = SPRINT_FEATURES_FULL if sprint_grid_available else SPRINT_FEATURES_NO_GRID
+        result["sprint_grid_coverage"] = f"{sprint_grid_coverage:.0%}"
+
+        sprint_df = df.dropna(subset=self._sprint_features + ["sprint_position"])
+        if len(sprint_df) >= 20:
+            X_s = sprint_df[self._sprint_features].astype(float)
+            y_s = sprint_df["sprint_position"].astype(float).values
+            w_s = self._time_weights(sprint_df).astype(np.float64)
+            self._sprint_model = lgb.LGBMRegressor(
+                n_estimators=300, learning_rate=0.05, max_depth=6,
+                num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
+            )
+            self._sprint_model.fit(X_s, y_s, sample_weight=w_s)
+            result["sprint_training_rows"] = len(sprint_df)
+        else:
+            result["sprint_model"] = f"skipped — only {len(sprint_df)} historical sprint rows (need 20+). Ingest more sprint weekends."
+
+        self._trained = True
+        self._meta = {
+            "trained_at": datetime.utcnow().isoformat(),
+            "rows": len(df),
+            "years": years_in_data,
+            "decay_factor": TIME_DECAY,
+            "grid_coverage": result["grid_coverage"],
+            "race_model_ready": self._race_model is not None,
+            "quali_model_ready": self._quali_model is not None,
+            "sprint_model_ready": self._sprint_model is not None,
+        }
+
+        self._save_to_disk()
+        return result
 
     # ------------------------------------------------------------------
     # Feature rows for a future race at a given circuit
@@ -416,9 +453,15 @@ class PredictionService:
 
     async def _ensure_trained(self, duckdb_service):
         # Also retrain if df is missing (e.g. loaded from disk but df not persisted)
-        if not self._trained or self._df is None:
+        if self._trained and self._df is not None:
+            return
+        # Single-flight: concurrent callers (three predictions in parallel, or the startup
+        # warm-up) wait here for the one training instead of each starting their own.
+        async with self._train_lock:
+            if self._trained and self._df is not None:
+                return  # someone finished while we waited
             if not self.load_from_disk() or self._df is None:
-                await self.train(duckdb_service)
+                await self._train_locked(duckdb_service)
 
     async def predict_qualifying(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
@@ -662,6 +705,7 @@ class PredictionService:
             sprint_rows = int(self._df["sprint_position"].notna().sum())
         return {
             "trained":             bool(self._trained),
+            "training":            self._train_lock.locked(),
             "race_model_ready":    bool(self._race_model is not None),
             "quali_model_ready":   bool(self._quali_model is not None),
             "sprint_model_ready":  bool(self._sprint_model is not None),
