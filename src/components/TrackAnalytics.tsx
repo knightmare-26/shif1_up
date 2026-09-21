@@ -1,492 +1,116 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { MapPin, Calendar, Clock, Flag, TrendingUp } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Calendar, Flag, MapPin } from 'lucide-react';
 import { backendApi, RaceEvent } from '../services/backendApi';
+import { getTrackFacts } from '../data/trackFacts';
+import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
+import { isRaceRound } from '../utils/races';
+import {
+  Card, CardHeader, EmptyState, ErrorState, FadeIn, LoadingState, StatCard, TableWrap, Td, Th, Tr,
+} from './ui';
 
-const TrackAnalytics: React.FC<{ year: number }> = ({ year: selectedYear }) => {
-  const [raceSchedule, setRaceSchedule] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+type Status = 'completed' | 'next' | 'upcoming';
+
+const STATUS_STYLES: Record<Status, string> = {
+  completed: 'border-gray-700 text-gray-500',
+  next: 'border-racing-red/50 bg-racing-red/10 text-racing-red',
+  upcoming: 'border-gray-700 text-gray-300',
+};
+const STATUS_LABEL: Record<Status, string> = { completed: 'Completed', next: 'Next', upcoming: 'Upcoming' };
+
+const TrackAnalytics: React.FC<{ year: number }> = ({ year }) => {
+  const [schedule, setSchedule] = useState<RaceEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestId = useRef(0);
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear]);
-
-  const loadData = async () => {
-    setIsLoading(true);
+  const load = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
     setError(null);
-    
     try {
-      const raceEvents = await backendApi.getRaceSchedule(selectedYear);
-
-      const schedule = raceEvents.map(event => ({
-        round: event.round,
-        raceName: event.race_name,
-        circuitName: event.circuit_name,
-        country: event.country,
-        location: event.location,
-        date: event.date,
-        time: event.time,
-        url: event.url
-      }));
-      
-      setRaceSchedule(schedule);
-    } catch (err) {
-      setRaceSchedule(getFallbackRaceSchedule(selectedYear));
+      const data = await backendApi.getRaceSchedule(year);
+      if (id === requestId.current) setSchedule(Array.isArray(data) ? data.filter(isRaceRound) : []);
+    } catch (e) {
+      if (id === requestId.current) setError(e instanceof Error ? e.message : 'The schedule service did not respond.');
     } finally {
-      setIsLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  };
+  }, [year]);
 
-  // Fallback data for when API fails
-  const getFallbackRaceSchedule = (year: number): any[] => {
-    const currentSchedule = [
-      { round: 1, raceName: 'Bahrain Grand Prix', circuitName: 'Bahrain International Circuit', country: 'Bahrain', location: 'Sakhir', date: '2024-03-02', time: '15:00:00Z' },
-      { round: 2, raceName: 'Saudi Arabian Grand Prix', circuitName: 'Jeddah Corniche Circuit', country: 'Saudi Arabia', location: 'Jeddah', date: '2024-03-09', time: '20:00:00Z' },
-      { round: 3, raceName: 'Australian Grand Prix', circuitName: 'Albert Park Circuit', country: 'Australia', location: 'Melbourne', date: '2024-03-24', time: '05:00:00Z' },
-      { round: 4, raceName: 'Japanese Grand Prix', circuitName: 'Suzuka International Racing Course', country: 'Japan', location: 'Suzuka', date: '2024-04-07', time: '06:00:00Z' },
-      { round: 5, raceName: 'Chinese Grand Prix', circuitName: 'Shanghai International Circuit', country: 'China', location: 'Shanghai', date: '2024-04-21', time: '08:00:00Z' },
-      { round: 6, raceName: 'Miami Grand Prix', circuitName: 'Miami International Autodrome', country: 'USA', location: 'Miami', date: '2024-05-05', time: '21:00:00Z' },
-      { round: 7, raceName: 'Emilia Romagna Grand Prix', circuitName: 'Autodromo Enzo e Dino Ferrari', country: 'Italy', location: 'Imola', date: '2024-05-19', time: '15:00:00Z' },
-      { round: 8, raceName: 'Monaco Grand Prix', circuitName: 'Circuit de Monaco', country: 'Monaco', location: 'Monte Carlo', date: '2024-05-26', time: '15:00:00Z' },
-      { round: 9, raceName: 'Canadian Grand Prix', circuitName: 'Circuit Gilles Villeneuve', country: 'Canada', location: 'Montreal', date: '2024-06-09', time: '20:00:00Z' },
-      { round: 10, raceName: 'Spanish Grand Prix', circuitName: 'Circuit de Barcelona-Catalunya', country: 'Spain', location: 'Montmeló', date: '2024-06-23', time: '15:00:00Z' },
-      { round: 11, raceName: 'Austrian Grand Prix', circuitName: 'Red Bull Ring', country: 'Austria', location: 'Spielberg', date: '2024-06-30', time: '15:00:00Z' },
-      { round: 12, raceName: 'British Grand Prix', circuitName: 'Silverstone Circuit', country: 'UK', location: 'Silverstone', date: '2024-07-07', time: '15:00:00Z' },
-      { round: 13, raceName: 'Hungarian Grand Prix', circuitName: 'Hungaroring', country: 'Hungary', location: 'Mogyoród', date: '2024-07-21', time: '15:00:00Z' },
-      { round: 14, raceName: 'Belgian Grand Prix', circuitName: 'Circuit de Spa-Francorchamps', country: 'Belgium', location: 'Stavelot', date: '2024-07-28', time: '15:00:00Z' },
-      { round: 15, raceName: 'Dutch Grand Prix', circuitName: 'Circuit Zandvoort', country: 'Netherlands', location: 'Zandvoort', date: '2024-08-25', time: '15:00:00Z' },
-      { round: 16, raceName: 'Italian Grand Prix', circuitName: 'Autodromo Nazionale Monza', country: 'Italy', location: 'Monza', date: '2024-09-01', time: '15:00:00Z' },
-      { round: 17, raceName: 'Azerbaijan Grand Prix', circuitName: 'Baku City Circuit', country: 'Azerbaijan', location: 'Baku', date: '2024-09-15', time: '13:00:00Z' },
-      { round: 18, raceName: 'Singapore Grand Prix', circuitName: 'Marina Bay Street Circuit', country: 'Singapore', location: 'Marina Bay', date: '2024-09-22', time: '14:00:00Z' },
-      { round: 19, raceName: 'United States Grand Prix', circuitName: 'Circuit of the Americas', country: 'USA', location: 'Austin', date: '2024-10-20', time: '21:00:00Z' },
-      { round: 20, raceName: 'Mexican Grand Prix', circuitName: 'Autódromo Hermanos Rodríguez', country: 'Mexico', location: 'Mexico City', date: '2024-10-27', time: '21:00:00Z' },
-      { round: 21, raceName: 'Brazilian Grand Prix', circuitName: 'Autódromo José Carlos Pace', country: 'Brazil', location: 'São Paulo', date: '2024-11-03', time: '18:00:00Z' },
-      { round: 22, raceName: 'Las Vegas Grand Prix', circuitName: 'Las Vegas Strip Circuit', country: 'USA', location: 'Las Vegas', date: '2024-11-23', time: '06:00:00Z' },
-      { round: 23, raceName: 'Qatar Grand Prix', circuitName: 'Lusail International Circuit', country: 'Qatar', location: 'Lusail', date: '2024-12-01', time: '17:00:00Z' },
-      { round: 24, raceName: 'Abu Dhabi Grand Prix', circuitName: 'Yas Marina Circuit', country: 'UAE', location: 'Abu Dhabi', date: '2024-12-08', time: '17:00:00Z' }
-    ];
+  useEffect(() => { load(); }, [load]);
 
-    // Adjust data based on year (simplified - just change the year in dates)
-    return currentSchedule.map(race => ({
-      ...race,
-      date: race.date.replace('2024', year.toString())
-    }));
-  };
+  const nextRace = schedule.find((r) => !isPastDate(r.date));
+  const remaining = schedule.filter((r) => !isPastDate(r.date)).length;
+  const countries = new Set(schedule.map((r) => r.country)).size;
+  const nextIn = nextRace ? daysUntil(nextRace.date) : null;
 
-  // Helper functions for track information
-  // Different schedule sources spell the same location differently (the
-  // static public/data/schedule files use "Montreal"/"Monte Carlo"/"Spa"/
-  // "Abu Dhabi"; FastF1's live Location field uses "Montréal"/"Monaco"/
-  // "Spa-Francorchamps"/"Yas Island"). Normalize to the latter before
-  // looking anything up below.
-  const LOCATION_ALIASES: { [key: string]: string } = {
-    'Montreal': 'Montréal',
-    'Monte Carlo': 'Monaco',
-    'Spa': 'Spa-Francorchamps',
-    'Abu Dhabi': 'Yas Island',
-    'Sao Paulo': 'São Paulo',
-  };
-  const normalizeLocation = (name: string): string => LOCATION_ALIASES[name] || name;
-
-  const getTrackLength = (rawTrackName: string): string => {
-    const trackName = normalizeLocation(rawTrackName);
-    if (!trackName || trackName === 'Unavailable') {
-      return 'Track Length Unavailable';
-    }
-
-    // Keyed by FastF1's event Location field (e.g. "Sakhir", "Zandvoort") —
-    // that's what circuit_name actually holds throughout this app, not the
-    // official circuit name.
-    const trackLengths: { [key: string]: string } = {
-      'Madrid': '5.474 km', // Madring — new for 2026, no race run yet so no lap record
-      'Sakhir': '5.412 km',
-      'Jeddah': '6.174 km',
-      'Melbourne': '5.278 km',
-      'Monaco': '3.337 km',
-      'Barcelona': '4.675 km',
-      'Montréal': '4.361 km',
-      'Spielberg': '4.318 km',
-      'Silverstone': '5.891 km',
-      'Budapest': '4.381 km',
-      'Spa-Francorchamps': '7.004 km',
-      'Zandvoort': '4.259 km',
-      'Monza': '5.793 km',
-      'Marina Bay': '5.063 km',
-      'Suzuka': '5.807 km',
-      'Austin': '5.513 km',
-      'Mexico City': '4.304 km',
-      'São Paulo': '4.309 km',
-      'Yas Island': '5.281 km',
-      'Miami': '5.412 km',
-      'Imola': '4.909 km',
-      'Lusail': '5.380 km',
-      'Las Vegas': '6.201 km',
-      'Shanghai': '5.451 km',
-      'Baku': '6.003 km',
-    };
-    return trackLengths[trackName] || 'Track Length Unavailable';
-  };
-
-  const getTrackCorners = (rawTrackName: string): number => {
-    const trackName = normalizeLocation(rawTrackName);
-    if (!trackName || trackName === 'Unavailable') {
-      return 0;
-    }
-
-    const trackCorners: { [key: string]: number } = {
-      'Madrid': 20, // Madring — new for 2026
-      'Sakhir': 15,
-      'Jeddah': 27,
-      'Melbourne': 16,
-      'Monaco': 19,
-      'Barcelona': 16,
-      'Montréal': 14,
-      'Spielberg': 10,
-      'Silverstone': 18,
-      'Budapest': 14,
-      'Spa-Francorchamps': 20,
-      'Zandvoort': 14,
-      'Monza': 11,
-      'Marina Bay': 23,
-      'Suzuka': 18,
-      'Austin': 20,
-      'Mexico City': 17,
-      'São Paulo': 15,
-      'Yas Island': 16,
-      'Miami': 19,
-      'Imola': 19,
-      'Lusail': 16,
-      'Las Vegas': 17,
-      'Shanghai': 16,
-      'Baku': 20,
-    };
-    return trackCorners[trackName] || 0;
-  };
-
-  const getTrackRecord = (rawTrackName: string): { time: string; holder: string; year: number } => {
-    const trackName = normalizeLocation(rawTrackName);
-    if (!trackName || trackName === 'Unavailable') {
-      return { time: 'Track Record Unavailable', holder: 'N/A', year: 0 };
-    }
-
-    const trackRecords: { [key: string]: { time: string; holder: string; year: number } } = {
-      'Sakhir': { time: '1:31.447', holder: 'Max Verstappen', year: 2024 },
-      'Jeddah': { time: '1:27.791', holder: 'Lewis Hamilton', year: 2021 },
-      'Melbourne': { time: '1:17.706', holder: 'Charles Leclerc', year: 2022 },
-      'Monaco': { time: '1:12.909', holder: 'Lewis Hamilton', year: 2019 },
-      'Barcelona': { time: '1:16.330', holder: 'Max Verstappen', year: 2023 },
-      'Montréal': { time: '1:13.078', holder: 'Valtteri Bottas', year: 2019 },
-      'Spielberg': { time: '1:05.619', holder: 'Carlos Sainz', year: 2020 },
-      'Silverstone': { time: '1:26.720', holder: 'Max Verstappen', year: 2023 },
-      'Budapest': { time: '1:16.627', holder: 'Lewis Hamilton', year: 2020 },
-      'Spa-Francorchamps': { time: '1:41.252', holder: 'Valtteri Bottas', year: 2018 },
-      'Zandvoort': { time: '1:10.567', holder: 'Max Verstappen', year: 2021 },
-      'Monza': { time: '1:18.887', holder: 'Carlos Sainz', year: 2023 },
-      'Marina Bay': { time: '1:35.867', holder: 'Lewis Hamilton', year: 2018 },
-      'Suzuka': { time: '1:30.983', holder: 'Max Verstappen', year: 2019 },
-      'Austin': { time: '1:34.356', holder: 'Charles Leclerc', year: 2019 },
-      'Mexico City': { time: '1:14.759', holder: 'Valtteri Bottas', year: 2021 },
-      'São Paulo': { time: '1:10.540', holder: 'Valtteri Bottas', year: 2018 },
-      'Yas Island': { time: '1:26.103', holder: 'Max Verstappen', year: 2021 },
-      'Miami': { time: '1:29.708', holder: 'Max Verstappen', year: 2023 },
-      'Imola': { time: '1:15.484', holder: 'Lewis Hamilton', year: 2020 },
-      'Lusail': { time: '1:24.319', holder: 'Max Verstappen', year: 2021 },
-      'Las Vegas': { time: '1:35.776', holder: 'Oscar Piastri', year: 2023 },
-      'Shanghai': { time: '1:32.238', holder: 'Michael Schumacher', year: 2004 },
-      'Baku': { time: '1:43.009', holder: 'Charles Leclerc', year: 2019 },
-    };
-    return trackRecords[trackName] || { time: 'Track Record Unavailable', holder: 'N/A', year: 0 };
-  };
-
-  const getNextRace = (): any | null => {
-    const now = new Date();
-    const upcomingRaces = raceSchedule.filter(race => {
-      const raceDate = new Date(race.date);
-      return raceDate > now;
-    });
-    
-    if (upcomingRaces.length > 0) {
-      return upcomingRaces[0];
-    }
-    return null;
-  };
-
-  const formatRaceName = (name: string): string => {
-    return name === 'Unavailable' ? 'Race Name Unavailable' : name;
-  };
-
-  const formatCircuitName = (name: string): string => {
-    return name === 'Unavailable' ? 'Circuit Name Unavailable' : name;
-  };
-
-  const formatCountry = (country: string): string => {
-    return country === 'Unavailable' ? 'Country Unavailable' : country;
-  };
-
-  const formatDate = (dateString: string): string => {
-    if (!dateString || dateString === 'Unavailable') {
-      return 'Date Unavailable';
-    }
-    
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return 'Invalid Date';
-      }
-      
-      return date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-    } catch (error) {
-      return 'Date Unavailable';
-    }
-  };
-
-  const formatRound = (round: string | number): string => {
-    if (round === 'Unavailable' || round === 0) {
-      return 'Round Unavailable';
-    }
-    return round.toString();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-carbon-black flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-racing-red mx-auto mb-4"></div>
-          <p className="text-pure-white text-lg">Loading race schedule...</p>
-        </div>
-      </div>
-    );
-  }
-
-  const nextRace = getNextRace();
+  const statusOf = (r: RaceEvent): Status =>
+    isPastDate(r.date) ? 'completed' : r === nextRace ? 'next' : 'upcoming';
 
   return (
-    <div className="min-h-screen bg-carbon-black p-8">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="mb-8"
-      >
-        <div>
-          <h1 className="text-4xl font-racing text-racing-red mb-2">
-            Track Analytics
-          </h1>
-          <p className="text-pure-white text-lg">
-            Formula 1 circuit information and race schedule
-          </p>
-          {selectedYear === new Date().getFullYear() && (
-            <div className="flex items-center space-x-4 mt-2">
-              <div className="flex items-center space-x-2 text-sm">
-                <Calendar className="w-4 h-4 text-turbo-teal" />
-                <span className="text-turbo-teal font-semibold">
-                  Current Season
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
+    <FadeIn className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard label="Races" loading={loading} icon={<Flag className="h-6 w-6" />}
+          value={schedule.length || '—'} sub={`${year} World Championship`} />
+        <StatCard label="Countries" loading={loading} icon={<MapPin className="h-6 w-6" />} accent="text-turbo-teal"
+          value={countries || '—'} sub="Host nations this season" />
+        <StatCard label="Remaining" loading={loading} icon={<Calendar className="h-6 w-6" />} accent="text-pit-stop-yellow"
+          value={schedule.length ? remaining : '—'}
+          sub={nextRace ? `Next: ${nextRace.race_name.replace(' Grand Prix', '')} · ${describeDaysUntil(nextIn)}` : 'Season complete'} />
+      </div>
 
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-6 p-4 bg-yellow-900 border border-yellow-600 text-yellow-200 rounded-lg"
-        >
-          <p className="flex items-center">
-            <Flag className="w-4 h-4 mr-2" />
-            {error}
-          </p>
-        </motion.div>
-      )}
-
-
-      {nextRace && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="bg-gradient-to-r from-turbo-teal to-blue-600 rounded-xl p-6 mb-8 text-pure-white shadow-lg"
-        >
-          <h2 className="text-2xl font-bold mb-4 flex items-center">
-            <Clock className="w-6 h-6 mr-3" />
-            Next Race Information
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <h3 className="text-lg font-semibold mb-2">{nextRace.raceName}</h3>
-              <p className="text-sm opacity-90">{nextRace.circuitName}</p>
-              <p className="text-sm opacity-90">{nextRace.country}</p>
-            </div>
-            <div>
-              <p className="text-sm opacity-90">Date</p>
-              <p className="text-lg font-semibold">{formatDate(nextRace.date)}</p>
-              <p className="text-sm opacity-90">Round {nextRace.round}</p>
-            </div>
-            <div>
-              <p className="text-sm opacity-90">Track Details</p>
-              <p className="text-lg font-semibold">{getTrackLength(nextRace.location)}</p>
-              <p className="text-sm opacity-90">{getTrackCorners(nextRace.location)} corners</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.6 }}
-        className="bg-track-grey rounded-xl p-6 shadow-lg mb-8"
-      >
-        <h2 className="text-2xl font-bold text-carbon-black mb-6 flex items-center">
-          <MapPin className="w-6 h-6 text-racing-red mr-3" />
-          {selectedYear} Season Race Schedule
-        </h2>
-        <div className="space-y-4">
-          {raceSchedule.map((race, index) => {
-            const trackRecord = getTrackRecord(race.location);
-            const trackLength = getTrackLength(race.location);
-            const trackCorners = getTrackCorners(race.location);
-            const isUpcoming = new Date(race.date) > new Date();
-
-            return (
-              <motion.div
-                key={race.round}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4, delay: 0.1 * index }}
-                className={`p-4 rounded-lg transition-all ${
-                  isUpcoming
-                    ? 'bg-gradient-to-r from-turbo-teal to-blue-600 text-pure-white'
-                    : 'bg-pure-white hover:shadow-md'
-                }`}
-              >
-                <div className="flex items-center justify-between flex-wrap gap-y-3">
-                  <div className="flex items-center space-x-4">
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
-                      isUpcoming ? 'bg-pure-white text-turbo-teal' : 'bg-racing-red text-pure-white'
-                    }`}>
-                      {race.round}
-                    </div>
-                    <div>
-                      <h3 className={`font-bold text-lg ${
-                        isUpcoming ? 'text-pure-white' : 'text-carbon-black'
-                      }`}>
-                        {race.raceName}
-                      </h3>
-                      <p className={`text-sm ${
-                        isUpcoming ? 'text-blue-100' : 'text-gray-600'
-                      }`}>
-                        {race.circuitName} • {race.country}
-                      </p>
-                      <p className={`text-sm ${
-                        isUpcoming ? 'text-blue-100' : 'text-gray-600'
-                      }`}>
-                        {formatDate(race.date)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`text-right ${
-                    isUpcoming ? 'text-pure-white' : 'text-carbon-black'
-                  }`}>
-                    <div className="text-sm opacity-80">Track Details</div>
-                    <div className="font-semibold">{trackLength}</div>
-                    <div className="text-xs opacity-70">{trackCorners} corners</div>
-                  </div>
-                  <div className={`text-right ${
-                    isUpcoming ? 'text-pure-white' : 'text-carbon-black'
-                  }`}>
-                    <div className="text-sm opacity-80">Track Record</div>
-                    <div className="font-semibold">{trackRecord.time}</div>
-                    <div className="text-xs opacity-70">{trackRecord.holder} ({trackRecord.year})</div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.8 }}
-        className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
-      >
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="flex items-center mb-4">
-            <TrendingUp className="w-8 h-8 text-racing-red mr-3" />
-            <h3 className="text-xl font-bold text-carbon-black">Total Races</h3>
-          </div>
-          <p className="text-3xl font-racing text-racing-red mb-2">
-            {raceSchedule.length}
-          </p>
-          <p className="text-sm text-gray-600">
-            {selectedYear} Formula 1 World Championship
-          </p>
-        </div>
-
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="flex items-center mb-4">
-            <MapPin className="w-8 h-8 text-turbo-teal mr-3" />
-            <h3 className="text-xl font-bold text-carbon-black">Countries</h3>
-          </div>
-          <p className="text-3xl font-racing text-turbo-teal mb-2">
-            {new Set(raceSchedule.map(race => race.country)).size}
-          </p>
-          <p className="text-sm text-gray-600">
-            Unique host nations this season
-          </p>
-        </div>
-
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="flex items-center mb-4">
-            <Flag className="w-8 h-8 text-pit-stop-yellow mr-3" />
-            <h3 className="text-xl font-bold text-carbon-black">Upcoming</h3>
-          </div>
-          <p className="text-3xl font-racing text-pit-stop-yellow mb-2">
-            {raceSchedule.filter(race => new Date(race.date) > new Date()).length}
-          </p>
-          <p className="text-sm text-gray-600">
-            Races remaining this season
-          </p>
-        </div>
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 1.0 }}
-        className="bg-gradient-to-r from-racing-red to-red-700 rounded-xl p-8 text-center text-pure-white shadow-lg"
-      >
-        <h3 className="text-2xl font-bold mb-4">Advanced Track Analysis Coming Soon</h3>
-        <p className="text-lg opacity-90 mb-6">
-          Real-time weather data, tire strategies, and AI-powered track performance predictions
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div>
-            <p className="font-bold">Weather Integration</p>
-            <p className="opacity-80">Real-time weather conditions and forecasts</p>
-          </div>
-          <div>
-            <p className="font-bold">Tire Analysis</p>
-            <p className="opacity-80">Optimal tire strategies and wear patterns</p>
-          </div>
-          <div>
-            <p className="font-bold">Performance Metrics</p>
-            <p className="opacity-80">Corner speeds, braking points, and sector analysis</p>
-          </div>
-        </div>
-      </motion.div>
-    </div>
+      <Card>
+        <CardHeader title={`${year} Race Calendar`} icon={<MapPin className="h-4 w-4" />} />
+        {loading ? <LoadingState label="Loading race calendar…" /> : error ? (
+          <ErrorState title="Couldn't load the race calendar" message={error} onRetry={load} />
+        ) : schedule.length ? (
+          <TableWrap>
+            <thead>
+              <tr className="border-b border-gray-800">
+                <Th className="w-16">Round</Th>
+                <Th>Grand Prix</Th>
+                <Th>Date</Th>
+                <Th align="right" className="hidden md:table-cell">Length</Th>
+                <Th align="right" className="hidden md:table-cell">Corners</Th>
+                <Th className="hidden lg:table-cell">Lap record</Th>
+                <Th align="right">Status</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {schedule.map((r) => {
+                const facts = getTrackFacts(r.location);
+                const status = statusOf(r);
+                return (
+                  <Tr key={r.round} className={status === 'next' ? 'bg-racing-red/5' : ''}>
+                    <Td className={`font-bold ${status === 'next' ? 'text-racing-red' : 'text-gray-500'}`}>R{r.round}</Td>
+                    <Td>
+                      <span className={`block font-medium ${status === 'completed' ? 'text-gray-300' : 'text-white'}`}>{r.race_name}</span>
+                      <span className="block text-xs text-gray-500">{r.circuit_name} · {r.country}</span>
+                    </Td>
+                    <Td className="whitespace-nowrap text-gray-300">{formatDate(r.date)}</Td>
+                    <Td align="right" className="hidden text-gray-300 md:table-cell">{facts?.length ?? '—'}</Td>
+                    <Td align="right" className="hidden text-gray-300 md:table-cell">{facts?.corners ?? '—'}</Td>
+                    <Td className="hidden lg:table-cell">
+                      {facts?.record ? (
+                        <>
+                          <span className="block text-gray-200">{facts.record.time}</span>
+                          <span className="block text-xs text-gray-500">{facts.record.holder} ({facts.record.year})</span>
+                        </>
+                      ) : <span className="text-gray-600">—</span>}
+                    </Td>
+                    <Td align="right">
+                      <span className={`inline-block rounded-full border px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[status]}`}>
+                        {STATUS_LABEL[status]}
+                      </span>
+                    </Td>
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+        ) : <EmptyState icon={<Calendar className="h-10 w-10" />} title={`No calendar published for ${year}`} />}
+      </Card>
+    </FadeIn>
   );
 };
 
