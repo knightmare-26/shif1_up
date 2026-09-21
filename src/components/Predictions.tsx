@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, AlertTriangle, RefreshCw, ChevronDown, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
+import {
+  Button, Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
+  PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
+} from './ui';
 
 interface PredictionRow {
   predicted_rank: number;
@@ -32,13 +35,6 @@ const positionColor = (pos: number): string => {
   return 'text-gray-400';
 };
 
-const medalEmoji = (rank: number): string => {
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
-  return `${rank}`;
-};
-
 const PredictionTable: React.FC<{
   title: string;
   subtitle: string;
@@ -46,62 +42,55 @@ const PredictionTable: React.FC<{
   valueKey: 'predicted_grid' | 'predicted_position';
   avgKey: 'circuit_avg_grid' | 'circuit_avg_finish';
   rollingKey: 'rolling_avg_grid' | 'rolling_avg_finish';
-  model: string;
   gridMissing: boolean;
-}> = ({ title, subtitle, data, valueKey, avgKey, rollingKey, model, gridMissing }) => (
-  <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden flex-1 min-w-0">
-    <div className="px-5 py-4 border-b border-gray-800 flex items-center justify-between">
-      <div>
-        <h3 className="text-white font-semibold text-base">{title}</h3>
-        <p className="text-gray-400 text-xs mt-0.5">{subtitle}</p>
-      </div>
-      {gridMissing && valueKey === 'predicted_position' && (
-        <span className="text-xs text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded flex items-center gap-1">
-          <AlertTriangle className="w-3 h-3" /> No grid data
-        </span>
-      )}
-    </div>
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-            <th className="px-4 py-2 text-left w-10">#</th>
-            <th className="px-4 py-2 text-left">Driver</th>
-            <th className="px-4 py-2 text-left hidden sm:table-cell">Team</th>
-            <th className="px-4 py-2 text-right">Predicted</th>
-            <th className="px-4 py-2 text-right hidden md:table-cell">Circuit Avg</th>
-            <th className="px-4 py-2 text-right hidden md:table-cell">Form (5R)</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((row) => (
-            <tr key={row.driver_id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors">
-              <td className="px-4 py-2.5 text-center">
-                <span className={`text-sm ${positionColor(row.predicted_rank)}`}>
-                  {medalEmoji(row.predicted_rank)}
-                </span>
-              </td>
-              <td className="px-4 py-2.5">
-                <span className="text-white font-medium text-sm">{row.driver_name}</span>
-              </td>
-              <td className="px-4 py-2.5 hidden sm:table-cell text-gray-400 text-xs">{row.constructor_name}</td>
-              <td className="px-4 py-2.5 text-right">
-                <span className={`font-mono font-semibold ${positionColor(row.predicted_rank)}`}>
-                  P{Math.round(row[valueKey] ?? row.predicted_rank)}
-                </span>
-              </td>
-              <td className="px-4 py-2.5 text-right hidden md:table-cell text-gray-400 font-mono text-xs">
-                {row[avgKey] != null ? `P${row[avgKey]!.toFixed(1)}` : '—'}
-              </td>
-              <td className="px-4 py-2.5 text-right hidden md:table-cell text-gray-400 font-mono text-xs">
-                {row[rollingKey] != null ? `P${row[rollingKey]!.toFixed(1)}` : '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
+}> = ({ title, subtitle, data, valueKey, avgKey, rollingKey, gridMissing }) => (
+  <Card className="min-w-0 flex-1">
+    <CardHeader
+      title={title}
+      subtitle={subtitle}
+      action={gridMissing && valueKey === 'predicted_position' ? <Pill tone="warn">No grid data</Pill> : undefined}
+    />
+    <TableWrap>
+      <thead>
+        <tr className="border-b border-gray-800">
+          <Th className="w-14">#</Th>
+          <Th>Driver</Th>
+          <Th className="hidden sm:table-cell">Team</Th>
+          <Th align="right">Predicted</Th>
+          <Th align="right" className="hidden md:table-cell">Circuit Avg</Th>
+          <Th align="right" className="hidden md:table-cell">Form (5R)</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {data.map((row) => (
+          <Tr key={row.driver_id}>
+            <Td><PositionBadge position={row.predicted_rank} /></Td>
+            <Td className="font-medium text-white">{row.driver_name}</Td>
+            <Td className="hidden text-xs text-gray-400 sm:table-cell">{row.constructor_name}</Td>
+            <Td align="right" className={`font-semibold ${positionColor(row.predicted_rank)}`}>
+              P{Math.round(row[valueKey] ?? row.predicted_rank)}
+            </Td>
+            <Td align="right" className="hidden text-xs text-gray-400 md:table-cell">
+              {row[avgKey] != null ? `P${row[avgKey]!.toFixed(1)}` : '—'}
+            </Td>
+            <Td align="right" className="hidden text-xs text-gray-400 md:table-cell">
+              {row[rollingKey] != null ? `P${row[rollingKey]!.toFixed(1)}` : '—'}
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </TableWrap>
+  </Card>
+);
+
+const UnavailableCard: React.FC<{ what: string; reason?: string; severe?: boolean }> = ({ what, reason, severe }) => (
+  <Card className="flex-1">
+    <EmptyState
+      icon={<TrendingUp className={`h-8 w-8 ${severe ? 'text-red-500/60' : 'text-yellow-500/60'}`} />}
+      title={`${what} unavailable`}
+      message={reason}
+    />
+  </Card>
 );
 
 const errorColor = (err: number | null | undefined): string => {
@@ -125,12 +114,17 @@ const SortableHeader: React.FC<{
   const active = sortKey === col;
   const Icon = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown;
   return (
-    <th className={`px-4 py-2 ${align === 'left' ? 'text-left' : 'text-right'}`}>
+    <th
+      scope="col"
+      aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+      className={`whitespace-nowrap px-4 py-3 text-xs font-medium uppercase tracking-wide ${align === 'left' ? 'text-left' : 'text-right'}`}
+    >
       <button
+        type="button"
         onClick={() => onSort(col)}
-        className={`flex items-center gap-1 hover:text-white transition-colors ${align === 'right' ? 'ml-auto' : ''} ${active ? 'text-white' : 'text-gray-500'}`}
+        className={`inline-flex items-center gap-1 rounded uppercase tracking-wide transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 ${active ? 'text-white' : 'text-gray-500'}`}
       >
-        {label} <Icon className="w-3 h-3" />
+        {label} <Icon className="h-3 w-3" aria-hidden="true" />
       </button>
     </th>
   );
@@ -167,54 +161,44 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
   }, [race.drivers, sortKey, sortDir]);
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-800">
-        <div>
-          <span className="text-white text-sm font-medium">Round {race.round} — {race.race_name}</span>
-          <span className="text-gray-500 text-xs ml-2">{race.circuit_name} · {race.year}</span>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className={`text-xs font-mono px-2 py-1 rounded bg-gray-800 ${errorColor(race.quali_mae)}`}>
-            Quali err {race.quali_mae != null ? race.quali_mae.toFixed(2) : '—'}
-          </span>
-          <span className={`text-xs font-mono px-2 py-1 rounded bg-gray-800 ${errorColor(race.race_mae)}`}>
-            Race err {race.race_mae != null ? race.race_mae.toFixed(2) : '—'}
-          </span>
-        </div>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-gray-500 text-xs uppercase border-b border-gray-800">
-              <SortableHeader label="Driver"        col="driver_name"        align="left"  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortableHeader label="Pred. Grid"     col="predicted_grid"                   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortableHeader label="Actual Grid"    col="actual_grid"                      sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortableHeader label="Pred. Finish"   col="predicted_position"               sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-              <SortableHeader label="Actual Finish"  col="actual_position"                  sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            </tr>
-          </thead>
-          <tbody>
-            {sortedDrivers.map((d) => (
-              <tr key={d.driver_id} className="border-b border-gray-800/50">
-                <td className="px-4 py-2 text-white text-sm">{d.driver_name}</td>
-                <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
-                  {d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-xs text-white">
-                  {d.actual_grid != null ? `P${d.actual_grid}` : '—'}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-xs text-gray-400">
-                  {d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}
-                </td>
-                <td className="px-4 py-2 text-right font-mono text-xs text-white">
-                  {d.actual_position != null ? `P${d.actual_position}` : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <Card>
+      <CardHeader
+        title={`Round ${race.round} — ${race.race_name}`}
+        subtitle={`${race.circuit_name} · ${race.year}`}
+        action={
+          <div className="flex items-center gap-2">
+            <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.quali_mae)}`}>
+              Quali err {race.quali_mae != null ? race.quali_mae.toFixed(2) : '—'}
+            </span>
+            <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.race_mae)}`}>
+              Race err {race.race_mae != null ? race.race_mae.toFixed(2) : '—'}
+            </span>
+          </div>
+        }
+      />
+      <TableWrap>
+        <thead>
+          <tr className="border-b border-gray-800">
+            <SortableHeader label="Driver"       col="driver_name"        align="left" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Pred. Grid"   col="predicted_grid"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Actual Grid"  col="actual_grid"        sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Pred. Finish" col="predicted_position" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Actual Finish" col="actual_position"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+          </tr>
+        </thead>
+        <tbody>
+          {sortedDrivers.map((d) => (
+            <Tr key={d.driver_id}>
+              <Td className="font-medium text-white">{d.driver_name}</Td>
+              <Td align="right" className="text-xs text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}</Td>
+              <Td align="right" className="text-xs text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
+              <Td align="right" className="text-xs text-gray-400">{d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}</Td>
+              <Td align="right" className="text-xs text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>
+            </Tr>
+          ))}
+        </tbody>
+      </TableWrap>
+    </Card>
   );
 };
 
@@ -224,7 +208,9 @@ const BacktestTab: React.FC = () => {
   const [yearFilter, setYearFilter]       = useState<number | null>(null);
   const [circuitFilter, setCircuitFilter] = useState<string>('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError(null);
+    setRaces(null);
     backendApi.getPredictionBacktest()
       .then((r) => {
         setRaces(r.races);
@@ -236,6 +222,8 @@ const BacktestTab: React.FC = () => {
       })
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const years = useMemo(
     () => Array.from(new Set((races ?? []).map((r) => r.year))).sort((a, b) => b - a),
@@ -266,87 +254,52 @@ const BacktestTab: React.FC = () => {
     [races, yearFilter, circuitFilter]
   );
 
-  if (error) {
-    return (
-      <div className="flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
-        <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-        {error}
-      </div>
-    );
-  }
-
-  if (!races) {
-    return (
-      <div className="flex items-center justify-center py-24 text-gray-500 text-sm gap-2">
-        <RefreshCw className="w-4 h-4 animate-spin" /> Loading past 3 seasons…
-      </div>
-    );
-  }
-
+  if (error) return <Card><ErrorState title="Couldn't load past predictions" message={error} onRetry={load} /></Card>;
+  if (!races) return <Card><LoadingState label="Loading past seasons…" /></Card>;
   if (races.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 text-center">
-        <History className="w-12 h-12 text-gray-700 mb-4" />
-        <p className="text-gray-500 text-sm">No completed races with predictions in the last 3 seasons yet</p>
-      </div>
+      <Card>
+        <EmptyState icon={<History className="h-10 w-10" />} title="No completed races with predictions yet" />
+      </Card>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-gray-500 text-xs">
+    <FadeIn>
+      <p className="mb-4 max-w-3xl text-sm text-gray-500">
         Each race's predictions use only data available before it was run — the current model
-        scored retrospectively against real results from the last 3 seasons.
+        scored retrospectively against real results. Lower error is better.
       </p>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-end gap-4 mb-1">
-        <div className="flex flex-col gap-1">
-          <label className="text-gray-400 text-xs uppercase tracking-wide">Year</label>
-          <div className="relative">
-            <select
-              value={yearFilter ?? ''}
-              onChange={(e) => setYearFilter(Number(e.target.value))}
-              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[140px]"
-            >
-              {years.map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-gray-400 text-xs uppercase tracking-wide">Circuit</label>
-          <div className="relative">
-            <select
-              value={circuitFilter}
-              onChange={(e) => setCircuitFilter(e.target.value)}
-              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[240px]"
-            >
-              {circuitOptions.map((r) => (
-                <option key={r.race_id} value={r.circuit_name}>
-                  Round {r.round} — {r.circuit_name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-      </div>
+      <FilterBar>
+        <SelectField label="Year" value={yearFilter ?? ''} onChange={(v) => setYearFilter(Number(v))}>
+          {years.map((y) => <option key={y} value={y}>{y}</option>)}
+        </SelectField>
+        <SelectField label="Circuit" value={circuitFilter} onChange={setCircuitFilter} className="min-w-[260px]">
+          {circuitOptions.map((r) => (
+            <option key={r.race_id} value={r.circuit_name}>Round {r.round} — {r.circuit_name}</option>
+          ))}
+        </SelectField>
+      </FilterBar>
 
       {selectedRace ? (
         <BacktestRaceDetail race={selectedRace} />
       ) : (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <p className="text-gray-500 text-sm">No race matches the selected filters</p>
-        </div>
+        <Card><EmptyState title="No race matches the selected filters" /></Card>
       )}
-    </div>
+    </FadeIn>
   );
 };
 
+type PredictionTab = 'upcoming' | 'backtest';
+const PREDICTION_TABS: { id: PredictionTab; label: string }[] = [
+  { id: 'upcoming', label: 'Upcoming Predictions' },
+  { id: 'backtest', label: 'Predicted vs Actual' },
+];
+
 const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
+  const [circuitsLoaded, setCircuitsLoaded] = useState(false);
   const [selected, setSelected]       = useState('');
   const [loading, setLoading]         = useState(false);
   const [qualiResult, setQualiResult]   = useState<PredictionResult | null>(null);
@@ -354,236 +307,139 @@ const Predictions: React.FC = () => {
   const [sprintResult, setSprintResult] = useState<PredictionResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
-  const [tab, setTab]                 = useState<'upcoming' | 'backtest'>('upcoming');
+  const [tab, setTab]                 = useState<PredictionTab>('upcoming');
+  const requestId = useRef(0);
 
   useEffect(() => {
     backendApi.getPredictionStatus().then(setStatus).catch(() => {});
     backendApi.getPredictionCircuits().then((c) => {
       setCircuits(c);
       if (c.length) setSelected(c[0].circuit_name);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setCircuitsLoaded(true));
   }, []);
 
   const selectedRace = circuits.find((c) => c.circuit_name === selected);
   const isSprintWeekend = !!selectedRace?.is_sprint;
 
-  const runPredictions = async () => {
+  const runPredictions = useCallback(async () => {
     if (!selected) return;
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
     setQualiResult(null);
     setRaceResult(null);
     setSprintResult(null);
     try {
-      const calls: [Promise<any>, Promise<any>, Promise<any> | null] = [
+      const sprint = circuits.find((c) => c.circuit_name === selected)?.is_sprint;
+      const [q, r, s] = await Promise.all([
         backendApi.predictQualifying(selected),
         backendApi.predictRace(selected),
-        isSprintWeekend ? backendApi.predictSprint(selected) : null,
-      ];
-      const [q, r, s] = await Promise.all(calls);
+        sprint ? backendApi.predictSprint(selected) : Promise.resolve(null),
+      ]);
+      if (id !== requestId.current) return; // a different circuit was picked meanwhile
       setQualiResult(q);
       setRaceResult(r);
       if (s) setSprintResult(s);
     } catch (e: any) {
-      setError(e.message || 'Prediction failed. Make sure data is ingested and backend is running.');
+      if (id === requestId.current) setError(e.message || 'Predictions are unavailable right now. Try again in a moment.');
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  };
+  }, [selected, circuits]);
+
+  // Predictions are cheap (cached server-side), so generate them as soon as a
+  // circuit is chosen instead of making the user click a second time.
+  useEffect(() => { if (selected) runPredictions(); }, [selected, runPredictions]);
 
   const gridMissing = !status?.grid_data_available;
+  const hasResults = !!(qualiResult || raceResult || sprintResult);
 
   return (
-    <div className="min-h-screen bg-carbon-black text-white p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 bg-racing-red rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-racing text-white">Race Predictions</h1>
-            <p className="text-gray-400 text-sm">ML-powered qualifying and race predictions</p>
-          </div>
-        </div>
-      </motion.div>
+    <PageShell>
+      <PageHeader title="Race Predictions" subtitle="ML-powered qualifying and race predictions" />
 
-      {/* Tab switcher */}
-      <div className="flex items-center gap-1 mb-6 border-b border-gray-800">
-        <button
-          onClick={() => setTab('upcoming')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            tab === 'upcoming'
-              ? 'border-racing-red text-white'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          Upcoming Predictions
-        </button>
-        <button
-          onClick={() => setTab('backtest')}
-          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            tab === 'backtest'
-              ? 'border-racing-red text-white'
-              : 'border-transparent text-gray-500 hover:text-gray-300'
-          }`}
-        >
-          Predicted vs Actual
-        </button>
-      </div>
+      <Tabs tabs={PREDICTION_TABS} active={tab} onChange={setTab} label="Prediction views" idPrefix="pred" />
 
-      {tab === 'backtest' && <BacktestTab />}
+      <div className="pt-6">
+        {tab === 'backtest' && <TabPanel id="backtest" idPrefix="pred"><BacktestTab /></TabPanel>}
 
-      {tab === 'upcoming' && (
-      <>
-      {/* Warning banner when grid data is missing */}
-      {gridMissing && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-          className="mb-6 flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-3 text-sm text-yellow-300">
-          <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-          <div>
-            <strong>Grid data missing.</strong> Re-ingest 2022–2024 data via the Data Manager to populate qualifying grid positions.
-            Race predictions will still work using rolling form averages, but accuracy improves significantly with grid data.
-          </div>
-        </motion.div>
-      )}
-
-      {/* Controls */}
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-        className="flex flex-wrap items-end gap-4 mb-8">
-        {/* Circuit selector */}
-        <div className="flex flex-col gap-1">
-          <label className="text-gray-400 text-xs uppercase tracking-wide">Circuit</label>
-          <div className="relative">
-            <select
-              value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              className="appearance-none bg-gray-900 border border-gray-700 text-white text-sm rounded-lg px-4 py-2.5 pr-9 focus:outline-none focus:border-racing-red transition-colors min-w-[240px]"
-            >
-              {circuits.length === 0 && <option value="">No upcoming races on the calendar</option>}
-              {circuits.map((c) => (
-                <option key={c.circuit_name} value={c.circuit_name}>
-                  Round {c.round} — {c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-          </div>
-        </div>
-
-        {/* Predict button */}
-        <button
-          onClick={runPredictions}
-          disabled={loading || !selected}
-          className="flex items-center gap-2 px-5 py-2.5 bg-racing-red text-white rounded-lg font-medium text-sm hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <TrendingUp className="w-4 h-4" />}
-          {loading ? 'Predicting…' : isSprintWeekend ? 'Generate Predictions (+ Sprint)' : 'Generate Predictions'}
-        </button>
-
-        {/* Status pills */}
-        {status && (
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
-            <span className={`text-xs px-2 py-1 rounded ${status.race_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-              Race: {status.race_model_ready ? 'ready' : 'not trained'}
-            </span>
-            <span className={`text-xs px-2 py-1 rounded ${status.quali_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-              Quali: {status.quali_model_ready ? 'ready' : 'needs grid data'}
-            </span>
-            {isSprintWeekend && (
-              <span className={`text-xs px-2 py-1 rounded ${status.sprint_model_ready ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
-                Sprint: {status.sprint_model_ready ? 'ready' : 'not enough sprint history'}
-              </span>
+        {tab === 'upcoming' && (
+          <TabPanel id="upcoming" idPrefix="pred">
+            {gridMissing && status && (
+              <Notice tone="warning">
+                <strong>Grid data missing.</strong> Race predictions still work from rolling form
+                averages, but accuracy improves significantly once qualifying grid positions are loaded.
+              </Notice>
             )}
-            {status.training_rows > 0 && (
-              <span className="text-xs px-2 py-1 rounded bg-gray-800 text-gray-400">
-                {status.training_rows} rows · {status.circuits} circuits
-              </span>
+
+            <FilterBar>
+              <SelectField label="Grand Prix" value={selected} onChange={setSelected}
+                className="min-w-[280px]" disabled={circuits.length === 0}>
+                {circuits.length === 0 && (
+                  <option value="">{circuitsLoaded ? 'No upcoming races on the calendar' : 'Loading…'}</option>
+                )}
+                {circuits.map((c) => (
+                  <option key={c.circuit_name} value={c.circuit_name}>
+                    Round {c.round} — {c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
+                  </option>
+                ))}
+              </SelectField>
+
+              <Button
+                variant="secondary" onClick={runPredictions} loading={loading} disabled={!selected}
+                icon={<RefreshCw className="h-4 w-4" />}
+              >
+                {loading ? 'Predicting…' : 'Refresh'}
+              </Button>
+
+              {status && (
+                <div className="ml-auto flex flex-wrap items-center gap-2">
+                  <Pill tone={status.race_model_ready ? 'good' : 'bad'}>Race: {status.race_model_ready ? 'ready' : 'not trained'}</Pill>
+                  <Pill tone={status.quali_model_ready ? 'good' : 'warn'}>Quali: {status.quali_model_ready ? 'ready' : 'needs grid data'}</Pill>
+                  {isSprintWeekend && (
+                    <Pill tone={status.sprint_model_ready ? 'good' : 'warn'}>
+                      Sprint: {status.sprint_model_ready ? 'ready' : 'not enough sprint history'}
+                    </Pill>
+                  )}
+                  {status.training_rows > 0 && <Pill tone="neutral">{status.training_rows} rows · {status.circuits} circuits</Pill>}
+                </div>
+              )}
+            </FilterBar>
+
+            {error ? (
+              <Card><ErrorState title="Couldn't generate predictions" message={error} onRetry={runPredictions} /></Card>
+            ) : loading && !hasResults ? (
+              <Card><LoadingState label="Generating predictions…" /></Card>
+            ) : hasResults ? (
+              <FadeIn className="flex flex-col gap-6 lg:flex-row">
+                {qualiResult?.predictions.length ? (
+                  <PredictionTable title="Qualifying Prediction" subtitle={qualiResult.circuit} data={qualiResult.predictions}
+                    valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} />
+                ) : qualiResult && <UnavailableCard what="Qualifying prediction" reason={qualiResult.error} />}
+
+                {sprintResult?.predictions.length ? (
+                  <PredictionTable title="Sprint Prediction" subtitle={sprintResult.circuit} data={sprintResult.predictions}
+                    valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
+                ) : sprintResult && <UnavailableCard what="Sprint prediction" reason={sprintResult.error} />}
+
+                {raceResult?.predictions.length ? (
+                  <PredictionTable title="Race Prediction" subtitle={raceResult.circuit} data={raceResult.predictions}
+                    valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
+                ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
+              </FadeIn>
+            ) : (
+              <Card>
+                <EmptyState
+                  icon={<TrendingUp className="h-10 w-10" />}
+                  title={circuitsLoaded && circuits.length === 0 ? 'No upcoming races to predict' : 'Choose a Grand Prix'}
+                  message="Predictions are generated from historical F1 race data."
+                />
+              </Card>
             )}
-          </div>
+          </TabPanel>
         )}
-      </motion.div>
-
-      {/* Error */}
-      {error && (
-        <div className="mb-6 flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm text-red-400">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {/* Results */}
-      {(qualiResult || raceResult || sprintResult) && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col lg:flex-row gap-6">
-          {qualiResult?.predictions.length ? (
-            <PredictionTable
-              title="Qualifying Prediction"
-              subtitle={qualiResult.circuit}
-              data={qualiResult.predictions}
-              valueKey="predicted_grid"
-              avgKey="circuit_avg_grid"
-              rollingKey="rolling_avg_grid"
-              model={qualiResult.model}
-              gridMissing={gridMissing}
-            />
-          ) : qualiResult && (
-            <div className="flex-1 bg-gray-900 rounded-xl border border-gray-800 px-5 py-8 text-center text-gray-500 text-sm">
-              <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-yellow-500" />
-              Qualifying prediction unavailable: {qualiResult.error}
-            </div>
-          )}
-
-          {sprintResult?.predictions.length ? (
-            <PredictionTable
-              title="Sprint Prediction"
-              subtitle={sprintResult.circuit}
-              data={sprintResult.predictions}
-              valueKey="predicted_position"
-              avgKey="circuit_avg_finish"
-              rollingKey="rolling_avg_finish"
-              model={sprintResult.model}
-              gridMissing={gridMissing}
-            />
-          ) : sprintResult && (
-            <div className="flex-1 bg-gray-900 rounded-xl border border-gray-800 px-5 py-8 text-center text-gray-500 text-sm">
-              <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-yellow-500" />
-              Sprint prediction unavailable: {sprintResult.error}
-            </div>
-          )}
-
-          {raceResult?.predictions.length ? (
-            <PredictionTable
-              title="Race Prediction"
-              subtitle={raceResult.circuit}
-              data={raceResult.predictions}
-              valueKey="predicted_position"
-              avgKey="circuit_avg_finish"
-              rollingKey="rolling_avg_finish"
-              model={raceResult.model}
-              gridMissing={gridMissing}
-            />
-          ) : raceResult && (
-            <div className="flex-1 bg-gray-900 rounded-xl border border-gray-800 px-5 py-8 text-center text-gray-500 text-sm">
-              <AlertTriangle className="w-6 h-6 mx-auto mb-2 text-red-500" />
-              Race prediction unavailable: {raceResult.error}
-            </div>
-          )}
-        </motion.div>
-      )}
-
-      {/* Empty state */}
-      {!qualiResult && !raceResult && !sprintResult && !error && !loading && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
-          className="flex flex-col items-center justify-center py-24 text-center">
-          <TrendingUp className="w-12 h-12 text-gray-700 mb-4" />
-          <p className="text-gray-500 text-sm">Select a circuit and click <strong className="text-gray-400">Generate Predictions</strong></p>
-          <p className="text-gray-600 text-xs mt-1">Predictions are generated from historical F1 race data</p>
-        </motion.div>
-      )}
-      </>
-      )}
-    </div>
+      </div>
+    </PageShell>
   );
 };
 
