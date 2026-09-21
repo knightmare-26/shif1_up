@@ -107,9 +107,16 @@
 - [ ] Lap Data page data for recent races, Tracks tab, and on-screen check of every page after the data fixes
 - [ ] Live page shows "no data" until the next session (Azerbaijan, 2026-09-26) — expected; real-session smoke test still open (Phase 4)
 
+### Deployment (Render + Supabase + Upstash) — verify after the first deploy
+- [ ] **Set `SUPABASE_ACCESS_TOKEN` in the Render dashboard** (Supabase → Account → Access Tokens). Without it a paused project can't be woken automatically — the API just keeps retrying and the site shows "waking up the database" until someone restores it by hand
+- [ ] Confirm `REACT_APP_API_URL` is set on the static site (it is baked in at build time) and `CORS_ORIGINS` on the API includes the frontend URL
+- [ ] Not tested here: the real Supabase Management API restore call (only against a fake, though the endpoint/statuses match Supabase's published OpenAPI spec), the Docker image build (Docker Desktop wasn't running; dependency pins match the tested environment), and Render's actual cold start. After deploying, pause the project from the Supabase dashboard, open the site, and watch it recover
+- [ ] Upstash free tier is 10K commands/day: each page load makes one `/health` call (a Redis `INFO`), and `LiveAnalytics` polls live state every 15s while open — keep an eye on usage
+- [ ] `tests/test_api.py` imports a module that no longer exists (`api.services.duckdb_service`), and `test_live.py::test_health_reports_redis_kind_and_probes_duckdb` assumes mock Redis but `.env` gives the tests real Upstash — both predate this work
+- [ ] Add a `.dockerignore` (venv/, node_modules/, data/ are ~2 GB of build context)
+
 ### Tooling
 - [ ] Health poller's Supabase restore path is only tested against a fake API — needs `SUPABASE_ACCESS_TOKEN` to exercise it for real (`scripts/health_poller.py`)
-- [ ] Backend logs the full Upstash Redis URL (including its token) at startup — mask it in `redis_service.py`
 - [ ] Uncommitted work: `laps_completed` ingest + Race Results table columns, health poller (`scripts/health_poller.py`, `npm run up`, `.claude/launch.json`), `logs/` gitignore, CLAUDE.md notes. `cache/race_schedule_*.json` changes look like noise. Commit when approved (no push until then)
 
 ---

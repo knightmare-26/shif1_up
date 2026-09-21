@@ -12,7 +12,7 @@ npm run dev          # Starts both backend + frontend concurrently
 npm run up           # Same, but supervised: health-checks both and restarts whichever stops responding
 ```
 
-`scripts/health_poller.py` (stdlib only; `--check` prints status and exits, `--only backend|frontend`). It adopts servers that are already healthy, writes child output to `logs/`, and restarts the backend when `/health` reports `degraded` (the DB connection is made once at startup, so a failure sticks until restart). If the Supabase project is paused it says so; set `SUPABASE_ACCESS_TOKEN` (Supabase dashboard → Account → Access Tokens, in `.env`) and it restores the project via the Management API, then restarts the backend. A running poller also keeps a free-tier project from re-pausing, since `/health` runs `SELECT 1`.
+`scripts/health_poller.py` (stdlib only; `--check` prints status and exits, `--only backend|frontend`). It adopts servers that are already healthy, writes child output to `logs/`, and restarts whichever stops responding. A backend running against Supabase heals its own database connection (see `DatabaseGuardian` below), so the poller reports that state but doesn't restart for it; an older backend that reports `degraded` without the self-healing marker is still restarted, and `SUPABASE_ACCESS_TOKEN` (in `.env`) lets the poller restore a paused project for such a backend. A running poller also keeps a free-tier project from re-pausing, since `/health` runs `SELECT 1`.
 
 ### Backend only
 ```bash
@@ -74,7 +74,9 @@ Full-stack F1 analytics platform with:
 | `shif1-up-api` | Render Docker Web Service | `env: docker`; requirements at `api/requirements.txt` |
 | `shif1-up-frontend` | Render Static Site | `public/_redirects` for SPA routing |
 
-Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `REACT_APP_API_URL`) set in Render dashboard — never committed.
+Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `SUPABASE_ACCESS_TOKEN`, `REACT_APP_API_URL`) are set in the Render dashboard — never committed. `REACT_APP_API_URL` is read at **build** time (CRA bakes it into the bundle), so changing it needs a frontend redeploy; if it's missing the site falls back to `http://localhost:8000`. Render's CI build treats lint warnings as errors, so check with `CI=true npm run build` before pushing.
+
+**Cold starts and paused databases**: on the free plan the API host sleeps after ~15 min idle and a free Supabase project pauses after a week idle. Opening the site wakes both: the frontend pings `/health` on load (`ServiceStatusBanner`), which boots the API; the API's `DatabaseGuardian` then reconnects to Supabase and, if the project is paused, restores it via the Management API (needs `SUPABASE_ACCESS_TOKEN`). Until it's back, database-backed endpoints answer `503 database_waking` and the frontend shows a banner and refreshes itself when ready.
 
 ### Backend service layer (`api/services/`)
 
@@ -87,6 +89,8 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 | `fastf1_service.py` | FastF1 library wrapper (years 2020–2024) |
 | `ergast_service.py` | Jolpica-Ergast REST API wrapper (other years) |
 | `cache_service.py` | In-process cache layer for API responses |
+| `db_guardian.py` | Owns the Supabase connection: connects in the background, wakes a paused project, reconnects if it drops |
+| `redact.py` | `redact_url()` — keep credentials (e.g. the Upstash token) out of logs |
 
 **Data source routing**: `api/main.py` uses `FASTF1_YEARS = [2020, 2021, 2022, 2023, 2024]` to route to FastF1 vs Jolpica-Ergast.
 
@@ -94,7 +98,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 **DuckDB fallback**: `SimpleDuckDBService` falls back to in-memory dict if DuckDB is unavailable. Seeds sample data on startup via `_load_sample_data()`.
 
-**Postgres (Supabase)**: Reads `DATABASE_URL` env var. If set, `PostgresService` initialises on startup. If unavailable or unset, auth endpoints are disabled gracefully (no crash).
+**Postgres (Supabase)**: reads `DATABASE_URL`. When set, `DatabaseGuardian` (`services/db_guardian.py`) opens both the auth and F1-data pools — the first attempt at startup (bounded), then retrying in the background — so the API always comes up and can answer `/health` even when the project is paused. If the connection fails and `SUPABASE_ACCESS_TOKEN` is set it asks Supabase's Management API for the project state and restores it if paused, then reconnects without a restart (`SUPABASE_PROJECT_REF` is otherwise parsed from `DATABASE_URL`; `SUPABASE_API_URL` overrides the API host, for tests). While it's down, DB-backed endpoints (`/race/*`, `/predict/*` except status/circuits, `/admin/*`, `/auth/*`) answer `503 {"detail": "database_waking"}` with `Retry-After` and CORS headers. Unset `DATABASE_URL` means local DuckDB with auth disabled. `_run_query` swallows errors and returns `[]`, so don't use it to test connectivity.
 
 ### WebSocket live data flow
 
@@ -154,13 +158,13 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `INTERNAL_API_KEY` | — | Shared secret so `live/poller.py` can call `POST /admin/ingest/race` without a user login |
 | `REACT_APP_API_URL` | `http://localhost:8000` | Frontend API base URL |
 | `JWT_SECRET` | — | Auth JWT signing key — see `CLAUDE.local.md` |
-| `SUPABASE_ACCESS_TOKEN` | — | Optional; lets `scripts/health_poller.py` restore a paused Supabase project (project ref is parsed from `DATABASE_URL`, or set `SUPABASE_PROJECT_REF`) |
+| `SUPABASE_ACCESS_TOKEN` | — | **Set in production.** Lets the API (`db_guardian.py`) and `scripts/health_poller.py` restore a paused Supabase project (Supabase dashboard → Account → Access Tokens). Optional `SUPABASE_PROJECT_REF` (else parsed from `DATABASE_URL`) and `SUPABASE_API_URL` (test override) |
 | `LOG_FORMAT` | plain text | Set to `json` for structured JSON logging |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ### Key API endpoints
 
-- `GET /health` — service health + Redis/DuckDB probe
+- `GET /health` — service health: Redis + DB probes, plus `checks.database.state` (`ready` / `connecting` / `waking` / `unavailable`) when running against Supabase. Never gated; a request while the DB is down nudges the guardian to retry
 - `GET /drivers`, `GET /races` — historical data (DuckDB → FastF1/Ergast fallback)
 - `GET /race/{race_id}/results`, `/race/{race_id}/laps` — race detail
 - `GET /live/{race_id}/state` — current live state from Redis
