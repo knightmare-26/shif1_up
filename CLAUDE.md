@@ -171,7 +171,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 - `GET /race/{race_id}/results`, `/race/{race_id}/laps` — race detail
 - `GET /live/{race_id}/state` — current live state from Redis
 - `WS /ws/live/{race_id}` — WebSocket live updates
-- `GET /api/drivers`, `/api/constructors`, `/api/races` — legacy endpoints (frontend uses these)
+- `GET /api/drivers`, `/api/constructors`, `/api/races` — legacy endpoints (frontend uses these). Standings for years served by Jolpica (2025+) are fetched with `strict=True` and go through `_standings_or_stale`: up to 3 attempts within an 8s budget, then the last good copy, then `503 {"detail": "source_unavailable"}` — never a silent `200 []` (Jolpica rate-limits by IP and Render's free instances share one). A source that answers with no standings yet still returns `[]`. The frontend caches empty lists for ≤15s, not the full TTL
 - `POST /simulate/live/{race_id}` — inject mock live state for testing
 - `GET /predict/status` — ML model readiness + grid data availability flag
 - `GET /predict/circuits` — circuits available for prediction
