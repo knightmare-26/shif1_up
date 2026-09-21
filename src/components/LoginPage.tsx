@@ -85,31 +85,35 @@ const LoginPage: React.FC = () => {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.8, delay: 0.4 }}
           onSubmit={handleLogin}
-          className="space-y-6"
+          className="space-y-5 rounded-xl border border-gray-800 bg-gray-900 p-8"
         >
           <div>
-            <label className="block text-pure-white text-sm font-bold mb-2">
+            <label htmlFor="login-username" className="mb-1 block text-xs uppercase tracking-wide text-gray-400">
               Username
             </label>
             <input
+              id="login-username"
               type="text"
+              autoComplete="username"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-4 py-3 bg-track-grey text-carbon-black rounded-lg border-2 border-turbo-teal focus:border-racing-red focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2.5 text-sm text-white placeholder-gray-600 transition-colors focus:border-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
               placeholder="Enter your username"
               required
             />
           </div>
 
           <div>
-            <label className="block text-pure-white text-sm font-bold mb-2">
+            <label htmlFor="login-password" className="mb-1 block text-xs uppercase tracking-wide text-gray-400">
               Password
             </label>
             <input
+              id="login-password"
               type="password"
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-track-grey text-carbon-black rounded-lg border-2 border-turbo-teal focus:border-racing-red focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2.5 text-sm text-white placeholder-gray-600 transition-colors focus:border-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
               placeholder="Enter your password"
               required
             />
@@ -118,18 +122,19 @@ const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={isVerifying}
-            className="w-full py-3 px-6 rounded-lg font-bold text-lg transition-all duration-300 bg-racing-red hover:bg-red-700 text-pure-white transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            className="w-full rounded-lg bg-racing-red px-6 py-2.5 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isVerifying ? 'Logging in...' : 'Login'}
+            {isVerifying ? 'Logging in...' : 'Log in'}
           </button>
 
           {showError && (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-pit-stop-yellow text-center"
+              role="alert"
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-center text-sm text-red-300"
             >
-              Login failed. Please try again.
+              Login failed. Check your username and password and try again.
             </motion.div>
           )}
         </motion.form>
