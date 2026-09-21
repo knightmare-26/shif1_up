@@ -4,7 +4,11 @@
 
 import { Driver, Team, RaceResult } from '../types/f1';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+/** Fired when the API says it (or its database) is waking up, so the app can show a banner and re-check. */
+export const SERVICE_WAKING_EVENT = 'shif1:service-waking';
+const announceWaking = () => window.dispatchEvent(new Event(SERVICE_WAKING_EVENT));
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -147,12 +151,24 @@ class BackendApiService {
       });
 
       if (!response.ok) {
+        // While the database is asleep the API answers 503 "database_waking".
+        // Say so plainly instead of surfacing "HTTP error! status: 503".
+        if (response.status === 503) {
+          const body = await response.json().catch(() => null);
+          if (body?.detail === 'database_waking') {
+            announceWaking();
+            throw new Error(body.message || 'The database is waking up. This page will refresh when it is ready.');
+          }
+        }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
+      // fetch() rejects with a TypeError when the server can't be reached at all
+      // (e.g. a sleeping host that is still booting).
+      if (error instanceof TypeError) announceWaking();
       console.error(`API request failed for ${endpoint}:`, error);
       throw error;
     }

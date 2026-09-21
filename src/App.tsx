@@ -11,13 +11,20 @@ import LiveDataMonitor from './components/LiveDataMonitor';
 import Predictions from './components/Predictions';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
+import { ServiceStatusBanner, useServiceStatus } from './components/ServiceStatusBanner';
 import './App.css';
 
 const AppContent: React.FC = () => {
+  // Wakes a sleeping API host on load and explains the wait; when the backend
+  // comes back, `epoch` changes and the routes remount so failed loads retry.
+  const { status, slow, epoch } = useServiceStatus();
+
   return (
     <div className="App">
       <Navigation />
       <main className="pt-16">
+        <ServiceStatusBanner status={status} slow={slow} />
+        <div key={epoch}>
         <Routes>
           <Route path="/"             element={<MainPage />} />
           <Route path="/dashboard"    element={<Dashboard />} />
@@ -33,6 +40,7 @@ const AppContent: React.FC = () => {
           <Route path="/signup"       element={<SignupPage />} />
           <Route path="*"             element={<Navigate to="/" replace />} />
         </Routes>
+        </div>
       </main>
     </div>
   );
