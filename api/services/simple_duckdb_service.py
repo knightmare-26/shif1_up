@@ -120,6 +120,7 @@ class SimpleDuckDBService:
                     fastest_lap BOOLEAN,
                     fastest_lap_time VARCHAR,
                     status VARCHAR,
+                    laps_completed INTEGER,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (race_id, session_type, position)
                 )
@@ -200,6 +201,17 @@ class SimpleDuckDBService:
                 self.connection.execute("DROP TABLE race_results")
                 self.connection.execute("ALTER TABLE race_results_new RENAME TO race_results")
                 logger.info("✅ Migrated race_results: added session_type, widened primary key")
+
+            # Migrate: add laps_completed if missing (re-check columns — the
+            # session_type migration above may have just rebuilt the table)
+            existing = [
+                r[0] for r in self.connection.execute(
+                    "SELECT column_name FROM information_schema.columns WHERE table_name='race_results'"
+                ).fetchall()
+            ]
+            if "laps_completed" not in existing:
+                self.connection.execute("ALTER TABLE race_results ADD COLUMN laps_completed INTEGER")
+                logger.info("✅ Migrated race_results: added laps_completed column")
 
             logger.info("✅ DuckDB tables created successfully")
 
@@ -321,7 +333,8 @@ class SimpleDuckDBService:
                     SELECT rr.position, rr.driver_id, d.full_name as driver_name,
                            d.number as driver_number, d.nationality as country_code,
                            rr.constructor_id, c.constructor_name,
-                           rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+                           rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status,
+                           rr.laps_completed
                     FROM race_results rr
                     LEFT JOIN drivers d ON rr.driver_id = d.driver_id
                     LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
@@ -446,11 +459,11 @@ class SimpleDuckDBService:
             if self.connection:
                 self.connection.executemany(
                     """INSERT OR REPLACE INTO race_results
-                       (race_id, session_type, position, driver_id, constructor_id, grid, points, time, fastest_lap, fastest_lap_time, status)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       (race_id, session_type, position, driver_id, constructor_id, grid, points, time, fastest_lap, fastest_lap_time, status, laps_completed)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),
                       r.get("grid"), r.get("points"), r.get("time"), r.get("fastest_lap"),
-                      r.get("fastest_lap_time"), r.get("status")) for r in results],
+                      r.get("fastest_lap_time"), r.get("status"), r.get("laps_completed")) for r in results],
                 )
             else:
                 self.in_memory_data["race_results"][f"{race_id}:{session_type}"] = results

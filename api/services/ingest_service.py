@@ -52,6 +52,8 @@ def _extract_classified_results(fastf1_session, session: str) -> List[dict]:
                     time_str = str(qt)
                     break
 
+        laps_val = row.get("Laps")
+
         results.append({
             "position": int(pos) if pd.notna(pos) else 99,
             "driver_id": str(row.get("Abbreviation", "")).lower(),
@@ -62,6 +64,7 @@ def _extract_classified_results(fastf1_session, session: str) -> List[dict]:
             "fastest_lap": bool(row.get("FastestLap", False)),
             "fastest_lap_time": str(row.get("FastestLapTime", "")) if pd.notna(row.get("FastestLapTime")) else "",
             "status": str(row.get("Status", "")) if pd.notna(row.get("Status")) else "",
+            "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
         })
     return results
 
@@ -76,6 +79,7 @@ def _extract_practice_results(fastf1_session) -> List[dict]:
 
     best_laps = laps.dropna(subset=["LapTime"]).groupby("Driver")["LapTime"].min().sort_values()
     rank_by_driver = {drv: i + 1 for i, drv in enumerate(best_laps.index)}
+    lap_counts = laps.groupby("Driver")["LapNumber"].count()
 
     results = []
     for _, row in fastf1_session.results.iterrows():
@@ -92,6 +96,7 @@ def _extract_practice_results(fastf1_session) -> List[dict]:
             "grid": None,
             "points": 0.0,
             "time": time_str,
+            "laps_completed": int(lap_counts.get(abbr, 0)),
             "fastest_lap": position == 1,
             "fastest_lap_time": time_str,
             "status": "",

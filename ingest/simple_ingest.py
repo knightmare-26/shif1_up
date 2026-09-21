@@ -108,6 +108,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
 
                 pos = row.get("Position")
                 grid = row.get("GridPosition")
+                laps_val = row.get("Laps")
                 results.append({
                     "position": int(pos) if pd.notna(pos) else 99,
                     "driver_id": driver_id,
@@ -118,6 +119,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
                     "fastest_lap": bool(row.get("FastestLap", False)),
                     "fastest_lap_time": str(row.get("FastestLapTime", "")),
                     "status": str(row.get("Status", "")),
+                    "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
                 })
 
             await db.store_race_results(race_id, results)
@@ -175,6 +177,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
                     })
                     pos = row.get("Position")
                     grid = row.get("GridPosition")
+                    laps_val = row.get("Laps")
                     sprint_results.append({
                         "position": int(pos) if pd.notna(pos) else 99,
                         "driver_id": driver_id,
@@ -185,6 +188,7 @@ async def ingest_year(year: int, db, include_laps: bool = False):
                         "fastest_lap": bool(row.get("FastestLap", False)),
                         "fastest_lap_time": str(row.get("FastestLapTime", "")),
                         "status": str(row.get("Status", "")),
+                        "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
                     })
                 await db.store_race_results(race_id, sprint_results, session_type="sprint")
                 logger.info("  Stored %d sprint results for %s", len(sprint_results), race_id)

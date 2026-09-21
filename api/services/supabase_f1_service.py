@@ -87,12 +87,16 @@ class SupabaseF1Service:
                     fastest_lap      BOOLEAN,
                     fastest_lap_time TEXT,
                     status           TEXT,
+                    laps_completed   INTEGER,
                     created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     PRIMARY KEY (race_id, session_type, position)
                 )
             """)
             await conn.execute(
                 "ALTER TABLE race_results ADD COLUMN IF NOT EXISTS session_type TEXT NOT NULL DEFAULT 'race'"
+            )
+            await conn.execute(
+                "ALTER TABLE race_results ADD COLUMN IF NOT EXISTS laps_completed INTEGER"
             )
             pk_cols = await conn.fetchval("""
                 SELECT array_agg(a.attname ORDER BY a.attnum)::text
@@ -193,7 +197,8 @@ class SupabaseF1Service:
             SELECT rr.position, rr.driver_id, d.full_name AS driver_name,
                    d.number AS driver_number, d.nationality AS country_code,
                    rr.constructor_id, c.constructor_name,
-                   rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status
+                   rr.grid, rr.points, rr.time, rr.fastest_lap, rr.fastest_lap_time, rr.status,
+                   rr.laps_completed
             FROM race_results rr
             LEFT JOIN drivers      d ON rr.driver_id      = d.driver_id
             LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
@@ -301,8 +306,8 @@ class SupabaseF1Service:
                 await conn.executemany(
                     """INSERT INTO race_results
                            (race_id, session_type, position, driver_id, constructor_id, grid, points,
-                            time, fastest_lap, fastest_lap_time, status)
-                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                            time, fastest_lap, fastest_lap_time, status, laps_completed)
+                       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                        ON CONFLICT (race_id, session_type, position) DO UPDATE SET
                            driver_id        = EXCLUDED.driver_id,
                            constructor_id   = EXCLUDED.constructor_id,
@@ -311,10 +316,11 @@ class SupabaseF1Service:
                            time             = EXCLUDED.time,
                            fastest_lap      = EXCLUDED.fastest_lap,
                            fastest_lap_time = EXCLUDED.fastest_lap_time,
-                           status           = EXCLUDED.status""",
+                           status           = EXCLUDED.status,
+                           laps_completed   = EXCLUDED.laps_completed""",
                     [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),
                       r.get("grid"), r.get("points"), r.get("time"), r.get("fastest_lap"),
-                      r.get("fastest_lap_time"), r.get("status"))
+                      r.get("fastest_lap_time"), r.get("status"), r.get("laps_completed"))
                      for r in results],
                 )
             logger.info("✅ Stored %d %s results for %s", len(results), session_type, race_id)

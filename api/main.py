@@ -635,7 +635,7 @@ def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
             "Time": _parse_timedelta_seconds(row.get("time") or ""),
             "Status": status,
             "Points": str(row.get("points", "")),
-            "Laps": "",
+            "Laps": str(row.get("laps_completed")) if row.get("laps_completed") is not None else "",
         })
     return normalized
 
