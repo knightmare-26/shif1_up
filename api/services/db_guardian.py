@@ -35,6 +35,8 @@ DEFAULT_API_URL = "https://api.supabase.com"
 
 # Management API project statuses that mean "on its way up (or asleep)".
 WAKING_STATUSES = {"INACTIVE", "COMING_UP", "RESTORING", "RESTARTING", "UPGRADING"}
+# On its way *down*: nothing to restore yet, but it will be INACTIVE shortly — keep watching.
+PAUSING_STATUSES = {"PAUSING", "GOING_DOWN"}
 
 READY = "ready"
 CONNECTING = "connecting"
@@ -80,7 +82,7 @@ class DatabaseGuardian:
         project_ref: Optional[str] = None,
         api_url: str = DEFAULT_API_URL,
         retry_seconds: float = 15.0,
-        keepalive_seconds: float = 300.0,
+        keepalive_seconds: float = 60.0,
         connect_timeout: float = 25.0,
         min_attempt_gap: float = 5.0,
         restore_cooldown: float = 600.0,
@@ -105,10 +107,12 @@ class DatabaseGuardian:
 
         self.state = CONNECTING
         self.detail = ""
+        self.project_status: Optional[str] = None  # last status Supabase reported (not a secret)
         self._last_attempt: Optional[float] = None
         self._last_restore: Optional[float] = None
         self._warned: set = set()
         self._nudge = asyncio.Event()
+        self._settled = asyncio.Event()  # set once the first connection attempt has finished
         self._task: Optional[asyncio.Task] = None
 
     # ------------------------------------------------------------------ status
@@ -122,11 +126,14 @@ class DatabaseGuardian:
         return bool(self.access_token and self.project_ref)
 
     def snapshot(self) -> dict:
-        """Safe to expose publicly: no project ref, no credentials, no error text."""
+        """Safe to expose publicly: no project ref, no credentials, no error text — only whether they exist."""
         return {
             "status": "ok" if self.ready else self.state,
             "state": self.state,
             "message": MESSAGES[self.state],
+            "project_status": self.project_status,
+            # Whether this server can restore a paused project itself (a token + ref are configured).
+            "can_restore": self.can_restore,
         }
 
     def _set(self, state: str, detail: str = "") -> None:
@@ -141,10 +148,19 @@ class DatabaseGuardian:
 
     # --------------------------------------------------------------- lifecycle
 
-    async def start(self) -> None:
-        """Make the first connection attempt (bounded), then keep watching in the background."""
-        await self.attempt()
+    async def start(self, initial_wait: float = 5.0) -> None:
+        """Start connecting in the background.
+
+        Waits briefly so a healthy database is connected before the first request, but never
+        for long: a paused project used to hold up startup for the full connect timeout, which
+        is added straight onto a cold start.
+        """
+        self._settled.clear()
         self._task = asyncio.create_task(self._run(), name="database-guardian")
+        try:
+            await asyncio.wait_for(self._settled.wait(), timeout=initial_wait)
+        except asyncio.TimeoutError:
+            logger.info("database still connecting after %.0fs — continuing startup", initial_wait)
 
     async def stop(self) -> None:
         if self._task:
@@ -168,6 +184,14 @@ class DatabaseGuardian:
         self._nudge.clear()
 
     async def _run(self) -> None:
+        try:
+            await self.attempt()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("first database connection attempt failed unexpectedly")
+        finally:
+            self._settled.set()
         while True:
             try:
                 if self.ready:
@@ -214,6 +238,7 @@ class DatabaseGuardian:
             return
         self._set(READY)
         self._last_restore = None
+        self.project_status = None
         logger.info("database connected")
 
     # --------------------------------------------------------------- diagnosis
@@ -232,7 +257,10 @@ class DatabaseGuardian:
             return
 
         status, http_status = await self._project_status()
+        self.project_status = status
         now = self._clock()
+        if status:
+            self._warn_once(f"status-{status}", "database unreachable — Supabase reports the project as %s", status)
 
         if http_status in (401, 403):
             self._set(UNAVAILABLE, f"Supabase access token rejected (HTTP {http_status})")
@@ -245,6 +273,8 @@ class DatabaseGuardian:
             self._set(WAKING, "project paused")
         elif status in WAKING_STATUSES:
             self._set(WAKING, status)
+        elif status in PAUSING_STATUSES:
+            self._set(WAKING, f"project is {status.lower()} — will restore once it has paused")
         elif status is None:
             self._set(UNAVAILABLE, "Supabase Management API unreachable")
         elif self._last_restore is not None and now - self._last_restore < self.recently_restored_window:
