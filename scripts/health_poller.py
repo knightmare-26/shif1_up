@@ -97,7 +97,18 @@ def backend_problems(body):
         checks = json.loads(body).get("checks", {})
     except (ValueError, AttributeError):
         return []
-    return [f"{name}: {c.get('status')}" for name, c in checks.items() if c.get("status") != "ok"]
+    # A backend running against Supabase heals its own database connection (and
+    # wakes a paused project), so those problems are labelled and never restarted.
+    self_healing = bool(checks.get("database", {}).get("self_healing"))
+    problems = []
+    for name, c in checks.items():
+        if c.get("status") == "ok":
+            continue
+        label = f"{name}: {c.get('status')}"
+        if self_healing and name in ("duckdb", "database"):
+            label += " (self-healing)"
+        problems.append(label)
+    return problems
 
 
 SUPABASE_API = "https://api.supabase.com/v1/projects"
@@ -268,7 +279,8 @@ class Service:
             self.degraded_ticks += 1
             # Startup connections are made once, so a failure sticks until the next
             # restart. Retry quickly a few times, then every 5 minutes.
-            if self.proc and not self.hold and restart_degraded_max > 0 \
+            self_healing = all("self-healing" in p for p in self.problems)
+            if self.proc and not self.hold and not self_healing and restart_degraded_max > 0 \
                     and self.degraded_ticks >= 2 and now >= self.degraded_next:
                 self.degraded_restarts += 1
                 fast = self.degraded_restarts <= restart_degraded_max
@@ -355,7 +367,7 @@ def main():
             for s in services.values():
                 s.tick(now, args.max_degraded_restarts)
             # "duckdb" is the /health key for the F1 data store (Supabase when DATABASE_URL is set)
-            if backend and any(p.startswith("duckdb:") for p in backend.problems):
+            if backend and any(p.startswith("duckdb:") and "self-healing" not in p for p in backend.problems):
                 if supabase.tick(now):
                     if backend.proc:
                         log("backend: Supabase is back — restarting to reconnect")
