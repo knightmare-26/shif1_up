@@ -159,6 +159,10 @@ class BackendApiService {
             announceWaking();
             throw new Error(body.message || 'The database is waking up. This page will refresh when it is ready.');
           }
+          // A data source the API depends on (e.g. the standings feed) is failing — say so, don't retry blindly.
+          if (body?.detail === 'source_unavailable') {
+            throw new Error(body.message || "A data source isn't responding right now. Try again in a moment.");
+          }
         }
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -206,10 +210,13 @@ class BackendApiService {
       'success' in (response as any) && 'data' in (response as any);
     const data: T = isWrapped ? (response as any).data : response as unknown as T;
 
+    // An empty list is far more likely to be a hiccup than the truth (e.g. a rate-limited
+    // upstream), so don't let it stick for the full TTL and keep a page empty until reload.
+    const effectiveTtl = Array.isArray(data) && data.length === 0 ? Math.min(ttl, 15) : ttl;
     this.cache.set(cacheKey, {
       data,
       timestamp: Date.now(),
-      ttl: ttl
+      ttl: effectiveTtl
     });
     console.log(`💾 Cached data for ${cacheKey}`);
     return data;
