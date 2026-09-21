@@ -471,6 +471,11 @@ async def health_check():
         guardian.nudge()
     redis_check = await _probe_redis()
     duckdb_check = await _probe_duckdb()
+    if guardian and guardian.ready and duckdb_check["status"] != "ok":
+        # The guardian only re-checks the connection on a timer, so a project that was
+        # paused a moment ago would still read "ready". A failing probe is the cue to
+        # verify now: if the ping fails too, it drops the connection and starts waking it.
+        await guardian.check_alive()
 
     # DuckDB is critical — any non-ok status degrades the overall report.
     # Redis falls back to mock gracefully, so a real-Redis failure is only

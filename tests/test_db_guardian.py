@@ -257,3 +257,79 @@ async def test_nudge_only_matters_while_the_database_is_down():
     g._nudge.clear()
     g.nudge()
     assert not g._nudge.is_set()            # ready: ignored
+
+
+# --- added after live testing: why did the wake-up not work? ---------------------------------
+
+
+async def test_a_project_that_is_pausing_is_watched_then_restored_once_paused():
+    db = FakeDb(fail_times=99)
+    api = FakeSupabase(["PAUSING", "PAUSING", "INACTIVE", "COMING_UP"])
+    clock = Clock()
+    g = make(db, api, clock=clock)
+
+    await g.attempt()                       # still going down: nothing to restore yet
+    assert g.state == WAKING and g.project_status == "PAUSING"
+    assert api.posts == []
+
+    clock.advance(15)
+    await g.attempt()
+    assert api.posts == []
+
+    clock.advance(15)
+    await g.attempt()                       # now fully paused -> restore
+    assert g.project_status == "INACTIVE"
+    assert len(api.posts) == 1
+
+
+async def test_snapshot_says_whether_it_can_restore_and_what_supabase_reports():
+    g = make(FakeDb(fail_times=99), FakeSupabase(["INACTIVE"]))
+    assert g.snapshot()["can_restore"] is True
+    await g.attempt()
+    snap = g.snapshot()
+    assert snap["project_status"] == "INACTIVE" and snap["state"] == WAKING
+
+    no_token = make(FakeDb(fail_times=99), token=None)
+    assert no_token.snapshot()["can_restore"] is False   # visible in /health, so a missing token is obvious
+
+
+async def test_project_status_is_cleared_once_connected():
+    db = FakeDb(fail_times=1)
+    api = FakeSupabase(["INACTIVE", "ACTIVE_HEALTHY"])
+    clock = Clock()
+    g = make(db, api, clock=clock)
+    await g.attempt()
+    assert g.project_status == "INACTIVE"
+    clock.advance(15)
+    await g.attempt()
+    assert g.ready and g.project_status is None
+
+
+async def test_startup_is_not_held_up_by_a_database_that_never_answers():
+    async def hang():
+        await asyncio.sleep(30)
+
+    g = DatabaseGuardian(hang, FakeDb().disconnect, FakeDb().ping, database_url=URL,
+                         connect_timeout=30, min_attempt_gap=0)
+    started = asyncio.get_running_loop().time()
+    await g.start(initial_wait=0.1)         # would have blocked for the whole connect timeout before
+    assert asyncio.get_running_loop().time() - started < 2
+    assert not g.ready
+    await g.stop()
+
+
+async def test_a_lost_connection_is_noticed_and_reconnected_when_checked():
+    db = FakeDb()
+    api = FakeSupabase(["INACTIVE", "ACTIVE_HEALTHY"])
+    clock = Clock()
+    g = make(db, api, clock=clock)
+    await g.attempt()
+    assert g.ready
+
+    db.alive = False                        # project paused underneath a running API
+    db.fail_times = db.connects + 1         # next connect fails: it's really down
+    assert await g.check_alive() is False
+    assert g.state == CONNECTING
+
+    await g.attempt()
+    assert g.state == WAKING and len(api.posts) == 1   # noticed straight away, restore requested
