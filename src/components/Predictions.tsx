@@ -310,13 +310,18 @@ const Predictions: React.FC = () => {
   const [tab, setTab]                 = useState<PredictionTab>('upcoming');
   const requestId = useRef(0);
 
+  const refreshStatus = useCallback(
+    (force = false) => backendApi.getPredictionStatus(force).then(setStatus).catch(() => {}),
+    [],
+  );
+
   useEffect(() => {
-    backendApi.getPredictionStatus().then(setStatus).catch(() => {});
+    refreshStatus();
     backendApi.getPredictionCircuits().then((c) => {
       setCircuits(c);
       if (c.length) setSelected(c[0].circuit_name);
     }).catch(() => {}).finally(() => setCircuitsLoaded(true));
-  }, []);
+  }, [refreshStatus]);
 
   const selectedRace = circuits.find((c) => c.circuit_name === selected);
   const isSprintWeekend = !!selectedRace?.is_sprint;
@@ -344,14 +349,21 @@ const Predictions: React.FC = () => {
       if (id === requestId.current) setError(e.message || 'Predictions are unavailable right now. Try again in a moment.');
     } finally {
       if (id === requestId.current) setLoading(false);
+      // The first prediction after a restart is what trains the models, so the status
+      // fetched when the page opened ("not trained") is stale by now.
+      refreshStatus(true);
     }
-  }, [selected, circuits]);
+  }, [selected, circuits, refreshStatus]);
 
   // Predictions are cheap (cached server-side), so generate them as soon as a
   // circuit is chosen instead of making the user click a second time.
   useEffect(() => { if (selected) runPredictions(); }, [selected, runPredictions]);
 
-  const gridMissing = !status?.grid_data_available;
+  // A freshly started server has no models yet and reports every flag as false. That isn't
+  // "grid data missing" — only say so once the models are trained and still report no grid.
+  // ...and only while a prediction is actually pending: with no upcoming race nothing will ever train them.
+  const warmingUp = !!status && !status.trained && (loading || !!selected);
+  const gridMissing = !!status?.trained && !status.grid_data_available;
   const hasResults = !!(qualiResult || raceResult || sprintResult);
 
   return (
@@ -365,7 +377,7 @@ const Predictions: React.FC = () => {
 
         {tab === 'upcoming' && (
           <TabPanel id="upcoming" idPrefix="pred">
-            {gridMissing && status && (
+            {gridMissing && (
               <Notice tone="warning">
                 <strong>Grid data missing.</strong> Race predictions still work from rolling form
                 averages, but accuracy improves significantly once qualifying grid positions are loaded.
@@ -392,7 +404,13 @@ const Predictions: React.FC = () => {
                 {loading ? 'Predicting…' : 'Refresh'}
               </Button>
 
-              {status && (
+              {warmingUp && (
+                <div className="ml-auto">
+                  <Pill tone="neutral">Models warming up — trained on the first prediction after a restart</Pill>
+                </div>
+              )}
+
+              {status && !warmingUp && (
                 <div className="ml-auto flex flex-wrap items-center gap-2">
                   <Pill tone={status.race_model_ready ? 'good' : 'bad'}>Race: {status.race_model_ready ? 'ready' : 'not trained'}</Pill>
                   <Pill tone={status.quali_model_ready ? 'good' : 'warn'}>Quali: {status.quali_model_ready ? 'ready' : 'needs grid data'}</Pill>
@@ -409,7 +427,7 @@ const Predictions: React.FC = () => {
             {error ? (
               <Card><ErrorState title="Couldn't generate predictions" message={error} onRetry={runPredictions} /></Card>
             ) : loading && !hasResults ? (
-              <Card><LoadingState label="Generating predictions…" /></Card>
+              <Card><LoadingState label={warmingUp ? "Training the models — the first run after a restart takes a little longer…" : "Generating predictions…"} /></Card>
             ) : hasResults ? (
               <FadeIn className="flex flex-col gap-6 lg:flex-row">
                 {qualiResult?.predictions.length ? (
