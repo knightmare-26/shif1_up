@@ -1,9 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Radio, Activity, Clock, Users, AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff } from 'lucide-react';
+import { backendApi } from '../services/backendApi';
+import { isPastDate } from '../utils/dates';
+import { isRaceRound } from '../utils/races';
+import LiveSectionTabs from './LiveSectionTabs';
 import {
-  Radio, Activity, Clock, MapPin, Users,
-  AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff,
-} from 'lucide-react';
+  Button, Card, CardBody, CardHeader, EmptyState, FadeIn, FilterBar, PageHeader, PageShell,
+  PositionBadge, SelectField, TabPanel,
+} from './ui';
 
 const WS_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:8000')
   .replace(/^http/, 'ws');
@@ -31,14 +35,23 @@ interface LiveState {
 interface RaceOption { round: number; race_name: string; gp: string; }
 
 const MAX_BACKOFF = 30_000;
+const CURRENT_YEAR = new Date().getFullYear();
+const YEARS = Array.from({ length: 6 }, (_, i) => CURRENT_YEAR - i);
+
+const CONNECTION = {
+  disconnected: { color: 'text-gray-500',   Icon: WifiOff,     label: 'Disconnected' },
+  connecting:   { color: 'text-yellow-500', Icon: RefreshCw,   label: 'Connecting' },
+  connected:    { color: 'text-green-500',  Icon: CheckCircle, label: 'Connected' },
+  error:        { color: 'text-red-500',    Icon: AlertCircle, label: 'Connection lost' },
+} as const;
 
 const LiveDataMonitor: React.FC = () => {
   const [races, setRaces]             = useState<RaceOption[]>([]);
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
   const [selectedGp, setSelectedGp]   = useState('');
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [liveState, setLiveState]     = useState<LiveState | null>(null);
-  const [connStatus, setConnStatus]   = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [connStatus, setConnStatus]   = useState<keyof typeof CONNECTION>('disconnected');
   const [lastUpdate, setLastUpdate]   = useState<Date | null>(null);
   const [reconnectIn, setReconnectIn] = useState<number | null>(null);
 
@@ -47,21 +60,25 @@ const LiveDataMonitor: React.FC = () => {
   const retryTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load schedule for year
+  // Load the schedule for the year and preselect the weekend most likely to be
+  // live: the next race, or the latest one once the season is over.
   useEffect(() => {
-    const yr = selectedYear;
-    fetch(`/data/schedule/${yr}.json`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: any[]) => {
-        const options = data.map(r => ({
+    let cancelled = false;
+    backendApi.getRaceSchedule(selectedYear)
+      .then((data) => {
+        if (cancelled) return;
+        const list = (Array.isArray(data) ? data : []).filter(isRaceRound);
+        const options = list.map((r) => ({
           round: r.round,
           race_name: r.race_name,
           gp: r.race_name.replace(/ /g, '_').replace(/\//g, '-'),
         }));
         setRaces(options);
-        if (options.length) setSelectedGp(options[0].gp);
+        const pick = list.find((r) => !isPastDate(r.date)) ?? list[list.length - 1];
+        setSelectedGp(pick ? pick.race_name.replace(/ /g, '_').replace(/\//g, '-') : '');
       })
-      .catch(() => setRaces([]));
+      .catch(() => { if (!cancelled) { setRaces([]); setSelectedGp(''); } });
+    return () => { cancelled = true; };
   }, [selectedYear]);
 
   const clearRetry = () => {
@@ -135,211 +152,119 @@ const LiveDataMonitor: React.FC = () => {
     return () => disconnect();
   }, [isMonitoring, selectedYear, selectedGp]);   // eslint-disable-line
 
-  const statusColor = {
-    disconnected: 'text-gray-500',
-    connecting:   'text-yellow-500',
-    connected:    'text-green-500',
-    error:        'text-red-500',
-  }[connStatus];
-
-  const StatusIcon = {
-    disconnected: WifiOff,
-    connecting:   RefreshCw,
-    connected:    CheckCircle,
-    error:        AlertCircle,
-  }[connStatus];
-
+  const { color: statusColor, Icon: StatusIcon, label: statusLabel } = CONNECTION[connStatus];
   const hasData = liveState && (liveState.positions?.length ?? 0) > 0;
 
   return (
-    <div className="min-h-screen bg-carbon-black text-pure-white p-6">
-      <div className="max-w-7xl mx-auto">
+    <PageShell>
+      <PageHeader title="Live" subtitle="Real-time timing data during F1 sessions" />
+      <LiveSectionTabs active="monitor" />
 
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <h1 className="text-4xl font-racing text-racing-red mb-2">Live F1 Data Monitor</h1>
-          <p className="text-gray-300">Real-time timing data during F1 sessions</p>
-        </motion.div>
+      <TabPanel id="monitor" idPrefix="live" className="pt-6">
+        <FilterBar>
+          <SelectField label="Year" value={selectedYear} disabled={isMonitoring}
+            onChange={(v) => { setSelectedYear(Number(v)); setIsMonitoring(false); }}>
+            {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+          </SelectField>
+          <SelectField label="Grand Prix" value={selectedGp} disabled={isMonitoring || races.length === 0}
+            className="min-w-[260px]" onChange={(v) => { setSelectedGp(v); setIsMonitoring(false); }}>
+            {races.length === 0 && <option value="">No calendar for {selectedYear}</option>}
+            {races.map((r) => <option key={r.gp} value={r.gp}>Round {r.round} — {r.race_name}</option>)}
+          </SelectField>
 
-        {/* Control Panel */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-          className="bg-track-grey rounded-lg p-6 mb-8"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center space-x-4">
-              {/* Year */}
-              <div className="flex items-center space-x-2">
-                <span className="text-carbon-black font-medium">Year:</span>
-                <select
-                  value={selectedYear}
-                  onChange={e => { setSelectedYear(+e.target.value); setIsMonitoring(false); }}
-                  className="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-racing-red text-carbon-black"
-                  disabled={isMonitoring}
-                >
-                  {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - i).map(y => (
-                    <option key={y} value={y}>{y}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* GP */}
-              <div className="flex items-center space-x-2">
-                <span className="text-carbon-black font-medium">Race:</span>
-                <select
-                  value={selectedGp}
-                  onChange={e => { setSelectedGp(e.target.value); setIsMonitoring(false); }}
-                  className="px-3 py-1 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-racing-red text-carbon-black"
-                  disabled={isMonitoring}
-                >
-                  {races.map(r => (
-                    <option key={r.gp} value={r.gp}>R{r.round} — {r.race_name}</option>
-                  ))}
-                </select>
-              </div>
+          <div className="ml-auto flex flex-wrap items-center gap-4">
+            <div className={`flex items-center gap-2 text-sm font-medium ${statusColor}`} role="status">
+              <StatusIcon className={`h-4 w-4 ${connStatus === 'connecting' ? 'animate-spin' : ''}`} aria-hidden="true" />
+              <span>{statusLabel}</span>
+              {reconnectIn !== null && <span className="text-xs text-gray-500">(retry in {reconnectIn}s)</span>}
             </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Status indicator */}
-              <div className={`flex items-center space-x-2 ${statusColor}`}>
-                <StatusIcon className={`w-4 h-4 ${connStatus === 'connecting' ? 'animate-spin' : ''}`} />
-                <span className="text-sm font-medium capitalize">{connStatus}</span>
-                {reconnectIn !== null && (
-                  <span className="text-xs text-gray-400">(retry in {reconnectIn}s)</span>
-                )}
+            {lastUpdate && (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Clock className="h-4 w-4" aria-hidden="true" />
+                <span>{lastUpdate.toLocaleTimeString()}</span>
               </div>
-
-              {lastUpdate && (
-                <div className="flex items-center space-x-2 text-gray-500 text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>{lastUpdate.toLocaleTimeString()}</span>
-                </div>
-              )}
-
-              <button
-                onClick={() => setIsMonitoring(m => !m)}
-                disabled={!selectedGp}
-                className={`px-4 py-2 rounded-lg font-medium flex items-center space-x-2 transition-colors ${
-                  isMonitoring
-                    ? 'bg-red-600 hover:bg-red-700 text-white'
-                    : 'bg-racing-red hover:bg-red-700 text-white disabled:opacity-40'
-                }`}
-              >
-                {isMonitoring ? <><Square className="w-4 h-4" /><span>Stop</span></>
-                              : <><Play  className="w-4 h-4" /><span>Start Monitoring</span></>}
-              </button>
-            </div>
-          </div>
-        </motion.div>
-
-        {/* Live Data */}
-        <AnimatePresence>
-          {isMonitoring && (
-            <motion.div
-              key="live"
-              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            )}
+            <Button
+              variant={isMonitoring ? 'danger' : 'primary'}
+              disabled={!selectedGp}
+              onClick={() => setIsMonitoring((m) => !m)}
+              icon={isMonitoring ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             >
-              {!hasData ? (
-                /* No data yet */
-                <div className="bg-track-grey rounded-lg p-12 text-center">
-                  {connStatus === 'connected' ? (
-                    <>
-                      <Radio className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-xl font-bold text-carbon-black mb-2">No live session active</p>
-                      <p className="text-gray-600 text-sm">
-                        Live data appears here during an active F1 session. Data streams automatically when a race weekend is underway.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <Wifi className="w-12 h-12 text-yellow-400 mx-auto mb-4 animate-pulse" />
-                      <p className="text-xl font-bold text-carbon-black">
-                        {connStatus === 'connecting' ? 'Connecting…' : 'Connection lost — retrying…'}
-                      </p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                /* Real data */
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  {/* Positions */}
-                  <div className="bg-track-grey rounded-lg p-6">
-                    <h2 className="text-2xl font-bold text-carbon-black mb-4 flex items-center">
-                      <Users className="w-6 h-6 mr-2 text-racing-red" />
-                      Live Positions
-                      {liveState?.lap && (
-                        <span className="ml-auto text-sm font-normal text-gray-600">
-                          Lap {liveState.lap}{liveState.total_laps ? ` / ${liveState.total_laps}` : ''}
-                        </span>
-                      )}
-                    </h2>
-                    <div className="space-y-2">
-                      {liveState!.positions!.map((pos, i) => (
-                        <motion.div
-                          key={pos.driver_id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: i * 0.05 }}
-                          className="bg-white rounded-lg p-4 flex items-center justify-between"
-                        >
-                          <div className="flex items-center space-x-4">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm ${
-                              pos.position <= 3 ? 'bg-racing-red' : 'bg-gray-500'
-                            }`}>
-                              {pos.position}
-                            </div>
-                            <div>
-                              <p className="font-bold text-carbon-black">{pos.driver_name ?? pos.driver_id.toUpperCase()}</p>
-                              <p className="text-xs text-gray-500">{pos.status}</p>
-                            </div>
-                          </div>
-                          <div className="text-right font-mono text-sm">
-                            <p className="text-carbon-black">{pos.last_lap_time ?? '—'}</p>
-                            <p className="text-gray-500">{pos.gap ?? ''}</p>
-                          </div>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Session info */}
-                  <div className="bg-track-grey rounded-lg p-6">
-                    <h2 className="text-2xl font-bold text-carbon-black mb-4 flex items-center">
-                      <Activity className="w-6 h-6 mr-2 text-racing-red" />
-                      Session Info
-                    </h2>
-                    <div className="grid grid-cols-2 gap-4">
-                      {[
-                        ['Session Status', liveState?.session_status ?? '—'],
-                        ['Track Status',   liveState?.track_status   ?? '—'],
-                        ['Lap',           liveState?.lap ? `${liveState.lap} / ${liveState.total_laps ?? '?'}` : '—'],
-                        ['Last Update',   lastUpdate?.toLocaleTimeString() ?? '—'],
-                      ].map(([label, value]) => (
-                        <div key={label} className="bg-white rounded-lg p-4 text-center">
-                          <p className="text-2xl font-bold text-carbon-black">{value}</p>
-                          <p className="text-sm text-gray-600">{label}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Idle state */}
-        {!isMonitoring && (
-          <div className="bg-track-grey rounded-lg p-12 text-center">
-            <MapPin className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-xl font-bold text-carbon-black mb-2">Select a race and press Start</p>
-            <p className="text-gray-600 text-sm">
-              Live data streams automatically during active F1 race weekends.
-            </p>
+              {isMonitoring ? 'Stop' : 'Start Monitoring'}
+            </Button>
           </div>
+        </FilterBar>
+
+        {!isMonitoring ? (
+          <Card>
+            <EmptyState
+              icon={<Radio className="h-10 w-10" />}
+              title="Select a Grand Prix and press Start Monitoring"
+              message="Live data streams automatically during active F1 race weekends."
+            />
+          </Card>
+        ) : !hasData ? (
+          <Card>
+            {connStatus === 'connected' ? (
+              <EmptyState
+                icon={<Radio className="h-10 w-10" />}
+                title="No live session active"
+                message="Live data appears here during an active F1 session. It streams automatically when a race weekend is underway."
+              />
+            ) : (
+              <EmptyState
+                icon={<Wifi className="h-10 w-10 animate-pulse text-yellow-500/60" />}
+                title={connStatus === 'connecting' ? 'Connecting…' : 'Connection lost — retrying…'}
+              />
+            )}
+          </Card>
+        ) : (
+          <FadeIn className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader
+                title="Live Positions"
+                icon={<Users className="h-4 w-4" />}
+                subtitle={liveState?.lap ? `Lap ${liveState.lap}${liveState.total_laps ? ` / ${liveState.total_laps}` : ''}` : undefined}
+              />
+              <ul>
+                {liveState!.positions!.map((pos) => (
+                  <li key={pos.driver_id} className="flex items-center justify-between gap-3 border-b border-gray-800/60 px-5 py-3 last:border-b-0">
+                    <span className="flex items-center gap-3">
+                      <PositionBadge position={pos.position} />
+                      <span>
+                        <span className="block font-medium text-white">{pos.driver_name ?? pos.driver_id.toUpperCase()}</span>
+                        <span className="block text-xs text-gray-500">{pos.status}</span>
+                      </span>
+                    </span>
+                    <span className="text-right text-sm tabular-nums">
+                      <span className="block text-white">{pos.last_lap_time ?? '—'}</span>
+                      <span className="block text-gray-500">{pos.gap ?? ''}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+
+            <Card>
+              <CardHeader title="Session Info" icon={<Activity className="h-4 w-4" />} />
+              <CardBody className="grid grid-cols-2 gap-3">
+                {[
+                  ['Session Status', liveState?.session_status ?? '—'],
+                  ['Track Status',   liveState?.track_status   ?? '—'],
+                  ['Lap',            liveState?.lap ? `${liveState.lap} / ${liveState.total_laps ?? '?'}` : '—'],
+                  ['Last Update',    lastUpdate?.toLocaleTimeString() ?? '—'],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg bg-gray-800/50 p-4 text-center">
+                    <p className="text-xl font-bold capitalize text-white">{value}</p>
+                    <p className="mt-1 text-xs uppercase tracking-wide text-gray-500">{label}</p>
+                  </div>
+                ))}
+              </CardBody>
+            </Card>
+          </FadeIn>
         )}
-      </div>
-    </div>
+      </TabPanel>
+    </PageShell>
   );
 };
 

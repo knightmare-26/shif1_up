@@ -23,7 +23,10 @@ const Navigation: React.FC = () => {
 
   const renderItem = (item: NavItem, compact = false) => {
     const Icon = item.icon;
-    const isActive = location.pathname === item.path;
+    // Nested routes (e.g. /live-monitor under Live) keep their section highlighted.
+    const isActive = item.path === '/'
+      ? location.pathname === '/'
+      : location.pathname.startsWith(item.path);
     const base = 'flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium';
     const state = isActive
       ? 'bg-racing-red text-pure-white'
