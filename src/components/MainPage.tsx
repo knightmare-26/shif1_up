@@ -1,229 +1,121 @@
-import React from 'react';
-import { motion } from 'framer-motion';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Car, MapPin, Flag, TrendingUp, Calendar, Users } from 'lucide-react';
+import { Activity, ArrowRight, Calendar, Car, Flag, ListOrdered, MapPin, TrendingUp, Users } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { backendApi, ConstructorStanding, DriverStanding, RaceEvent } from '../services/backendApi';
+import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
+import { gpToken, isRaceRound } from '../utils/races';
+import { Button, Card, FadeIn, PageShell, StatCard } from './ui';
+
+const FEATURES = [
+  { to: '/dashboard',                 icon: Users,       title: 'Championship Standings', text: 'Driver and constructor points, season by season.' },
+  { to: '/dashboard?tab=results',     icon: ListOrdered, title: 'Race Results',           text: 'Full classifications for races, qualifying, sprints and practice.' },
+  { to: '/predictions',               icon: TrendingUp,  title: 'Predictions',            text: 'Qualifying and race forecasts, checked against what actually happened.' },
+  { to: '/live',                      icon: Activity,    title: 'Live Timing',            text: 'Positions and gaps as they change during a session.' },
+];
 
 const MainPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
+  const year = new Date().getFullYear();
 
-  if (isAuthenticated && user) {
-    return (
-      <div className="min-h-screen bg-carbon-black p-8">
-        {/* Welcome Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="mb-8"
-        >
-          <h1 className="text-4xl font-racing text-racing-red mb-2">
-            Welcome back, {user.username}! 🏎️
-          </h1>
-          <p className="text-pure-white text-lg">
-            Here's your personalized F1 experience
-          </p>
-        </motion.div>
+  const [drivers, setDrivers] = useState<DriverStanding[]>([]);
+  const [teams, setTeams] = useState<ConstructorStanding[]>([]);
+  const [races, setRaces] = useState<RaceEvent[]>([]);
+  const [loading, setLoading] = useState(true);
 
-        {/* User Preferences Summary */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
-        >
-          <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-            <div className="flex items-center mb-4">
-              <Car className="w-6 h-6 text-racing-red mr-3" />
-              <h3 className="text-lg font-bold text-carbon-black">Favorite Driver</h3>
-            </div>
-            <p className="text-2xl font-racing text-racing-red">{user.preferences.favoriteDriver}</p>
-          </div>
+  // A live snapshot of the season; if any of it fails the page still works.
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([
+      backendApi.getDriverStandings(year),
+      backendApi.getConstructorStandings(year),
+      backendApi.getRaceSchedule(year),
+    ]).then(([d, c, r]) => {
+      if (cancelled) return;
+      if (d.status === 'fulfilled' && Array.isArray(d.value)) setDrivers(d.value);
+      if (c.status === 'fulfilled' && Array.isArray(c.value)) setTeams(c.value);
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) setRaces(r.value.filter(isRaceRound));
+      setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [year]);
 
-          <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-            <div className="flex items-center mb-4">
-              <MapPin className="w-6 h-6 text-turbo-teal mr-3" />
-              <h3 className="text-lg font-bold text-carbon-black">Favorite Track</h3>
-            </div>
-            <p className="text-2xl font-racing text-turbo-teal">{user.preferences.favoriteTrack}</p>
-          </div>
+  const nextRace = races.find((r) => !isPastDate(r.date));
+  const nextIn = nextRace ? daysUntil(nextRace.date) : null;
+  const leader = drivers[0];
+  const teamLeader = teams[0];
+  const hasSnapshot = loading || nextRace || leader || teamLeader;
 
-          <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-            <div className="flex items-center mb-4">
-              <Flag className="w-6 h-6 text-pit-stop-yellow mr-3" />
-              <h3 className="text-lg font-bold text-carbon-black">Favorite Team</h3>
-            </div>
-            <p className="text-2xl font-racing text-pit-stop-yellow">{user.preferences.favoriteTeam}</p>
-          </div>
-
-          <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-            <div className="flex items-center mb-4">
-              <TrendingUp className="w-6 h-6 text-racing-red mr-3" />
-              <h3 className="text-lg font-bold text-carbon-black">Experience</h3>
-            </div>
-            <p className="text-2xl font-racing text-racing-red capitalize">{user.preferences.experienceLevel}</p>
-          </div>
-        </motion.div>
-
-        {/* Quick Actions */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
-        >
-          <Link to="/race-results" className="bg-gradient-to-br from-racing-red to-red-700 rounded-xl p-6 text-pure-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-            <Calendar className="w-8 h-8 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Race Results</h3>
-            <p className="text-sm opacity-90">View detailed race classifications and results</p>
-          </Link>
-
-          <Link to="/lap-data" className="bg-gradient-to-br from-turbo-teal to-blue-700 rounded-xl p-6 text-pure-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-            <Users className="w-8 h-8 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Lap Analysis</h3>
-            <p className="text-sm opacity-90">Detailed lap times and sector analysis</p>
-          </Link>
-
-          <Link to="/drivers" className="bg-gradient-to-br from-pit-stop-yellow to-yellow-600 rounded-xl p-6 text-pure-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-            <MapPin className="w-8 h-8 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Driver Stats</h3>
-            <p className="text-sm opacity-90">View detailed statistics for {user.preferences.favoriteDriver}</p>
-          </Link>
-
-          <Link to="/tracks" className="bg-gradient-to-br from-purple-600 to-purple-800 rounded-xl p-6 text-pure-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105">
-            <Flag className="w-8 h-8 mb-4" />
-            <h3 className="text-xl font-bold mb-2">Track Analysis</h3>
-            <p className="text-sm opacity-90">Explore insights about {user.preferences.favoriteTrack}</p>
-          </Link>
-        </motion.div>
-
-        {/* Recent Activity */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.6 }}
-          className="bg-track-grey rounded-xl p-6 shadow-lg"
-        >
-          <h3 className="text-2xl font-bold text-carbon-black mb-4">Recent Activity</h3>
-          <div className="space-y-4">
-            <div className="flex items-center p-4 bg-pure-white rounded-lg">
-              <div className="w-3 h-3 bg-racing-red rounded-full mr-4"></div>
-              <div>
-                <p className="text-carbon-black font-medium">Welcome to Shif1 UP!</p>
-                <p className="text-sm text-gray-600">Your account was created successfully</p>
-              </div>
-              <span className="ml-auto text-sm text-gray-500">Just now</span>
-            </div>
-            
-            <div className="flex items-center p-4 bg-pure-white rounded-lg">
-              <div className="w-3 h-3 bg-turbo-teal rounded-full mr-4"></div>
-              <div>
-                <p className="text-carbon-black font-medium">Preferences Set</p>
-                <p className="text-sm text-gray-600">Your F1 preferences have been saved</p>
-              </div>
-              <span className="ml-auto text-sm text-gray-500">Just now</span>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
-
-  // Non-authenticated user view
   return (
-    <div className="min-h-screen bg-carbon-black p-8">
-      {/* Welcome Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-        className="text-center mb-12"
-      >
-        <h1 className="text-6xl font-racing text-racing-red mb-4">
-          Shif1 UP
-        </h1>
-        <h2 className="text-3xl font-f1 text-pure-white mb-6">
-          Your F1 Insights Hub
-        </h2>
-        <p className="text-xl text-gray-300 max-w-4xl mx-auto leading-relaxed">
-          Experience the thrill of Formula 1 with cutting-edge analytics, real-time telemetry, 
-          and AI-powered predictions. Get insights into driver performance, track analysis, 
-          and live race data all in one comprehensive platform.
-        </p>
-      </motion.div>
-
-      {/* Features Grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.4 }}
-        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-12"
-      >
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-racing-red rounded-full flex items-center justify-center mx-auto mb-4">
-              <Users className="w-8 h-8 text-pure-white" />
-            </div>
-            <h3 className="text-xl font-bold text-carbon-black mb-2">Driver Analytics</h3>
-            <p className="text-gray-600">Comprehensive driver performance analysis and statistics</p>
+    <PageShell>
+      <FadeIn>
+        <section className="max-w-3xl py-8 sm:py-12">
+          {isAuthenticated && user ? (
+            <p className="mb-2 text-sm text-gray-400">Welcome back, {user.username}</p>
+          ) : null}
+          <h1 className="font-racing text-5xl leading-tight text-racing-red sm:text-6xl">Shif1 UP</h1>
+          <p className="mt-3 text-xl text-white">Your F1 insights hub</p>
+          <p className="mt-4 max-w-2xl text-base leading-relaxed text-gray-400">
+            Championship standings, race results, model-based predictions and live timing for
+            Formula 1 — all in one place, no account needed.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link to="/dashboard"><Button icon={<ArrowRight className="h-4 w-4" />}>Open dashboard</Button></Link>
+            <Link to="/predictions"><Button variant="secondary" icon={<TrendingUp className="h-4 w-4" />}>See predictions</Button></Link>
           </div>
-        </div>
+        </section>
+      </FadeIn>
 
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-turbo-teal rounded-full flex items-center justify-center mx-auto mb-4">
-              <MapPin className="w-8 h-8 text-pure-white" />
-            </div>
-            <h3 className="text-xl font-bold text-carbon-black mb-2">Track Analysis</h3>
-            <p className="text-gray-600">Detailed circuit information and performance insights</p>
+      {hasSnapshot && (
+        <section aria-label={`${year} season snapshot`} className="mb-8">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">{year} season snapshot</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="Next Race" loading={loading} icon={<Calendar className="h-6 w-6" />}
+              value={nextRace ? gpToken(nextRace.race_name) : '—'}
+              sub={nextRace ? `${formatDate(nextRace.date)} · ${describeDaysUntil(nextIn)}` : 'Season complete'} />
+            <StatCard label="Drivers' Leader" loading={loading} icon={<Users className="h-6 w-6" />} accent="text-turbo-teal"
+              value={leader?.driver_name ?? '—'} sub={leader ? `${leader.points} pts` : undefined} />
+            <StatCard label="Constructors' Leader" loading={loading} icon={<Flag className="h-6 w-6" />} accent="text-pit-stop-yellow"
+              value={teamLeader?.constructor_name ?? '—'} sub={teamLeader ? `${teamLeader.points} pts` : undefined} />
           </div>
-        </div>
+        </section>
+      )}
 
-        <div className="bg-track-grey rounded-xl p-6 shadow-lg">
-          <div className="text-center">
-            <div className="w-16 h-16 bg-pit-stop-yellow rounded-full flex items-center justify-center mx-auto mb-4">
-              <TrendingUp className="w-8 h-8 text-pure-white" />
-            </div>
-            <h3 className="text-xl font-bold text-carbon-black mb-2">Live Data</h3>
-            <p className="text-gray-600">Real-time race information and live analytics</p>
+      {isAuthenticated && user && (
+        <section aria-label="Your preferences" className="mb-8">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Your preferences</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="Favorite Driver" icon={<Car className="h-6 w-6" />} value={user.preferences.favoriteDriver} />
+            <StatCard label="Favorite Track" icon={<MapPin className="h-6 w-6" />} accent="text-turbo-teal" value={user.preferences.favoriteTrack} />
+            <StatCard label="Favorite Team" icon={<Flag className="h-6 w-6" />} accent="text-pit-stop-yellow" value={user.preferences.favoriteTeam} />
+            <StatCard label="Experience" icon={<TrendingUp className="h-6 w-6" />}
+              value={<span className="capitalize">{user.preferences.experienceLevel}</span>} />
           </div>
-        </div>
-      </motion.div>
+        </section>
+      )}
 
-      {/* Public Access Info */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.6 }}
-        className="bg-track-grey rounded-xl p-6 shadow-lg text-center"
-      >
-        <h3 className="text-2xl font-bold text-carbon-black mb-4">Explore F1 Analytics</h3>
-        <p className="text-gray-600 mb-6">
-          You can browse our F1 analytics and insights without an account. 
-          Sign up to unlock personalized features and predictions!
-        </p>
-        <div className="flex flex-wrap justify-center gap-4">
-          <Link
-            to="/drivers"
-            className="px-6 py-3 bg-racing-red text-pure-white font-bold rounded-lg hover:bg-red-700 transition-colors"
-          >
-            View Drivers
-          </Link>
-          <Link
-            to="/tracks"
-            className="px-6 py-3 bg-turbo-teal text-pure-white font-bold rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Explore Tracks
-          </Link>
-          <Link
-            to="/live"
-            className="px-6 py-3 bg-pit-stop-yellow text-carbon-black font-bold rounded-lg hover:bg-yellow-500 transition-colors"
-          >
-            Live Data
-          </Link>
+      <section aria-label="What you can do here" className="pb-8">
+        <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Explore</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {FEATURES.map(({ to, icon: Icon, title, text }) => (
+            <Link
+              key={to}
+              to={to}
+              className="group rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
+            >
+              <Card className="h-full p-5 transition-colors group-hover:border-gray-600">
+                <Icon className="mb-4 h-6 w-6 text-racing-red" aria-hidden="true" />
+                <h3 className="flex items-center justify-between font-semibold text-white">
+                  {title}
+                  <ArrowRight className="h-4 w-4 text-gray-600 transition-colors group-hover:text-white" aria-hidden="true" />
+                </h3>
+                <p className="mt-1 text-sm text-gray-400">{text}</p>
+              </Card>
+            </Link>
+          ))}
         </div>
-      </motion.div>
-    </div>
+      </section>
+    </PageShell>
   );
 };
 
