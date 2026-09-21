@@ -12,19 +12,24 @@ import Predictions from './components/Predictions';
 import LoginPage from './components/LoginPage';
 import SignupPage from './components/SignupPage';
 import { ServiceStatusBanner, useServiceStatus } from './components/ServiceStatusBanner';
+import { ServiceGate } from './components/ServiceGate';
 import './App.css';
 
 const AppContent: React.FC = () => {
-  // Wakes a sleeping API host on load and explains the wait; when the backend
-  // comes back, `epoch` changes and the routes remount so failed loads retry.
-  const { status, slow, epoch } = useServiceStatus();
+  // Wakes a sleeping API host on load. Until the API *and its database* are ready the
+  // visitor gets a blurred wait screen instead of pages that would only fail; once
+  // they are, the site mounts. If the backend goes away later, a slim banner shows
+  // and `epoch` remounts the routes when it returns so failed loads retry.
+  const { status, slow, epoch, gated, elapsed, retry, dismiss } = useServiceStatus();
 
   return (
     <div className="App">
       <Navigation />
+      {gated && <ServiceGate status={status} visible={status.state !== 'checking' || slow}
+                             elapsed={elapsed} onRetry={retry} onContinue={dismiss} />}
       <main className="pt-16">
-        <ServiceStatusBanner status={status} slow={slow} />
-        <div key={epoch}>
+        {!gated && <ServiceStatusBanner status={status} slow={slow} />}
+        {!gated && <div key={epoch}>
         <Routes>
           <Route path="/"             element={<MainPage />} />
           <Route path="/dashboard"    element={<Dashboard />} />
@@ -40,7 +45,7 @@ const AppContent: React.FC = () => {
           <Route path="/signup"       element={<SignupPage />} />
           <Route path="*"             element={<Navigate to="/" replace />} />
         </Routes>
-        </div>
+        </div>}
       </main>
     </div>
   );

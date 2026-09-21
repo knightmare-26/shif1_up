@@ -4,19 +4,25 @@ import { SERVICE_WAKING_EVENT } from '../services/backendApi';
 import { probeService, ServiceStatus, SERVER_WAKING_MESSAGE } from '../services/serviceStatus';
 
 const POLL_MS = 4_000;
-// Don't flash a banner for a backend that answers quickly.
-const SHOW_AFTER_MS = 1_500;
+// Don't flash the wait screen or banner for a backend that answers quickly.
+const SHOW_AFTER_MS = 700;
 
 /**
- * Checks the API once on load — which also wakes a sleeping host — and, while it
- * (or its database) is asleep, keeps checking until it's ready. `epoch` changes
- * when things come back so the app can remount and refetch what failed.
- * A failed API request also re-triggers the check (see SERVICE_WAKING_EVENT).
+ * Checks the API on load — which also wakes a sleeping host — and keeps checking
+ * while it (or its database) is asleep.
+ *
+ *  - `gated` is true until the backend is fully ready for the first time (or the
+ *    visitor chooses to continue anyway): the app shows a wait screen instead of pages.
+ *  - After that, a failed API request re-triggers the check (SERVICE_WAKING_EVENT) and
+ *    only a slim banner is shown; `epoch` changes when things come back so the
+ *    routes remount and refetch whatever failed.
  */
 export function useServiceStatus() {
-  const [status, setStatus] = useState<ServiceStatus>({ state: 'checking', message: '' });
+  const [status, setStatus] = useState<ServiceStatus>({ state: 'checking', message: '', detail: '', serverUp: false });
   const [slow, setSlow] = useState(false);
   const [epoch, setEpoch] = useState(0);
+  const [gated, setGated] = useState(true);
+  const [elapsed, setElapsed] = useState(0);
 
   const loopId = useRef(0);
   const active = useRef(false);
@@ -35,6 +41,7 @@ export function useServiceStatus() {
       setStatus(next);
       if (next.state === 'ready') {
         active.current = false;
+        setGated(false);
         if (wasDown.current) {
           wasDown.current = false;
           setEpoch((e) => e + 1);
@@ -65,9 +72,21 @@ export function useServiceStatus() {
     };
   }, [start, stop]);
 
-  return { status, slow, epoch };
+  // Seconds spent on the wait screen.
+  useEffect(() => {
+    if (!gated) return;
+    const t0 = Date.now();
+    const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
+    return () => clearInterval(id);
+  }, [gated]);
+
+  const retry = useCallback(() => start(true), [start]);
+  const dismiss = useCallback(() => setGated(false), []);
+
+  return { status, slow, epoch, gated, elapsed, retry, dismiss };
 }
 
+/** Slim, non-blocking notice for a backend that goes away after the site has loaded. */
 export const ServiceStatusBanner: React.FC<{ status: ServiceStatus; slow: boolean }> = ({ status, slow }) => {
   const waking = status.state === 'server-waking' || status.state === 'database-waking';
   const stillChecking = status.state === 'checking' && slow;
