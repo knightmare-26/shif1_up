@@ -9,7 +9,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Run everything (recommended for development)
 ```bash
 npm run dev          # Starts both backend + frontend concurrently
+npm run up           # Same, but supervised: health-checks both and restarts whichever stops responding
 ```
+
+`scripts/health_poller.py` (stdlib only; `--check` prints status and exits, `--only backend|frontend`). It adopts servers that are already healthy, writes child output to `logs/`, and restarts the backend when `/health` reports `degraded` (the DB connection is made once at startup, so a failure sticks until restart). If the Supabase project is paused it says so; set `SUPABASE_ACCESS_TOKEN` (Supabase dashboard → Account → Access Tokens, in `.env`) and it restores the project via the Management API, then restarts the backend. A running poller also keeps a free-tier project from re-pausing, since `/health` runs `SELECT 1`.
 
 ### Backend only
 ```bash
@@ -111,21 +114,29 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 ```
 /             → MainPage
-/dashboard    → Dashboard (sub-tabs: Overview | Drivers | Teams | Tracks)
+/dashboard    → Dashboard (tabs: Overview | Drivers | Teams | Tracks | Race Results)
 /predictions  → Predictions (ML qualifying + race predictions)
-/race-results → RaceResults
-/live         → LiveAnalytics
-/lap-data     → LapData
-/live-monitor → LiveDataMonitor
-/data-manager → DataManager
-/drivers      → redirect to /dashboard
-/tracks       → redirect to /dashboard
+/live         → LiveAnalytics   (Live section, "Overview" tab)
+/live-monitor → LiveDataMonitor (Live section, "Live Monitor" tab)
+/lap-data     → LapData (not in the nav)
+/data-manager → DataManager (admin only)
+/race-results → redirect to /dashboard?tab=results
+/drivers      → redirect to /dashboard?tab=drivers
+/tracks       → redirect to /dashboard?tab=tracks
 *             → redirect to /
 ```
 
+The Dashboard keeps its state in the URL: `?tab=overview|drivers|teams|tracks|results&year=YYYY&gp=<GP token>` (e.g. `/dashboard?tab=results&year=2026&gp=Spanish`).
+
+### Frontend UI kit (`src/components/ui/`)
+
+Every page is built from the same components — use them for new pages instead of ad-hoc markup: `PageShell`/`PageHeader`/`FadeIn` (layout), `Card`/`CardHeader`/`StatCard`/`DetailList`, `Tabs`/`TabPanel`, `SelectField`/`TextField`/`FilterBar`/`Button`, `LoadingState`/`ErrorState`/`EmptyState`/`Notice`, `TableWrap`/`Th`/`Td`/`Tr`/`PositionBadge`/`TeamChip`, `Pill`. Style: dark `bg-gray-900` cards with `border-gray-800`, `racing-red` accent, Orbitron/Racing Sans One from the existing tailwind config. Tab-content components (Drivers/Tracks/Race Results) render inside the Dashboard shell — they must not add their own page wrapper or `<h1>`.
+
+Conventions: never show made-up data when a request fails (use `ErrorState` with a retry), keep filters mounted while results load, and guard async loads with a request-id so a stale response can't overwrite a newer one. Date helpers live in `src/utils/dates.ts` (schedule dates are plain calendar days — don't `new Date("YYYY-MM-DD")` them). `src/services/backendApi.ts` only uses the committed `public/data/*` snapshots for finished seasons; the current season always comes from the live API.
+
 `AuthProvider` wraps the app shell (required — components call `useAuth()`). Auth routes exist but content is not gated — shelved by user decision.
 
-Navigation items: Home, Dashboard, Predictions, Race Results, Live, Data Manager.
+Navigation items: Home, Dashboard, Predictions, Live, Data Manager.
 
 Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_APP_API_URL`, defaulting to `http://localhost:8000`).
 
@@ -143,6 +154,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `INTERNAL_API_KEY` | — | Shared secret so `live/poller.py` can call `POST /admin/ingest/race` without a user login |
 | `REACT_APP_API_URL` | `http://localhost:8000` | Frontend API base URL |
 | `JWT_SECRET` | — | Auth JWT signing key — see `CLAUDE.local.md` |
+| `SUPABASE_ACCESS_TOKEN` | — | Optional; lets `scripts/health_poller.py` restore a paused Supabase project (project ref is parsed from `DATABASE_URL`, or set `SUPABASE_PROJECT_REF`) |
 | `LOG_FORMAT` | plain text | Set to `json` for structured JSON logging |
 | `LOG_LEVEL` | `INFO` | Logging level |
 

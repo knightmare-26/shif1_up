@@ -88,6 +88,32 @@
 
 ---
 
+## Pending (added 2026-09-21, from the data audit + health poller work)
+
+### Data correctness
+- [ ] **Stale duplicate row** — `2026_British` sprint has Albon twice: real P18 row and a leftover P99 row (NaN points, from the first ingest). Delete the P99 row (Supabase `race_results`, `session_type='sprint'`)
+- [ ] **Upsert leaves stale rows** — `store_race_results` upserts on `(race_id, session_type, position)`, so a re-ingest never removes rows at positions no longer used. Delete-then-insert per `(race_id, session_type)` in `supabase_f1_service.py` and `simple_duckdb_service.py`
+- [ ] **Podiums always 0 on the Drivers tab** — hard-coded at `api/services/ergast_service.py:115`; 23/23 drivers show 0 (even ones with wins). Compute from stored race results (position ≤ 3)
+- [ ] **Post-race penalties change results after ingest** (found: 2026 Monaco, Gasly P3 → P7, fixed by re-ingest). Consider a scheduled re-ingest of the last few rounds so later stewards' decisions are picked up
+- [ ] **Qualifying disagrees with Jolpica** for 2026 Canada (r5, P14–P16) and Belgium (r10, P4–P10). Rows were fetched fresh from FastF1, so it's a source disagreement, not staleness — decide which source is authoritative
+- [ ] **Naming inconsistency** — DB has "Kimi Antonelli", standings have "Andrea Kimi Antonelli"
+- [ ] **Unclassified drivers stored at position 99** — 2022 Saudi (Schumacher), 2023 Singapore (Stroll), 2023 Azerbaijan sprint (Sargeant); official classification ranks them last instead
+- [ ] **Verify 2026 round 16** — Jolpica calls it "Bahrain Grand Prix in Malaysia" (location "Kuala Lumpur"), the backend shows "Bahrain Grand Prix". Confirm the name/venue, then add its length, corners and lap record to `src/data/trackFacts.ts` (currently shows "—")
+- [ ] **Static snapshots in `public/data/`** are now only used for finished seasons (guard in `backendApi.fetchStatic`). The 2026 files there are stale (Apr 16: 22-round calendar, standings after round 3) — regenerate with `scripts/generate_static_data.py` or delete the current-season files so they can't mislead
+- [ ] **Podiums** are hidden on the Drivers tab until the source provides them (see the podiums item above) — restore the column once fixed
+- [ ] 2020–2021 are not in Supabase (2022–2026 only); qualifying for 2022–2025 is only loaded lazily on demand
+
+### Not yet verified
+- [ ] Lap Data page data for recent races, Tracks tab, and on-screen check of every page after the data fixes
+- [ ] Live page shows "no data" until the next session (Azerbaijan, 2026-09-26) — expected; real-session smoke test still open (Phase 4)
+
+### Tooling
+- [ ] Health poller's Supabase restore path is only tested against a fake API — needs `SUPABASE_ACCESS_TOKEN` to exercise it for real (`scripts/health_poller.py`)
+- [ ] Backend logs the full Upstash Redis URL (including its token) at startup — mask it in `redis_service.py`
+- [ ] Uncommitted work: `laps_completed` ingest + Race Results table columns, health poller (`scripts/health_poller.py`, `npm run up`, `.claude/launch.json`), `logs/` gitignore, CLAUDE.md notes. `cache/race_schedule_*.json` changes look like noise. Commit when approved (no push until then)
+
+---
+
 ## Hosting — Current Stack
 
 | Service | What it hosts | Notes |
