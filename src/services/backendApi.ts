@@ -217,6 +217,12 @@ class BackendApiService {
   // ---------------------------------------------------------------------------
 
   private async fetchStatic<T>(url: string): Promise<T | null> {
+    // Snapshots are only trustworthy for finished seasons. The current season
+    // changes every race weekend (and its calendar can change mid-year), so a
+    // committed snapshot would silently override fresher data from the API.
+    const season = /\/data\/(?:standings|schedule|results)\/(\d{4})/.exec(url);
+    if (season && Number(season[1]) >= new Date().getFullYear()) return null;
+
     try {
       const r = await fetch(url);
       if (!r.ok) return null;
