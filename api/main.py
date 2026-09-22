@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -784,22 +785,72 @@ async def websocket_live_updates(websocket: WebSocket, race_id: str):
 # LEGACY /api/* ENDPOINTS  (frontend backendApi.ts uses these)
 # ===========================================================================
 
+# Last good standings per cache key, kept for the life of the process. The upstream API
+# (Jolpica) rate-limits by IP and a free Render instance shares its outbound IP with other
+# tenants, so it fails now and then; one failed call must not blank the dashboard.
+_LAST_GOOD_STANDINGS: Dict[str, Any] = {}
+STANDINGS_RETRY_DELAYS = (0.5, 1.0)  # seconds to wait before the 2nd and 3rd attempt
+STANDINGS_RETRY_BUDGET = 8.0         # stop retrying after this long: a hanging upstream must not hold a page load for 30s+
+
+
+async def _standings_or_stale(cache_key: str, fetch, use_cache: bool):
+    """Standings with retries, then the last good copy, then a clear 503 — never a silent [].
+
+    `fetch` must raise on failure (a source that is down) and return [] only when the source
+    genuinely has no standings (e.g. before round 1), which is passed through as-is.
+    """
+    if use_cache:
+        cached = await cache_service.get(cache_key)
+        if cached:
+            return cached
+
+    standings, failure = [], None
+    started = time.monotonic()
+    for attempt, delay in enumerate((0.0, *STANDINGS_RETRY_DELAYS)):
+        if attempt:  # a retry: only while there's time budget left
+            if time.monotonic() - started >= STANDINGS_RETRY_BUDGET:
+                break
+            if delay:
+                await asyncio.sleep(delay)
+        try:
+            standings, failure = await fetch(), None
+        except Exception as exc:
+            failure = exc
+            logger.warning("standings fetch for %s failed: %s", cache_key, exc)
+            continue
+        if standings:
+            break
+
+    if standings:
+        _LAST_GOOD_STANDINGS[cache_key] = standings
+        await cache_service.set(cache_key, standings, ttl=3600)
+        return standings
+
+    stale = _LAST_GOOD_STANDINGS.get(cache_key)
+    if stale:
+        logger.warning("standings source gave nothing for %s — serving the last good copy", cache_key)
+        return stale
+    if failure is not None:
+        return JSONResponse(status_code=503, content={
+            "detail": "source_unavailable",
+            "message": "The standings source isn't responding right now. Try again in a moment.",
+        }, headers={"Retry-After": "10"})
+    return standings  # the source answered and has none (yet)
+
+
 @app.get("/api/drivers", response_model=List[DriverStanding])
 async def legacy_driver_standings(year: int = None, round: int = None, use_cache: bool = True):
     try:
         year = year or datetime.now().year
         cache_key = f"driver_standings_{year}_{round or 'current'}"
-        if use_cache:
-            cached = await cache_service.get(cache_key)
-            if cached:
-                return cached
-        if year in FASTF1_YEARS:
-            standings = await fastf1_service.get_driver_standings(year, round)
-        else:
+
+        async def fetch():
+            if year in FASTF1_YEARS:
+                return await fastf1_service.get_driver_standings(year, round)
             async with ergast_service as ergast:
-                standings = await ergast.get_driver_standings(year, round)
-        await cache_service.set(cache_key, standings, ttl=3600)
-        return standings
+                return await ergast.get_driver_standings(year, round, strict=True)
+
+        return await _standings_or_stale(cache_key, fetch, use_cache)
     except Exception as exc:
         logger.error("❌ legacy_driver_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -810,17 +861,14 @@ async def legacy_constructor_standings(year: int = None, round: int = None, use_
     try:
         year = year or datetime.now().year
         cache_key = f"constructor_standings_{year}_{round or 'current'}"
-        if use_cache:
-            cached = await cache_service.get(cache_key)
-            if cached:
-                return cached
-        if year in FASTF1_YEARS:
-            standings = await fastf1_service.get_constructor_standings(year, round)
-        else:
+
+        async def fetch():
+            if year in FASTF1_YEARS:
+                return await fastf1_service.get_constructor_standings(year, round)
             async with ergast_service as ergast:
-                standings = await ergast.get_constructor_standings(year, round)
-        await cache_service.set(cache_key, standings, ttl=3600)
-        return standings
+                return await ergast.get_constructor_standings(year, round, strict=True)
+
+        return await _standings_or_stale(cache_key, fetch, use_cache)
     except Exception as exc:
         logger.error("❌ legacy_constructor_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")

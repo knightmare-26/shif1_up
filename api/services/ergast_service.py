@@ -14,6 +14,11 @@ from models.f1_models import DriverStanding, ConstructorStanding, RaceEvent
 
 logger = logging.getLogger(__name__)
 
+
+class ErgastUnavailable(Exception):
+    """The Jolpica/Ergast API failed (rate limit, timeout, 5xx) — as opposed to returning no data."""
+
+
 class ErgastService:
     """Service for interacting with Ergast API for historical F1 data"""
     
@@ -30,8 +35,13 @@ class ErgastService:
         if self.session:
             await self.session.close()
     
-    async def get_driver_standings(self, year: int, round: Optional[int] = None) -> List[DriverStanding]:
-        """Get driver standings from Ergast API"""
+    async def get_driver_standings(self, year: int, round: Optional[int] = None,
+                                   strict: bool = False) -> List[DriverStanding]:
+        """Get driver standings from Ergast API.
+
+        By default a failure quietly returns the built-in fallback (which is empty for any
+        year but 2024). With strict=True a failure raises ErgastUnavailable instead, so the
+        caller can tell "the source is down" from "there are no standings yet"."""
         try:
             if round:
                 url = f"{self.base_url}/{year}/{round}/driverStandings.json"
@@ -45,13 +55,20 @@ class ErgastService:
                     return self._parse_driver_standings(data)
                 else:
                     logger.error(f"Ergast API error: {response.status}")
+                    if strict:
+                        raise ErgastUnavailable(f"HTTP {response.status}")
                     return self._get_fallback_driver_standings(year)
+        except ErgastUnavailable:
+            raise
         except Exception as e:
             logger.error(f"Error fetching driver standings from Ergast: {e}")
+            if strict:
+                raise ErgastUnavailable(str(e)) from e
             return self._get_fallback_driver_standings(year)
     
-    async def get_constructor_standings(self, year: int, round: Optional[int] = None) -> List[ConstructorStanding]:
-        """Get constructor standings from Ergast API"""
+    async def get_constructor_standings(self, year: int, round: Optional[int] = None,
+                                        strict: bool = False) -> List[ConstructorStanding]:
+        """Get constructor standings from Ergast API (see get_driver_standings for `strict`)."""
         try:
             if round:
                 url = f"{self.base_url}/{year}/{round}/constructorStandings.json"
@@ -65,9 +82,15 @@ class ErgastService:
                     return self._parse_constructor_standings(data)
                 else:
                     logger.error(f"Ergast API error: {response.status}")
+                    if strict:
+                        raise ErgastUnavailable(f"HTTP {response.status}")
                     return self._get_fallback_constructor_standings(year)
+        except ErgastUnavailable:
+            raise
         except Exception as e:
             logger.error(f"Error fetching constructor standings from Ergast: {e}")
+            if strict:
+                raise ErgastUnavailable(str(e)) from e
             return self._get_fallback_constructor_standings(year)
     
     async def get_race_schedule(self, year: int) -> List[RaceEvent]:
