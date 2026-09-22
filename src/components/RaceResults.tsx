@@ -4,7 +4,7 @@ import { backendApi, RaceEvent } from '../services/backendApi';
 import { formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import {
-  Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
+  Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
   SelectField, TableWrap, TeamChip, Td, Th, Tr,
 } from './ui';
 
@@ -68,6 +68,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const [scheduleTry, setScheduleTry] = useState(0);
   const [selectedGP, setSelectedGP] = useState('');
   const [selectedSession, setSelectedSession] = useState('R');
+  const [showCircuitName, setShowCircuitName] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const requestId = useRef(0);
 
@@ -144,12 +145,15 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
           className="min-w-[260px]" disabled={schedule.length === 0}>
           {schedule.length === 0 && <option value="">{scheduleLoaded ? `No calendar for ${year}` : 'Loading…'}</option>}
           {schedule.map((r) => (
-            <option key={r.round} value={gpToken(r.race_name)}>Round {r.round} — {r.race_name}</option>
+            <option key={r.round} value={gpToken(r.race_name)}>
+              Round {r.round} — {showCircuitName ? r.circuit_name : r.race_name}
+            </option>
           ))}
         </SelectField>
         <SelectField label="Session" value={selectedSession} onChange={setSelectedSession} className="min-w-[200px]">
           {SESSIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </SelectField>
+        <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
 
       <Card>

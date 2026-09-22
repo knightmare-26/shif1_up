@@ -4,7 +4,7 @@ import { backendApi, RaceEvent } from '../services/backendApi';
 import { isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import {
-  Button, Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PageHeader,
+  Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PageHeader,
   PageShell, SelectField, StatCard, TableWrap, TextField, Td, Th, Tr,
 } from './ui';
 
@@ -43,6 +43,7 @@ const LapData: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [visible, setVisible] = useState(PAGE_SIZE);
+  const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
   // Latest completed race of the chosen season is the sensible starting point.
@@ -140,10 +141,15 @@ const LapData: React.FC = () => {
         </SelectField>
         <SelectField label="Grand Prix" value={gp} onChange={setGp} className="min-w-[260px]" disabled={schedule.length === 0}>
           {schedule.length === 0 && <option value="">No calendar for {year}</option>}
-          {schedule.map((r) => <option key={r.round} value={gpToken(r.race_name)}>Round {r.round} — {r.race_name}</option>)}
+          {schedule.map((r) => (
+            <option key={r.round} value={gpToken(r.race_name)}>
+              Round {r.round} — {showCircuitName ? r.circuit_name : r.race_name}
+            </option>
+          ))}
         </SelectField>
         <TextField label="Driver" value={driverInput} onChange={(v) => setDriverInput(v.toUpperCase())}
           placeholder="Code, e.g. VER" className="min-w-[160px]" />
+        <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
 
       <FadeIn className="space-y-6">

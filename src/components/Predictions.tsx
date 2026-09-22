@@ -311,6 +311,7 @@ const Predictions: React.FC = () => {
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
   const [tab, setTab]                 = useState<PredictionTab>('upcoming');
+  const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
   const refreshStatus = useCallback(
@@ -395,10 +396,11 @@ const Predictions: React.FC = () => {
                 )}
                 {circuits.map((c) => (
                   <option key={c.circuit_name} value={c.circuit_name}>
-                    Round {c.round} — {c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
+                    Round {c.round} — {showCircuitName ? c.circuit_name : c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
                   </option>
                 ))}
               </SelectField>
+              <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
               <Button
                 variant="secondary" onClick={runPredictions} loading={loading} disabled={!selected}
