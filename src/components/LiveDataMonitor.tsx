@@ -5,7 +5,7 @@ import { isPastDate } from '../utils/dates';
 import { isRaceRound } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
 import {
-  Button, Card, CardBody, CardHeader, EmptyState, FadeIn, FilterBar, PageHeader, PageShell,
+  Button, Card, CardBody, CardHeader, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell,
   PositionBadge, SelectField, TabPanel,
 } from './ui';
 
@@ -32,7 +32,7 @@ interface LiveState {
   timestamp?: string;
 }
 
-interface RaceOption { round: number; race_name: string; gp: string; }
+interface RaceOption { round: number; race_name: string; circuit_name: string; gp: string; }
 
 const MAX_BACKOFF = 30_000;
 const CURRENT_YEAR = new Date().getFullYear();
@@ -54,6 +54,7 @@ const LiveDataMonitor: React.FC = () => {
   const [connStatus, setConnStatus]   = useState<keyof typeof CONNECTION>('disconnected');
   const [lastUpdate, setLastUpdate]   = useState<Date | null>(null);
   const [reconnectIn, setReconnectIn] = useState<number | null>(null);
+  const [showCircuitName, setShowCircuitName] = useState(false);
 
   const wsRef        = useRef<WebSocket | null>(null);
   const backoffRef   = useRef(1000);
@@ -71,6 +72,7 @@ const LiveDataMonitor: React.FC = () => {
         const options = list.map((r) => ({
           round: r.round,
           race_name: r.race_name,
+          circuit_name: r.circuit_name,
           gp: r.race_name.replace(/ /g, '_').replace(/\//g, '-'),
         }));
         setRaces(options);
@@ -169,8 +171,13 @@ const LiveDataMonitor: React.FC = () => {
           <SelectField label="Grand Prix" value={selectedGp} disabled={isMonitoring || races.length === 0}
             className="min-w-[260px]" onChange={(v) => { setSelectedGp(v); setIsMonitoring(false); }}>
             {races.length === 0 && <option value="">No calendar for {selectedYear}</option>}
-            {races.map((r) => <option key={r.gp} value={r.gp}>Round {r.round} — {r.race_name}</option>)}
+            {races.map((r) => (
+              <option key={r.gp} value={r.gp}>
+                Round {r.round} — {showCircuitName ? r.circuit_name : r.race_name}
+              </option>
+            ))}
           </SelectField>
+          <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
           <div className="ml-auto flex flex-wrap items-center gap-4">
             <div className={`flex items-center gap-2 text-sm font-medium ${statusColor}`} role="status">

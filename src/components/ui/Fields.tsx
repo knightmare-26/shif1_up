@@ -55,6 +55,23 @@ export const TextField: React.FC<{
   </label>
 );
 
+export const CheckboxField: React.FC<{
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}> = ({ label, checked, onChange, className = '' }) => (
+  <label className={`flex items-center gap-2 self-end pb-2 text-sm text-gray-300 ${className}`}>
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      className="h-4 w-4 rounded border-gray-700 bg-gray-900 text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
+    />
+    {label}
+  </label>
+);
+
 export const FilterBar: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = '',

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
 import {
-  Button, Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
+  Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
 } from './ui';
 
@@ -203,10 +203,13 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
 };
 
 const BacktestTab: React.FC = () => {
-  const [races, setRaces]                 = useState<BacktestRace[] | null>(null);
-  const [error, setError]                 = useState<string | null>(null);
-  const [yearFilter, setYearFilter]       = useState<number | null>(null);
-  const [circuitFilter, setCircuitFilter] = useState<string>('');
+  const [races, setRaces]                   = useState<BacktestRace[] | null>(null);
+  const [error, setError]                   = useState<string | null>(null);
+  const [yearFilter, setYearFilter]         = useState<number | null>(null);
+  const [selectedRaceId, setSelectedRaceId] = useState<string>('');
+  // Two races can share a name (e.g. a Grand Prix that changed circuit), so this
+  // lets the user switch the dropdown to circuit names to tell them apart.
+  const [showCircuitName, setShowCircuitName] = useState(false);
 
   const load = useCallback(() => {
     setError(null);
@@ -217,7 +220,7 @@ const BacktestTab: React.FC = () => {
         // Backend returns most-recent-first — default to the latest race.
         if (r.races.length > 0) {
           setYearFilter(r.races[0].year);
-          setCircuitFilter(r.races[0].circuit_name);
+          setSelectedRaceId(r.races[0].race_id);
         }
       })
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
@@ -230,9 +233,8 @@ const BacktestTab: React.FC = () => {
     [races]
   );
 
-  // One entry per circuit within the selected year, ordered by round —
-  // not every individual race, so this stays a short, chronological list.
-  const circuitOptions = useMemo(
+  // Every race within the selected year, ordered by round.
+  const raceOptions = useMemo(
     () => (races ?? [])
       .filter((r) => yearFilter == null || r.year === yearFilter)
       .slice()
@@ -240,18 +242,16 @@ const BacktestTab: React.FC = () => {
     [races, yearFilter]
   );
 
-  // Keep the circuit selection valid whenever the year changes.
+  // Keep the selection valid whenever the year changes.
   useEffect(() => {
-    if (circuitOptions.length && !circuitOptions.some((r) => r.circuit_name === circuitFilter)) {
-      setCircuitFilter(circuitOptions[0].circuit_name);
+    if (raceOptions.length && !raceOptions.some((r) => r.race_id === selectedRaceId)) {
+      setSelectedRaceId(raceOptions[0].race_id);
     }
-  }, [circuitOptions, circuitFilter]);
+  }, [raceOptions, selectedRaceId]);
 
   const selectedRace = useMemo(
-    () => (races ?? []).find((r) =>
-      (yearFilter == null || r.year === yearFilter) && r.circuit_name === circuitFilter
-    ) ?? null,
-    [races, yearFilter, circuitFilter]
+    () => (races ?? []).find((r) => r.race_id === selectedRaceId) ?? null,
+    [races, selectedRaceId]
   );
 
   if (error) return <Card><ErrorState title="Couldn't load past predictions" message={error} onRetry={load} /></Card>;
@@ -275,11 +275,14 @@ const BacktestTab: React.FC = () => {
         <SelectField label="Year" value={yearFilter ?? ''} onChange={(v) => setYearFilter(Number(v))}>
           {years.map((y) => <option key={y} value={y}>{y}</option>)}
         </SelectField>
-        <SelectField label="Circuit" value={circuitFilter} onChange={setCircuitFilter} className="min-w-[260px]">
-          {circuitOptions.map((r) => (
-            <option key={r.race_id} value={r.circuit_name}>Round {r.round} — {r.circuit_name}</option>
+        <SelectField label="Circuit" value={selectedRaceId} onChange={setSelectedRaceId} className="min-w-[260px]">
+          {raceOptions.map((r) => (
+            <option key={r.race_id} value={r.race_id}>
+              Round {r.round} — {showCircuitName ? r.circuit_name : r.race_name}
+            </option>
           ))}
         </SelectField>
+        <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
 
       {selectedRace ? (
@@ -308,6 +311,7 @@ const Predictions: React.FC = () => {
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
   const [tab, setTab]                 = useState<PredictionTab>('upcoming');
+  const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
   const refreshStatus = useCallback(
@@ -392,10 +396,11 @@ const Predictions: React.FC = () => {
                 )}
                 {circuits.map((c) => (
                   <option key={c.circuit_name} value={c.circuit_name}>
-                    Round {c.round} — {c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
+                    Round {c.round} — {showCircuitName ? c.circuit_name : c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
                   </option>
                 ))}
               </SelectField>
+              <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
               <Button
                 variant="secondary" onClick={runPredictions} loading={loading} disabled={!selected}
