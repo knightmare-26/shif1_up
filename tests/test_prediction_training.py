@@ -247,6 +247,31 @@ async def test_walk_forward_fit_scores_each_season_against_a_model_trained_only_
     assert races_2024 and races_2024[0]["drivers"][0]["predicted_position"] is not None
 
 
+async def test_teammate_delta_is_a_rolling_average_of_prior_races_only():
+    svc = PredictionService(model_dir="unused")
+    # Two teammates (same constructor) across 3 races. Deltas are (own position - teammate's):
+    #   race 1: a=1-2=-1, b=2-1=1   race 2: a=3-1=2, b=1-3=-2   race 3: scored below
+    raw = pd.DataFrame([
+        {"race_id": "r1", "driver_id": "a", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "X", "year": 2024, "round": 1},
+        {"race_id": "r1", "driver_id": "b", "constructor_id": "c1", "position": 2, "grid": 2, "status": "Finished", "circuit_name": "X", "year": 2024, "round": 1},
+        {"race_id": "r2", "driver_id": "a", "constructor_id": "c1", "position": 3, "grid": 3, "status": "Finished", "circuit_name": "Y", "year": 2024, "round": 2},
+        {"race_id": "r2", "driver_id": "b", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "Y", "year": 2024, "round": 2},
+        {"race_id": "r3", "driver_id": "a", "constructor_id": "c1", "position": 2, "grid": 2, "status": "Finished", "circuit_name": "Z", "year": 2024, "round": 3},
+        {"race_id": "r3", "driver_id": "b", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "Z", "year": 2024, "round": 3},
+    ])
+
+    df = svc._engineer(raw)
+
+    a_r3 = df[(df["driver_id"] == "a") & (df["race_id"] == "r3")].iloc[0]
+    assert a_r3["driver_teammate_finish_delta"] == pytest.approx((-1 + 2) / 2)
+
+    # A driver's very first race has no prior deltas to average — neutral 0, not NaN.
+    a_r1 = df[(df["driver_id"] == "a") & (df["race_id"] == "r1")].iloc[0]
+    assert a_r1["driver_teammate_finish_delta"] == 0.0
+    assert not df["driver_teammate_finish_delta"].isna().any()
+    assert not df["driver_teammate_grid_delta"].isna().any()
+
+
 async def test_backtest_still_scores_via_the_extracted_helper_after_refactor():
     svc = PredictionService(model_dir="unused")
     svc._race_model = FakeEstimator().fit(pd.DataFrame({"a": [1, 2]}), [3.0, 4.0])
