@@ -254,6 +254,23 @@ class PredictionService:
         return np.array([TIME_DECAY ** (int(y) - min_year) for y in df["year"]], dtype=np.float64)
 
     # ------------------------------------------------------------------
+    # Model construction — kept in one place so backtest/walk-forward
+    # evaluation always fits the same shape of model as the live one.
+    # ------------------------------------------------------------------
+
+    def _new_race_model(self, lgb):
+        return lgb.LGBMRegressor(
+            n_estimators=300, learning_rate=0.05, max_depth=6,
+            num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
+        )
+
+    def _new_quali_model(self, xgb):
+        return xgb.XGBRegressor(
+            n_estimators=300, learning_rate=0.05, max_depth=6,
+            random_state=42, verbosity=0,
+        )
+
+    # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
 
@@ -348,10 +365,7 @@ class PredictionService:
             X_r = race_df[self._race_features].astype(float)
             y_r = race_df["position"].astype(float).values
             w_r = self._time_weights(race_df).astype(np.float64)
-            self._race_model = lgb.LGBMRegressor(
-                n_estimators=300, learning_rate=0.05, max_depth=6,
-                num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
-            )
+            self._race_model = self._new_race_model(lgb)
             self._race_model.fit(X_r, y_r, sample_weight=w_r)
             result["race_training_rows"] = len(race_df)
         else:
@@ -363,10 +377,7 @@ class PredictionService:
             X_q = quali_df[QUALI_FEATURES].astype(float)
             y_q = quali_df["grid"].astype(float).values
             w_q = self._time_weights(quali_df).astype(np.float64)
-            self._quali_model = xgb.XGBRegressor(
-                n_estimators=300, learning_rate=0.05, max_depth=6,
-                random_state=42, verbosity=0,
-            )
+            self._quali_model = self._new_quali_model(xgb)
             self._quali_model.fit(X_q, y_q, sample_weight=w_q)
             result["quali_training_rows"] = len(quali_df)
         else:
@@ -386,10 +397,7 @@ class PredictionService:
             X_s = sprint_df[self._sprint_features].astype(float)
             y_s = sprint_df["sprint_position"].astype(float).values
             w_s = self._time_weights(sprint_df).astype(np.float64)
-            self._sprint_model = lgb.LGBMRegressor(
-                n_estimators=300, learning_rate=0.05, max_depth=6,
-                num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
-            )
+            self._sprint_model = self._new_race_model(lgb)
             self._sprint_model.fit(X_s, y_s, sample_weight=w_s)
             result["sprint_training_rows"] = len(sprint_df)
         else:
@@ -615,6 +623,66 @@ class PredictionService:
     # Backtest: predicted vs actual for real past races
     # ------------------------------------------------------------------
 
+    def _score_group(self, group: pd.DataFrame, quali_model, race_model, race_features: List[str]) -> Optional[Dict[str, Any]]:
+        """Score one race's rows against a given model pair. Used by both backtest()
+        (the live model) and walk_forward_backtest() (a season-scoped scratch model) —
+        takes the models as arguments rather than reading self._quali_model/self._race_model
+        so the two callers can pass different ones."""
+        drivers: Dict[str, Dict[str, Any]] = {}
+
+        if quali_model is not None:
+            qdf = group.dropna(subset=QUALI_FEATURES + ["grid"])
+            if not qdf.empty:
+                preds = quali_model.predict(qdf[QUALI_FEATURES].fillna(10))
+                for (_, row), pred in zip(qdf.iterrows(), preds):
+                    d = drivers.setdefault(row["driver_id"], {
+                        "driver_id": row["driver_id"],
+                        "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                    })
+                    d["predicted_grid"] = round(float(pred), 2)
+                    d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
+
+        if race_model is not None:
+            rdf = group.dropna(subset=race_features + ["position"])
+            if not rdf.empty:
+                preds = race_model.predict(rdf[race_features].fillna(10))
+                for (_, row), pred in zip(rdf.iterrows(), preds):
+                    d = drivers.setdefault(row["driver_id"], {
+                        "driver_id": row["driver_id"],
+                        "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                    })
+                    d["predicted_position"] = round(float(pred), 2)
+                    d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
+
+        if not drivers:
+            return None
+
+        driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
+
+        quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
+                      if d.get("predicted_grid") is not None and d.get("actual_grid") is not None]
+        race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
+                     if d.get("predicted_position") is not None and d.get("actual_position") is not None]
+
+        return {
+            "year": int(group["year"].iloc[0]),
+            "round": int(group["round"].iloc[0]),
+            "race_id": group["race_id"].iloc[0],
+            "race_name": group["race_name"].iloc[0],
+            "circuit_name": group["circuit_name"].iloc[0],
+            "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
+            "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+            "drivers": driver_rows,
+        }
+
+    def _score_races(self, df: pd.DataFrame, quali_model, race_model, race_features: List[str]) -> List[Dict[str, Any]]:
+        races_out = []
+        for _, group in df.groupby(["year", "round", "race_id"], sort=False):
+            race = self._score_group(group, quali_model, race_model, race_features)
+            if race is not None:
+                races_out.append(race)
+        return races_out
+
     def backtest(self, years_back: int = 3) -> Dict[str, Any]:
         """Score the current models against real results from the last
         `years_back` seasons.
@@ -627,7 +695,9 @@ class PredictionService:
         leakage. The one caveat: the models themselves were fit once on the
         full dataset (time-decayed, not walk-forward retrained per race), so
         this is a retrospective scoring of the current model rather than a
-        strict walk-forward backtest.
+        strict walk-forward backtest. walk_forward_backtest() below is the
+        strict version; GET /predict/backtest prefers its cached result and
+        only falls back to this method when no walk-forward result exists yet.
         """
         if self._df is None or self._df.empty:
             return {"races": []}
@@ -637,57 +707,105 @@ class PredictionService:
         if df.empty:
             return {"races": []}
 
-        races_out = []
-        for (year, rnd, race_id), group in df.groupby(["year", "round", "race_id"], sort=False):
-            drivers: Dict[str, Dict[str, Any]] = {}
-
-            if self._quali_model is not None:
-                qdf = group.dropna(subset=QUALI_FEATURES + ["grid"])
-                if not qdf.empty:
-                    preds = self._quali_model.predict(qdf[QUALI_FEATURES].fillna(10))
-                    for (_, row), pred in zip(qdf.iterrows(), preds):
-                        d = drivers.setdefault(row["driver_id"], {
-                            "driver_id": row["driver_id"],
-                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
-                        })
-                        d["predicted_grid"] = round(float(pred), 2)
-                        d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
-
-            if self._race_model is not None:
-                rdf = group.dropna(subset=self._race_features + ["position"])
-                if not rdf.empty:
-                    preds = self._race_model.predict(rdf[self._race_features].fillna(10))
-                    for (_, row), pred in zip(rdf.iterrows(), preds):
-                        d = drivers.setdefault(row["driver_id"], {
-                            "driver_id": row["driver_id"],
-                            "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
-                        })
-                        d["predicted_position"] = round(float(pred), 2)
-                        d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
-
-            if not drivers:
-                continue
-
-            driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
-
-            quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
-                          if d.get("predicted_grid") is not None and d.get("actual_grid") is not None]
-            race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
-                         if d.get("predicted_position") is not None and d.get("actual_position") is not None]
-
-            races_out.append({
-                "year": int(year),
-                "round": int(rnd),
-                "race_id": race_id,
-                "race_name": group["race_name"].iloc[0],
-                "circuit_name": group["circuit_name"].iloc[0],
-                "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
-                "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
-                "drivers": driver_rows,
-            })
-
+        races_out = self._score_races(df, self._quali_model, self._race_model, self._race_features)
         races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
         return {"races": races_out}
+
+    # ------------------------------------------------------------------
+    # Walk-forward backtest: a model trained only on seasons before Y,
+    # scored against Y itself — an honest holdout, unlike backtest() above
+    # which scores the live model against history it was fit on.
+    # ------------------------------------------------------------------
+
+    async def walk_forward_backtest(self, duckdb_service, years_back: int = 3) -> Dict[str, Any]:
+        """Retrains once per season boundary (not once per race — that would mean
+        60-80 full refits for a 3-year window at ~10s each) and scores each season
+        against a model that has never seen that season's results. Expensive
+        (3-4x a normal fit); callers should run this in the background and cache
+        the result, not call it per-request."""
+        raw = await self._load_raw(duckdb_service)
+        if raw.empty or len(raw) < 20:
+            return {"races": [], "error": f"Insufficient data ({len(raw)} rows)"}
+
+        try:
+            import xgboost as xgb
+            import lightgbm as lgb
+        except ImportError as exc:
+            return {"races": [], "error": f"ML packages missing: {exc}"}
+
+        return await asyncio.to_thread(self._walk_forward_fit, raw, xgb, lgb, years_back)
+
+    def _walk_forward_fit(self, raw: pd.DataFrame, xgb, lgb, years_back: int) -> Dict[str, Any]:
+        raw_race = raw[raw["session_type"] == "race"].copy()
+        if raw_race.empty:
+            return {"races": []}
+
+        # Feature engineering runs over the whole history at once — safe because every
+        # rolling/expanding feature already uses .shift(1), so a row's features only ever
+        # reflect races strictly before it regardless of what else is in the frame. What
+        # actually gets walked forward is which rows each season's model is FIT on, below.
+        df = self._engineer(raw_race)
+        le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
+        le_constructor = sorted(df["constructor_id"].fillna("unknown").unique().tolist())
+        le_circuit     = sorted(df["circuit_name"].fillna("unknown").unique().tolist())
+        df["driver_enc"]      = self._label_encode(df["driver_id"].fillna("unknown"), le_driver)
+        df["constructor_enc"] = self._label_encode(df["constructor_id"].fillna("unknown"), le_constructor)
+        df["circuit_enc"]     = self._label_encode(df["circuit_name"].fillna("unknown"), le_circuit)
+
+        all_years = sorted(df["year"].unique().tolist())
+        if len(all_years) < 2:
+            return {"races": []}
+
+        current_year = datetime.utcnow().year
+        test_years = [y for y in all_years if y > all_years[0] and y >= current_year - years_back]
+
+        grid_available = bool(df["grid"].notna().mean() > 0.5)
+        race_features = RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID
+
+        races_out: List[Dict[str, Any]] = []
+        seasons_tested: List[int] = []
+        for test_year in test_years:
+            train_df = df[df["year"] < test_year]
+            test_df = df[df["year"] == test_year]
+            if test_df.empty:
+                continue
+
+            race_model = None
+            race_train = train_df.dropna(subset=race_features + ["position"])
+            if len(race_train) >= 20:
+                race_model = self._new_race_model(lgb)
+                race_model.fit(
+                    race_train[race_features].astype(float),
+                    race_train["position"].astype(float).values,
+                    sample_weight=self._time_weights(race_train),
+                )
+
+            quali_model = None
+            quali_train = train_df.dropna(subset=QUALI_FEATURES + ["grid"])
+            if len(quali_train) >= 20:
+                quali_model = self._new_quali_model(xgb)
+                quali_model.fit(
+                    quali_train[QUALI_FEATURES].astype(float),
+                    quali_train["grid"].astype(float).values,
+                    sample_weight=self._time_weights(quali_train),
+                )
+
+            if race_model is None and quali_model is None:
+                continue
+
+            seasons_tested.append(int(test_year))
+            races_out.extend(self._score_races(test_df, quali_model, race_model, race_features))
+
+        races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
+        return {
+            "races": races_out,
+            "computed_at": datetime.utcnow().isoformat(),
+            "seasons_tested": seasons_tested,
+            # Invalidation key: a walk-forward result is stale once new race results
+            # are ingested, not when the live model retrains, so this is keyed to the
+            # training data shape rather than self._meta["trained_at"].
+            "data_fingerprint": f"{len(raw_race)}:{max(all_years)}",
+        }
 
     # ------------------------------------------------------------------
     # Status / introspection

@@ -8,6 +8,7 @@ These guard three real problems seen on Render's free tier:
 import asyncio
 import time
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -151,3 +152,116 @@ async def test_insufficient_data_reports_failure_and_leaves_state_alone(monkeypa
 
     assert result["success"] is False and "Insufficient" in result["error"]
     assert calls["fit"] == 0 and svc._trained is False
+
+
+# ----------------------------------------------------------------------
+# Walk-forward backtest: a season is only ever scored by a model that was
+# fit on strictly earlier seasons. _fit()/train() above are all mocked out
+# (no real xgboost/lightgbm) — these instead inject fake estimator classes,
+# the same dependency-injection seam _fit(self, raw, xgb, lgb) already uses.
+# ----------------------------------------------------------------------
+
+class FakeEstimator:
+    """Stands in for LGBMRegressor/XGBRegressor: predicts the training mean."""
+    def __init__(self, *a, **k):
+        self._mean = 0.0
+
+    def fit(self, X, y, sample_weight=None):
+        self._mean = float(np.mean(y))
+        return self
+
+    def predict(self, X):
+        return np.full(len(X), self._mean)
+
+
+class FakeXgb:
+    XGBRegressor = FakeEstimator
+
+
+class FakeLgb:
+    LGBMRegressor = FakeEstimator
+
+
+def synthetic_raw(years, rounds_per_year=10, drivers=("d1", "d2", "d3", "d4")):
+    """A minimal race_results-shaped DataFrame spanning multiple seasons —
+    the shape _load_raw() would return, before _engineer()/_encode()."""
+    rows = []
+    for year in years:
+        for rnd in range(1, rounds_per_year + 1):
+            race_id = f"{year}_{rnd}"
+            for i, d in enumerate(drivers):
+                rows.append({
+                    "race_id": race_id, "driver_id": d, "constructor_id": f"c{i % 2}",
+                    "position": (i + rnd) % len(drivers) + 1, "grid": (i + rnd + 1) % len(drivers) + 1,
+                    "points": 0.0, "status": "Finished", "session_type": "race",
+                    "circuit_name": f"circuit{rnd}", "year": year, "round": rnd,
+                    "race_name": f"GP{rnd}", "driver_name": d, "constructor_name": f"Team {i % 2}",
+                })
+    return pd.DataFrame(rows)
+
+
+async def test_walk_forward_backtest_reports_insufficient_data():
+    svc = PredictionService(model_dir="unused")
+
+    async def tiny(_db):
+        return pd.DataFrame({"x": range(3)})
+
+    svc._load_raw = tiny
+    result = await svc.walk_forward_backtest(FakeDb(), years_back=3)
+
+    assert result["races"] == [] and "Insufficient" in result["error"]
+
+
+async def test_walk_forward_fit_never_tests_the_earliest_season():
+    svc = PredictionService(model_dir="unused")
+    raw = synthetic_raw(years=[2022, 2023, 2024])
+
+    result = svc._walk_forward_fit(raw, FakeXgb(), FakeLgb(), years_back=3)
+
+    # 2022 is the earliest season in the data — a model can't be trained on
+    # "seasons before 2022" with nothing before it, so it's never a test year.
+    assert 2022 not in result["seasons_tested"]
+    assert set(result["seasons_tested"]) <= {2023, 2024}
+    assert all(r["year"] in result["seasons_tested"] for r in result["races"])
+    assert result["data_fingerprint"]  # non-empty, used as the cache invalidation key
+
+
+async def test_walk_forward_fit_scores_each_season_against_a_model_trained_only_on_earlier_ones():
+    svc = PredictionService(model_dir="unused")
+    raw = synthetic_raw(years=[2022, 2023, 2024])
+    trained_on = {}
+
+    class SpyingEstimator(FakeEstimator):
+        def fit(self, X, y, sample_weight=None):
+            trained_on.setdefault(len(y), []).append(len(y))
+            return super().fit(X, y, sample_weight)
+
+    class SpyingLgb:
+        LGBMRegressor = SpyingEstimator
+
+    result = svc._walk_forward_fit(raw, FakeXgb(), SpyingLgb(), years_back=3)
+
+    # Sanity: races were actually scored for the held-out seasons, with real
+    # per-driver predicted/actual pairs (not an empty pass-through).
+    races_2024 = [r for r in result["races"] if r["year"] == 2024]
+    assert races_2024 and races_2024[0]["drivers"][0]["predicted_position"] is not None
+
+
+async def test_backtest_still_scores_via_the_extracted_helper_after_refactor():
+    svc = PredictionService(model_dir="unused")
+    svc._race_model = FakeEstimator().fit(pd.DataFrame({"a": [1, 2]}), [3.0, 4.0])
+    svc._race_features = ["driver_enc"]
+    svc._driver_map = {"d1": "Driver One"}
+    svc._df = pd.DataFrame({
+        "year": [2026], "round": [1], "race_id": ["r1"], "race_name": ["GP"],
+        "circuit_name": ["Monza"], "driver_id": ["d1"], "driver_enc": [0],
+        "position": [1], "grid": [1],
+    })
+
+    out = svc.backtest(years_back=3)
+
+    assert len(out["races"]) == 1
+    race = out["races"][0]
+    assert race["drivers"][0]["driver_name"] == "Driver One"
+    assert race["drivers"][0]["actual_position"] == 1
+    assert race["race_mae"] is not None

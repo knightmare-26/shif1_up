@@ -1136,14 +1136,47 @@ async def predict_sprint(circuit: str):
 
 @app.get("/predict/backtest")
 async def predict_backtest():
-    """Score the current models against real results from the past 3 seasons —
-    powers the Predictions page's Predicted vs Actual tab."""
+    """Score models against real past results — powers the Predictions page's
+    Predicted vs Actual tab. Prefers a cached walk-forward result (an honest,
+    season-held-out evaluation — see POST /predict/backtest/refresh) and falls
+    back to scoring the live model against its own training history when no
+    walk-forward result has been computed yet."""
     try:
+        cached = await duckdb_service.get_prediction_cache("_walkforward", "v1")
+        if cached and cached.get("result", {}).get("races"):
+            return cached["result"]
         await prediction_service._ensure_trained(duckdb_service)
         return prediction_service.backtest(years_back=3)
     except Exception as exc:
         logger.error("predict_backtest: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.post("/predict/backtest/refresh")
+async def predict_backtest_refresh(background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    """Kick off a walk-forward backtest in the background and cache the result for
+    GET /predict/backtest. Expensive (retrains the models 3-4x, once per held-out
+    season), so this is explicit and admin-only rather than running automatically
+    on every cold start."""
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    async def _do_refresh():
+        try:
+            result = await prediction_service.walk_forward_backtest(duckdb_service, years_back=3)
+            if result.get("races"):
+                await duckdb_service.set_prediction_cache(
+                    "_walkforward", "v1", result.get("data_fingerprint", ""), result
+                )
+                logger.info("Walk-forward backtest cached: %d races across seasons %s",
+                            len(result["races"]), result.get("seasons_tested"))
+            else:
+                logger.warning("Walk-forward backtest produced no races: %s", result.get("error"))
+        except Exception as exc:
+            logger.error("walk_forward_backtest failed: %s", exc, exc_info=True)
+
+    background_tasks.add_task(_do_refresh)
+    return {"message": "Walk-forward backtest started in background. GET /predict/backtest will use it once ready."}
 
 
 if __name__ == "__main__":
