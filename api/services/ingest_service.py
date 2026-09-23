@@ -200,7 +200,8 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
     return {"race_id": race_id, "stored": True, "results": len(results), "laps": laps_stored}
 
 
-async def run_ingest(duckdb_service, years: List[int], include_laps: bool = False):
+async def run_ingest(duckdb_service, years: List[int], include_laps: bool = False,
+                      include_practice: bool = False):
     """Ingest one or more seasons into the supplied DB service instance."""
     global status
     status.update({"running": True, "error": None, "races_done": 0, "races_total": 0})
@@ -237,6 +238,16 @@ async def run_ingest(duckdb_service, years: List[int], include_laps: bool = Fals
                 await ingest_single_race(duckdb_service, year, round_n, False, session="S")
             except Exception as e:
                 logger.debug("No sprint for %s round %s: %s", year, round_n, e)
+
+            # Off by default: practice forces lap loading, meaningfully increasing
+            # fetch volume and time — an explicit opt-in, not part of a routine ingest.
+            if include_practice:
+                for fp_session in ("FP1", "FP2", "FP3"):
+                    try:
+                        await ingest_single_race(duckdb_service, year, round_n, False, session=fp_session)
+                    except Exception as e:
+                        logger.debug("No %s for %s round %s: %s", fp_session, year, round_n, e)
+
             status["races_done"] += 1
 
     status.update({"running": False, "message": "Done", "error": None})

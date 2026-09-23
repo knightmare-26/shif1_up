@@ -285,6 +285,54 @@ async def test_teammate_delta_is_a_rolling_average_of_prior_races_only():
     assert not df["driver_teammate_grid_delta"].isna().any()
 
 
+async def test_practice_pace_feature_is_included_only_once_coverage_crosses_50pct(tmp_path):
+    svc = PredictionService(model_dir=str(tmp_path))
+    raw = synthetic_raw(years=[2024], rounds_per_year=3, drivers=("d1", "d2", "d3", "d4"))
+
+    # Practice ingested for 2 of the 3 races (8 of 12 driver-race rows) — over the 50%
+    # coverage threshold, so the feature should be picked up; best (lowest) rank across
+    # the two sessions a driver ran should be what's kept.
+    practice_rows = []
+    for rnd in (1, 2):
+        race_id = f"2024_{rnd}"
+        for i, d in enumerate(("d1", "d2", "d3", "d4")):
+            for session, pos in (("fp1", i + 2), ("fp2", i + 1)):  # fp2 is always the better rank
+                practice_rows.append({
+                    "race_id": race_id, "driver_id": d, "constructor_id": f"c{i % 2}",
+                    "position": pos, "grid": None, "points": 0.0, "status": "Finished",
+                    "session_type": session, "circuit_name": f"circuit{rnd}", "year": 2024, "round": rnd,
+                    "race_name": f"GP{rnd}", "driver_name": d, "constructor_name": f"Team {i % 2}",
+                })
+    raw = pd.concat([raw, pd.DataFrame(practice_rows)], ignore_index=True)
+
+    result = svc._fit(raw, FakeLgb())
+
+    assert svc._practice_available is True
+    assert result["practice_coverage"] != "0%"
+    assert "driver_practice_best_rank" in svc._race_features
+    assert "driver_practice_best_rank" in svc._quali_features
+
+    d1_r1 = svc._df[(svc._df["driver_id"] == "d1") & (svc._df["race_id"] == "2024_1")].iloc[0]
+    assert d1_r1["driver_practice_best_rank"] == 1   # fp2's rank (2), i.e. i+1 for d1 (i=0) -> 1, the lower of fp1=2/fp2=1
+
+    # The one race without practice data ingested falls back to NaN, not a crash or 0.
+    d1_r3 = svc._df[(svc._df["driver_id"] == "d1") & (svc._df["race_id"] == "2024_3")].iloc[0]
+    assert pd.isna(d1_r3["driver_practice_best_rank"])
+
+
+async def test_practice_pace_feature_is_left_out_below_the_coverage_threshold(tmp_path):
+    svc = PredictionService(model_dir=str(tmp_path))
+    raw = synthetic_raw(years=[2024], rounds_per_year=3, drivers=("d1", "d2", "d3", "d4"))
+    # No practice rows ingested at all — the common case right after this ships.
+
+    result = svc._fit(raw, FakeLgb())
+
+    assert svc._practice_available is False
+    assert result["practice_coverage"] == "0%"
+    assert "driver_practice_best_rank" not in svc._race_features
+    assert "driver_practice_best_rank" not in svc._quali_features
+
+
 async def test_backtest_still_scores_via_the_extracted_helper_after_refactor():
     svc = PredictionService(model_dir="unused")
     svc._race_model = FakeEstimator().fit(pd.DataFrame({"a": [1, 2]}), [3.0, 4.0])
