@@ -1,7 +1,9 @@
 """
 F1 Race & Qualifying Prediction Service
-- Qualifying: XGBoost predicts grid position from driver/team circuit history
-- Race:       LightGBM predicts finishing position using predicted grid + form features
+- Qualifying/Race/Sprint: LightGBM rankers (LGBMRanker, lambdarank) predict finishing
+  order per race — a ranking objective, not absolute-position regression, since what
+  matters is who finishes ahead of whom, not each driver's position as an independent
+  number. Predictions are shown as plain rank (#1, #2, ...), not a fractional estimate.
 - Training:   Exponential time decay (1.5^(year - oldest)) — recent seasons weighted higher
 - Persistence: Models saved to data/models/ and reloaded on startup (no cold retrain)
 """
@@ -292,17 +294,56 @@ class PredictionService:
     # evaluation always fits the same shape of model as the live one.
     # ------------------------------------------------------------------
 
-    def _new_race_model(self, lgb):
-        return lgb.LGBMRegressor(
+    def _new_ranker(self, lgb):
+        """Race, qualifying and sprint models are all the same shape: a ranker
+        scored per race, not an absolute-position regressor."""
+        return lgb.LGBMRanker(
             n_estimators=300, learning_rate=0.05, max_depth=6,
             num_leaves=31, min_child_samples=5, random_state=42, verbose=-1,
+            objective="lambdarank",
         )
 
-    def _new_quali_model(self, xgb):
-        return xgb.XGBRegressor(
-            n_estimators=300, learning_rate=0.05, max_depth=6,
-            random_state=42, verbosity=0,
+    def _fit_ranker(self, lgb, train_df: pd.DataFrame, features: List[str], target_col: str):
+        """Fit an LGBMRanker on train_df, if there's enough data. target_col is the raw
+        finishing position/grid (lower = better) — converted here to a per-race relevance
+        score (higher = better, as LGBMRanker expects: field_size + 1 - value, so last
+        place scores ~1 and the winner scores highest) and grouped by race_id, since a
+        ranker's loss is defined over which rows in a group should outrank which others.
+
+        field_size must be the TRUE count of classified entries per race, not how many
+        rows happen to survive the feature-completeness filter below — otherwise a race
+        with even one row dropped for a missing feature (e.g. a driver's first-ever race,
+        whose rolling-form features are still NaN) undercounts the field, which can put
+        a legitimately low finishing position's relevance below zero. LGBMRanker rejects
+        negative labels outright, so this is computed from target_col alone first, then
+        clipped to 0 as a floor against any remaining real-world data-quality gaps
+        (e.g. a race with fewer ingested rows than its actual grid)."""
+        field_size_by_race = train_df.dropna(subset=[target_col]).groupby("race_id")[target_col].transform("count")
+        train_df = train_df.assign(_field_size=field_size_by_race)
+
+        train = train_df.dropna(subset=features + [target_col]).sort_values("race_id")
+        if len(train) < 20:
+            return None
+
+        group = train.groupby("race_id", sort=False).size().to_numpy()
+        relevance = (train["_field_size"] + 1 - train[target_col]).clip(lower=0).astype(float)
+
+        model = self._new_ranker(lgb)
+        model.fit(
+            train[features].astype(float), relevance.values,
+            group=group, sample_weight=self._time_weights(train),
         )
+        return model
+
+    def _ranks_from_scores(self, scores) -> np.ndarray:
+        """A ranker's predict() returns a relevance score (higher = better, arbitrary
+        scale) — convert to plain 1..N integer ranks (1 = best) via descending sort.
+        Output is aligned to the input order, not sorted."""
+        scores = np.asarray(scores)
+        order = np.argsort(-scores, kind="stable")
+        ranks = np.empty(len(scores), dtype=int)
+        ranks[order] = np.arange(1, len(scores) + 1)
+        return ranks
 
     # ------------------------------------------------------------------
     # Training
@@ -315,10 +356,9 @@ class PredictionService:
 
     async def _train_locked(self, duckdb_service) -> Dict[str, Any]:
         try:
-            import xgboost as xgb
             import lightgbm as lgb
         except ImportError as exc:
-            return {"success": False, "error": f"ML packages missing: {exc}. Run: pip install xgboost lightgbm"}
+            return {"success": False, "error": f"ML packages missing: {exc}. Run: pip install lightgbm"}
 
         try:
             raw = await self._load_raw(duckdb_service)
@@ -329,7 +369,7 @@ class PredictionService:
             # request (including /health) for its whole duration. Run it in a worker thread,
             # on a private copy of the state, and swap the result in when it's done.
             scratch = self._scratch_copy()
-            result = await asyncio.to_thread(scratch._fit, raw, xgb, lgb)
+            result = await asyncio.to_thread(scratch._fit, raw, lgb)
             self._adopt(scratch)
             await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
@@ -349,7 +389,7 @@ class PredictionService:
         for name in self._FITTED:
             setattr(self, name, getattr(scratch, name))
 
-    def _fit(self, raw: pd.DataFrame, xgb, lgb) -> Dict[str, Any]:
+    def _fit(self, raw: pd.DataFrame, lgb) -> Dict[str, Any]:
         """The CPU-bound part of training. Runs in a worker thread on a scratch copy."""
         years_in_data = sorted(raw["year"].unique().tolist())
         self._driver_map      = raw.drop_duplicates("driver_id").set_index("driver_id")["driver_name"].to_dict()
@@ -388,36 +428,26 @@ class PredictionService:
             "decay_factor": TIME_DECAY,
         }
 
-        # ---- Race model (LightGBM) ----
+        # ---- Race model ----
         grid_coverage = df["grid"].notna().mean()
         self._grid_available  = bool(grid_coverage > 0.5)
         self._race_features   = RACE_FEATURES_FULL if self._grid_available else RACE_FEATURES_NO_GRID
         result["grid_coverage"] = f"{grid_coverage:.0%}"
 
-        race_df = df.dropna(subset=self._race_features + ["position"])
-        if len(race_df) >= 20:
-            X_r = race_df[self._race_features].astype(float)
-            y_r = race_df["position"].astype(float).values
-            w_r = self._time_weights(race_df).astype(np.float64)
-            self._race_model = self._new_race_model(lgb)
-            self._race_model.fit(X_r, y_r, sample_weight=w_r)
-            result["race_training_rows"] = len(race_df)
+        self._race_model = self._fit_ranker(lgb, df, self._race_features, "position")
+        if self._race_model is not None:
+            result["race_training_rows"] = len(df.dropna(subset=self._race_features + ["position"]))
         else:
             result["race_model"] = "skipped — not enough complete rows"
 
-        # ---- Qualifying model (XGBoost) ----
-        quali_df = df.dropna(subset=QUALI_FEATURES + ["grid"])
-        if len(quali_df) >= 20:
-            X_q = quali_df[QUALI_FEATURES].astype(float)
-            y_q = quali_df["grid"].astype(float).values
-            w_q = self._time_weights(quali_df).astype(np.float64)
-            self._quali_model = self._new_quali_model(xgb)
-            self._quali_model.fit(X_q, y_q, sample_weight=w_q)
-            result["quali_training_rows"] = len(quali_df)
+        # ---- Qualifying model ----
+        self._quali_model = self._fit_ranker(lgb, df, QUALI_FEATURES, "grid")
+        if self._quali_model is not None:
+            result["quali_training_rows"] = len(df.dropna(subset=QUALI_FEATURES + ["grid"]))
         else:
             result["quali_model"] = "skipped — grid column is NULL. Re-ingest data to populate grid positions."
 
-        # ---- Sprint model (LightGBM) ----
+        # ---- Sprint model ----
         # Sprints are much rarer than full races (roughly half a dozen a
         # season, only since 2021), so this trains on far fewer rows than
         # the race model — expect lower confidence until more are ingested.
@@ -426,16 +456,12 @@ class PredictionService:
         self._sprint_features = SPRINT_FEATURES_FULL if sprint_grid_available else SPRINT_FEATURES_NO_GRID
         result["sprint_grid_coverage"] = f"{sprint_grid_coverage:.0%}"
 
-        sprint_df = df.dropna(subset=self._sprint_features + ["sprint_position"])
-        if len(sprint_df) >= 20:
-            X_s = sprint_df[self._sprint_features].astype(float)
-            y_s = sprint_df["sprint_position"].astype(float).values
-            w_s = self._time_weights(sprint_df).astype(np.float64)
-            self._sprint_model = self._new_race_model(lgb)
-            self._sprint_model.fit(X_s, y_s, sample_weight=w_s)
-            result["sprint_training_rows"] = len(sprint_df)
+        sprint_row_count = len(df.dropna(subset=self._sprint_features + ["sprint_position"]))
+        self._sprint_model = self._fit_ranker(lgb, df, self._sprint_features, "sprint_position")
+        if self._sprint_model is not None:
+            result["sprint_training_rows"] = sprint_row_count
         else:
-            result["sprint_model"] = f"skipped — only {len(sprint_df)} historical sprint rows (need 20+). Ingest more sprint weekends."
+            result["sprint_model"] = f"skipped — only {sprint_row_count} historical sprint rows (need 20+). Ingest more sprint weekends."
 
         self._trained = True
         self._meta = {
@@ -525,7 +551,7 @@ class PredictionService:
         feat  = self._build_prediction_rows(circuit_name)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[QUALI_FEATURES].fillna(10))
-        feat["predicted_grid"] = preds
+        feat["predicted_grid"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_grid").reset_index(drop=True)
 
         output = []
@@ -536,7 +562,7 @@ class PredictionService:
                 "driver_name":      self._driver_map.get(row["driver_id"], row["driver_id"]),
                 "constructor_id":   row["constructor_id"],
                 "constructor_name": self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
-                "predicted_grid":   round(float(row["predicted_grid"]), 2),
+                "predicted_grid":   int(row["predicted_grid"]),
                 "circuit_avg_grid": round(float(row["driver_circuit_grid_avg"]), 2) if pd.notna(row.get("driver_circuit_grid_avg")) else None,
                 "rolling_avg_grid": round(float(row["driver_rolling_grid"]), 2)     if pd.notna(row.get("driver_rolling_grid"))      else None,
             })
@@ -544,7 +570,7 @@ class PredictionService:
         result = {
             "success": True,
             "circuit": circuit_name,
-            "model": "XGBoost",
+            "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
@@ -564,15 +590,17 @@ class PredictionService:
 
         feat = self._build_prediction_rows(circuit_name)
 
-        # Pipe qualifying predictions in as the grid input
+        # Pipe qualifying predictions in as the grid input — as a rank (1..N), the same
+        # scale the race model's own "grid" training column is on, not the ranker's raw
+        # relevance score (an arbitrary scale the race model was never trained on).
         if self._quali_model is not None:
             feat_q      = self._encode(feat.copy())
             quali_preds = self._quali_model.predict(feat_q[QUALI_FEATURES].fillna(10))
-            feat["grid"] = quali_preds
+            feat["grid"] = self._ranks_from_scores(quali_preds)
 
         feat  = self._encode(feat)
         preds = self._race_model.predict(feat[self._race_features].fillna(10))
-        feat["predicted_position"] = preds
+        feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
         output = []
@@ -583,16 +611,16 @@ class PredictionService:
                 "driver_name":        self._driver_map.get(row["driver_id"], row["driver_id"]),
                 "constructor_id":     row["constructor_id"],
                 "constructor_name":   self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
-                "predicted_position": round(float(row["predicted_position"]), 2),
+                "predicted_position": int(row["predicted_position"]),
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
-                "predicted_grid":     round(float(row["grid"]), 2),
+                "predicted_grid":     int(row["grid"]),
             })
 
         result = {
             "success": True,
             "circuit": circuit_name,
-            "model": "LightGBM",
+            "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
@@ -618,17 +646,18 @@ class PredictionService:
 
         # No separate sprint-qualifying model (too little data to train one
         # reliably) — the main qualifying model's prediction is used as a
-        # proxy for sprint grid, since both measure one-lap pace.
+        # proxy for sprint grid, since both measure one-lap pace. As a rank
+        # (1..N), same scale the sprint model's own "sprint_grid" column is on.
         if self._quali_model is not None:
             feat_q      = self._encode(feat.copy())
             quali_preds = self._quali_model.predict(feat_q[QUALI_FEATURES].fillna(10))
-            feat["sprint_grid"] = quali_preds
+            feat["sprint_grid"] = self._ranks_from_scores(quali_preds)
         else:
             feat["sprint_grid"] = feat.get("grid", 10)
 
         feat  = self._encode(feat)
         preds = self._sprint_model.predict(feat[self._sprint_features].fillna(10))
-        feat["predicted_position"] = preds
+        feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
         output = []
@@ -639,16 +668,16 @@ class PredictionService:
                 "driver_name":        self._driver_map.get(row["driver_id"], row["driver_id"]),
                 "constructor_id":     row["constructor_id"],
                 "constructor_name":   self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
-                "predicted_position": round(float(row["predicted_position"]), 2),
+                "predicted_position": int(row["predicted_position"]),
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
-                "predicted_grid":     round(float(row["sprint_grid"]), 2),
+                "predicted_grid":     int(row["sprint_grid"]),
             })
 
         result = {
             "success": True,
             "circuit": circuit_name,
-            "model": "LightGBM (sprint)",
+            "model": "LightGBM (ranker, sprint)",
             "grid_data_available": self._grid_available,
             "predictions": output,
         }
@@ -669,25 +698,25 @@ class PredictionService:
         if quali_model is not None:
             qdf = group.dropna(subset=QUALI_FEATURES + ["grid"])
             if not qdf.empty:
-                preds = quali_model.predict(qdf[QUALI_FEATURES].fillna(10))
-                for (_, row), pred in zip(qdf.iterrows(), preds):
+                ranks = self._ranks_from_scores(quali_model.predict(qdf[QUALI_FEATURES].fillna(10)))
+                for (_, row), rank in zip(qdf.iterrows(), ranks):
                     d = drivers.setdefault(row["driver_id"], {
                         "driver_id": row["driver_id"],
                         "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
                     })
-                    d["predicted_grid"] = round(float(pred), 2)
+                    d["predicted_grid"] = int(rank)
                     d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
 
         if race_model is not None:
             rdf = group.dropna(subset=race_features + ["position"])
             if not rdf.empty:
-                preds = race_model.predict(rdf[race_features].fillna(10))
-                for (_, row), pred in zip(rdf.iterrows(), preds):
+                ranks = self._ranks_from_scores(race_model.predict(rdf[race_features].fillna(10)))
+                for (_, row), rank in zip(rdf.iterrows(), ranks):
                     d = drivers.setdefault(row["driver_id"], {
                         "driver_id": row["driver_id"],
                         "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
                     })
-                    d["predicted_position"] = round(float(pred), 2)
+                    d["predicted_position"] = int(rank)
                     d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
 
         if not drivers:
@@ -764,14 +793,13 @@ class PredictionService:
             return {"races": [], "error": f"Insufficient data ({len(raw)} rows)"}
 
         try:
-            import xgboost as xgb
             import lightgbm as lgb
         except ImportError as exc:
             return {"races": [], "error": f"ML packages missing: {exc}"}
 
-        return await asyncio.to_thread(self._walk_forward_fit, raw, xgb, lgb, years_back)
+        return await asyncio.to_thread(self._walk_forward_fit, raw, lgb, years_back)
 
-    def _walk_forward_fit(self, raw: pd.DataFrame, xgb, lgb, years_back: int) -> Dict[str, Any]:
+    def _walk_forward_fit(self, raw: pd.DataFrame, lgb, years_back: int) -> Dict[str, Any]:
         raw_race = raw[raw["session_type"] == "race"].copy()
         if raw_race.empty:
             return {"races": []}
@@ -806,25 +834,8 @@ class PredictionService:
             if test_df.empty:
                 continue
 
-            race_model = None
-            race_train = train_df.dropna(subset=race_features + ["position"])
-            if len(race_train) >= 20:
-                race_model = self._new_race_model(lgb)
-                race_model.fit(
-                    race_train[race_features].astype(float),
-                    race_train["position"].astype(float).values,
-                    sample_weight=self._time_weights(race_train),
-                )
-
-            quali_model = None
-            quali_train = train_df.dropna(subset=QUALI_FEATURES + ["grid"])
-            if len(quali_train) >= 20:
-                quali_model = self._new_quali_model(xgb)
-                quali_model.fit(
-                    quali_train[QUALI_FEATURES].astype(float),
-                    quali_train["grid"].astype(float).values,
-                    sample_weight=self._time_weights(quali_train),
-                )
+            race_model  = self._fit_ranker(lgb, train_df, race_features, "position")
+            quali_model = self._fit_ranker(lgb, train_df, QUALI_FEATURES, "grid")
 
             if race_model is None and quali_model is None:
                 continue

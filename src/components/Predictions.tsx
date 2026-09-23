@@ -190,9 +190,9 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
           {sortedDrivers.map((d) => (
             <Tr key={d.driver_id}>
               <Td className="font-medium text-white">{d.driver_name}</Td>
-              <Td align="right" className="text-xs text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid.toFixed(1)}` : '—'}</Td>
+              <Td align="right" className="text-xs text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid}` : '—'}</Td>
               <Td align="right" className="text-xs text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
-              <Td align="right" className="text-xs text-gray-400">{d.predicted_position != null ? `P${d.predicted_position.toFixed(1)}` : '—'}</Td>
+              <Td align="right" className="text-xs text-gray-400">{d.predicted_position != null ? `P${d.predicted_position}` : '—'}</Td>
               <Td align="right" className="text-xs text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>
             </Tr>
           ))}

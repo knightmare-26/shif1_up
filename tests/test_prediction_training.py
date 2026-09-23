@@ -35,7 +35,7 @@ def service(monkeypatch, fit_seconds=0.0, load_delay=0.0):
         await asyncio.sleep(load_delay)
         return pd.DataFrame({"x": range(50)})
 
-    def fake_fit(self, raw, xgb, lgb):
+    def fake_fit(self, raw, lgb):
         calls["fit"] += 1
         time.sleep(fit_seconds)              # CPU-bound stand-in: blocks the thread it runs in
         self._trained = True
@@ -112,7 +112,7 @@ async def test_fitting_happens_on_a_private_copy_and_is_swapped_in_atomically(mo
     svc._trained, svc._df, svc._meta = True, pd.DataFrame({"old": [1]}), {"trained_at": "before"}
     seen_during_fit = {}
 
-    def spying_fit(self, raw, xgb, lgb):
+    def spying_fit(self, raw, lgb):
         seen_during_fit["is_copy"] = self is not svc
         seen_during_fit["live_meta_untouched"] = svc._meta == {"trained_at": "before"}
         self._meta = {"trained_at": "after"}
@@ -131,7 +131,7 @@ async def test_a_model_that_is_skipped_keeps_the_previous_one(monkeypatch):
     svc, _ = service(monkeypatch)
     svc._quali_model = "previous quali model"
 
-    def fit_without_quali(self, raw, xgb, lgb):     # e.g. grid column NULL this time: quali is skipped
+    def fit_without_quali(self, raw, lgb):          # e.g. grid column NULL this time: quali is skipped
         self._trained, self._df, self._meta = True, pd.DataFrame({"a": [1]}), {}
         return {}
 
@@ -157,29 +157,30 @@ async def test_insufficient_data_reports_failure_and_leaves_state_alone(monkeypa
 # ----------------------------------------------------------------------
 # Walk-forward backtest: a season is only ever scored by a model that was
 # fit on strictly earlier seasons. _fit()/train() above are all mocked out
-# (no real xgboost/lightgbm) — these instead inject fake estimator classes,
-# the same dependency-injection seam _fit(self, raw, xgb, lgb) already uses.
+# (no real lightgbm) — these instead inject a fake estimator class, the same
+# dependency-injection seam _fit(self, raw, lgb) already uses.
 # ----------------------------------------------------------------------
 
 class FakeEstimator:
-    """Stands in for LGBMRegressor/XGBRegressor: predicts the training mean."""
+    """Stands in for LGBMRanker: 'predicts' by returning the training target
+    itself as the relevance score, so higher target (via _fit_ranker's
+    field_size + 1 - value transform, i.e. a better real position) sorts as a
+    better predicted rank — good enough to exercise the surrounding pipeline
+    without needing a real ranking model."""
     def __init__(self, *a, **k):
-        self._mean = 0.0
+        self._seen = None
 
-    def fit(self, X, y, sample_weight=None):
-        self._mean = float(np.mean(y))
+    def fit(self, X, y, group=None, sample_weight=None):
+        self._seen = np.asarray(y)
         return self
 
     def predict(self, X):
-        return np.full(len(X), self._mean)
-
-
-class FakeXgb:
-    XGBRegressor = FakeEstimator
+        n = len(X)
+        return self._seen[:n] if self._seen is not None and len(self._seen) >= n else np.zeros(n)
 
 
 class FakeLgb:
-    LGBMRegressor = FakeEstimator
+    LGBMRanker = FakeEstimator
 
 
 def synthetic_raw(years, rounds_per_year=10, drivers=("d1", "d2", "d3", "d4")):
@@ -216,7 +217,7 @@ async def test_walk_forward_fit_never_tests_the_earliest_season():
     svc = PredictionService(model_dir="unused")
     raw = synthetic_raw(years=[2022, 2023, 2024])
 
-    result = svc._walk_forward_fit(raw, FakeXgb(), FakeLgb(), years_back=3)
+    result = svc._walk_forward_fit(raw, FakeLgb(), years_back=3)
 
     # 2022 is the earliest season in the data — a model can't be trained on
     # "seasons before 2022" with nothing before it, so it's never a test year.
@@ -232,19 +233,31 @@ async def test_walk_forward_fit_scores_each_season_against_a_model_trained_only_
     trained_on = {}
 
     class SpyingEstimator(FakeEstimator):
-        def fit(self, X, y, sample_weight=None):
+        def fit(self, X, y, group=None, sample_weight=None):
             trained_on.setdefault(len(y), []).append(len(y))
-            return super().fit(X, y, sample_weight)
+            return super().fit(X, y, group=group, sample_weight=sample_weight)
 
     class SpyingLgb:
-        LGBMRegressor = SpyingEstimator
+        LGBMRanker = SpyingEstimator
 
-    result = svc._walk_forward_fit(raw, FakeXgb(), SpyingLgb(), years_back=3)
+    result = svc._walk_forward_fit(raw, SpyingLgb(), years_back=3)
 
     # Sanity: races were actually scored for the held-out seasons, with real
     # per-driver predicted/actual pairs (not an empty pass-through).
     races_2024 = [r for r in result["races"] if r["year"] == 2024]
     assert races_2024 and races_2024[0]["drivers"][0]["predicted_position"] is not None
+
+
+async def test_ranks_from_scores_converts_relevance_to_1_through_n():
+    svc = PredictionService(model_dir="unused")
+
+    # Higher score = better predicted finish (a ranker's relevance), so the
+    # highest score gets rank 1, not the lowest — the reverse of sorting raw
+    # position/grid values, which is exactly what _ranks_from_scores exists to invert.
+    ranks = svc._ranks_from_scores([0.5, 9.0, 3.0, -1.0])
+
+    assert list(ranks) == [3, 1, 2, 4]
+    assert sorted(ranks) == [1, 2, 3, 4]
 
 
 async def test_teammate_delta_is_a_rolling_average_of_prior_races_only():
