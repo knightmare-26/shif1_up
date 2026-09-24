@@ -1016,32 +1016,56 @@ async def db_stats(user=Depends(get_current_user)):
 # ===========================================================================
 
 _SIMULATED_DRIVERS = [
-    ("NOR", "Lando Norris"), ("VER", "Max Verstappen"), ("LEC", "Charles Leclerc"), ("HAM", "Lewis Hamilton"),
-    ("RUS", "George Russell"), ("ANT", "Kimi Antonelli"), ("PIA", "Oscar Piastri"), ("ALO", "Fernando Alonso"),
-    ("SAI", "Carlos Sainz"), ("GAS", "Pierre Gasly"), ("HAD", "Isack Hadjar"), ("LAW", "Liam Lawson"),
-    ("TSU", "Yuki Tsunoda"), ("OCO", "Esteban Ocon"), ("BEA", "Oliver Bearman"), ("HUL", "Nico Hulkenberg"),
-    ("BOR", "Gabriel Bortoleto"), ("STR", "Lance Stroll"), ("COL", "Franco Colapinto"), ("LIN", "Arvid Lindblad"),
-    ("PER", "Sergio Perez"), ("ALB", "Alexander Albon"),
+    ("NOR", "Lando Norris", "McLaren"), ("VER", "Max Verstappen", "Red Bull Racing"),
+    ("LEC", "Charles Leclerc", "Ferrari"), ("HAM", "Lewis Hamilton", "Ferrari"),
+    ("RUS", "George Russell", "Mercedes"), ("ANT", "Kimi Antonelli", "Mercedes"),
+    ("PIA", "Oscar Piastri", "McLaren"), ("ALO", "Fernando Alonso", "Aston Martin"),
+    ("SAI", "Carlos Sainz", "Williams"), ("GAS", "Pierre Gasly", "Alpine"),
+    ("HAD", "Isack Hadjar", "Red Bull Racing"), ("LAW", "Liam Lawson", "Racing Bulls"),
+    ("TSU", "Yuki Tsunoda", "Racing Bulls"), ("OCO", "Esteban Ocon", "Haas F1 Team"),
+    ("BEA", "Oliver Bearman", "Haas F1 Team"), ("HUL", "Nico Hulkenberg", "Audi"),
+    ("BOR", "Gabriel Bortoleto", "Audi"), ("STR", "Lance Stroll", "Aston Martin"),
+    ("COL", "Franco Colapinto", "Alpine"), ("LIN", "Arvid Lindblad", "Racing Bulls"),
+    ("PER", "Sergio Perez", "Cadillac"), ("ALB", "Alexander Albon", "Williams"),
 ]
+_COMPOUNDS = ["SOFT", "MEDIUM", "HARD"]
 
 
-def _simulated_timed_positions() -> list:
-    """A full 22-car field ordered by best lap; the last driver has not set a time."""
+def _fmt_lap(t: float) -> str:
+    return f"{int(t // 60)}:{t % 60:06.3f}"
+
+
+def _simulated_rows(order: list, timed: bool) -> list:
+    """A full 22-car timing board (best lap + colour, three coloured sectors, tyre and age, stints,
+    a couple of cars in the pit). Timed sessions leave the last car without a time."""
     fastest = 91.204
     rows = []
-    for i, (driver, name) in enumerate(_SIMULATED_DRIVERS):
-        timed = i < len(_SIMULATED_DRIVERS) - 1
+    for i, (driver, name, team) in enumerate(order):
+        has_time = not (timed and i == len(order) - 1)
         best = fastest + i * 0.11
-        fmt = lambda t: f"{int(t // 60)}:{t % 60:06.3f}"
+        sectors = []
+        for sector in range(3):
+            if not has_time or (i + sector) % 9 == 8:
+                status, value = "none", None
+            elif i == sector:
+                status, value = "purple", 30.0 + sector
+            else:
+                status = ("green", "yellow", "yellow")[(i + sector) % 3]
+                value = 30.4 + sector + (i % 5) * 0.09
+            sectors.append({"time": None if value is None else f"{value:.3f}", "status": status})
+        tyre = _COMPOUNDS[i % 3]
         rows.append({
-            "driver_id": driver, "driver_name": name, "position": i + 1,
-            "tyre": ["SOFT", "MEDIUM", "HARD"][i % 3],
-            "gap": f"+{best - fastest:.3f}" if timed and i else None,
+            "driver_id": driver, "driver_name": name, "team": team, "position": i + 1,
+            "tyre": tyre, "tyre_age": (i * 3) % 11, "in_pit": i in (5, 12),
+            "stints": [{"compound": _COMPOUNDS[(i + 1) % 3], "laps": 6}, {"compound": tyre, "laps": 3 + i % 4}],
+            "gap": f"+{best - fastest:.3f}" if has_time and i else None,
             "interval": None,
-            "last_lap_time": fmt(best + 0.9) if timed else None,
-            "best_lap_time": fmt(best) if timed else None,
-            "laps_completed": 14 - (i % 5) if timed else 1,
-            "status": "Running" if timed else "No time",
+            "last_lap_time": _fmt_lap(best + 0.9) if has_time else None,
+            "best_lap_time": _fmt_lap(best) if has_time else None,
+            "best_lap_status": ("purple" if i == 0 else "green") if has_time else None,
+            "laps_completed": 14 - (i % 5) if has_time else 1,
+            "sectors": sectors,
+            "status": "Running" if has_time else "No time",
         })
     return rows
 
@@ -1055,7 +1079,7 @@ async def simulate_live(request: Request, race_id: str, session: str = "R"):
         raise HTTPException(status_code=422, detail=f"session must be one of {', '.join(ingest_service.SESSION_TYPE_MAP)}")
     try:
         if session in ("FP1", "FP2", "FP3", "SQ", "Q"):
-            positions = _simulated_timed_positions()
+            positions = _simulated_rows(_SIMULATED_DRIVERS, timed=True)
             state = {
                 "race_id": race_id, "session": session, "session_type": "timed",
                 "session_status": "live", "track_status": "green",
@@ -1072,11 +1096,7 @@ async def simulate_live(request: Request, race_id: str, session: str = "R"):
                 "lap": 15,
                 "total_laps": 57,
                 "leader": "VER",
-                "positions": [
-                    {"driver_id": "VER", "driver_name": "Max Verstappen",  "position": 1, "tyre": "SOFT", "gap": None,      "interval": None,      "last_lap_time": "1:33.660", "status": "Running"},
-                    {"driver_id": "NOR", "driver_name": "Lando Norris",    "position": 2, "tyre": "SOFT", "gap": "+22.457", "interval": "+22.457", "last_lap_time": "1:34.120", "status": "Running"},
-                    {"driver_id": "LEC", "driver_name": "Charles Leclerc", "position": 3, "tyre": "MEDIUM","gap": "+31.204", "interval": "+8.747",  "last_lap_time": "1:34.510", "status": "Running"},
-                ],
+                "positions": _simulated_rows(_SIMULATED_DRIVERS[1:2] + _SIMULATED_DRIVERS[0:1] + _SIMULATED_DRIVERS[2:], timed=False),
                 "timestamp": datetime.utcnow().isoformat(),
             }
         await redis_service.set_live_state(race_id, state)

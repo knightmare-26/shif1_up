@@ -116,3 +116,76 @@ def test_persisting_a_session_ingests_that_session_not_the_race(monkeypatch):
 
     assert posted["json"]["session"] == "Q" and posted["json"]["year"] == 2026
     assert p.is_polling is False
+
+
+# ---- timing-board fields ---------------------------------------------------
+
+def full_lap(driver, number, lap_s, s1, s2, s3, compound="SOFT", stint=1, life=1, position=None, pit_in=False):
+    row = {"Driver": driver, "LapNumber": number, "LapTime": td(lap_s) if lap_s else pd.NaT,
+           "Sector1Time": td(s1) if s1 else pd.NaT, "Sector2Time": td(s2) if s2 else pd.NaT,
+           "Sector3Time": td(s3) if s3 else pd.NaT, "Compound": compound, "Stint": stint, "TyreLife": life,
+           "PitInTime": td(1) if pit_in else pd.NaT, "Position": position}
+    return row
+
+
+def board_laps():
+    return pd.DataFrame([
+        # NOR: latest lap (2) is slower than lap 1 in S1 only
+        full_lap("NOR", 1, 91.0, 30.0, 30.0, 31.0, life=1),
+        full_lap("NOR", 2, 92.0, 31.0, 30.0, 31.0, life=2),
+        # VER: fastest S2 of the session; latest lap is his own best in S1 and S3
+        full_lap("VER", 1, 93.0, 32.0, 31.0, 32.0, "MEDIUM", stint=1, life=3),
+        full_lap("VER", 2, 92.5, 31.5, 29.5, 31.5, "HARD", stint=2, life=1, pit_in=True),
+        # ALB: one lap with no time, no sector 3
+        full_lap("ALB", 1, None, 33.0, 32.0, None, "HARD", life=1),
+    ])
+
+
+def by_driver(rows):
+    return {r["driver_id"]: r for r in rows}
+
+
+def test_best_lap_is_purple_only_for_the_session_fastest():
+    rows = by_driver(build_timed_positions(board_laps()))
+    assert rows["NOR"]["best_lap_status"] == "purple" and rows["NOR"]["best_lap_time"] == "1:31.000"
+    assert rows["VER"]["best_lap_status"] == "green"
+    assert rows["ALB"]["best_lap_status"] is None
+
+
+def test_sector_colours_follow_session_best_personal_best_and_missing_times():
+    rows = by_driver(build_timed_positions(board_laps()))
+    nor = [s["status"] for s in rows["NOR"]["sectors"]]
+    ver = [s["status"] for s in rows["VER"]["sectors"]]
+    alb = [s["status"] for s in rows["ALB"]["sectors"]]
+
+    assert nor == ["yellow", "green", "purple"]       # S1 slower than his own best; S2 = his best; S3 = fastest of the session
+    assert ver == ["green", "purple", "green"]        # S2 (29.5) is the fastest of the whole session; S1/S3 are his own bests
+    assert alb == ["green", "green", "none"]          # his only lap is his best; sector 3 not completed
+    assert rows["VER"]["sectors"][1]["time"] == "29.500"
+
+
+def test_tyre_age_stint_history_and_in_pit_flag():
+    rows = by_driver(build_timed_positions(board_laps()))
+    ver = rows["VER"]
+    assert ver["tyre"] == "HARD" and ver["tyre_age"] == 1
+    assert ver["stints"] == [{"compound": "MEDIUM", "laps": 1}, {"compound": "HARD", "laps": 1}]
+    assert ver["in_pit"] is True and rows["NOR"]["in_pit"] is False
+
+
+def test_team_comes_from_the_session_results():
+    rows = by_driver(build_timed_positions(board_laps(), {"NOR": "McLaren"}))
+    assert rows["NOR"]["team"] == "McLaren" and rows["VER"]["team"] is None
+
+
+def test_classified_sessions_are_ordered_by_race_position_with_the_same_fields():
+    laps = pd.DataFrame([
+        full_lap("VER", 1, 93.0, 31, 31, 31, position=2),
+        full_lap("NOR", 1, 92.0, 30, 31, 31, position=1),
+        full_lap("LEC", 1, 94.5, 32, 31, 31, position=3),
+    ])
+
+    rows = poller.build_classified_positions(laps)
+
+    assert [r["driver_id"] for r in rows] == ["NOR", "VER", "LEC"]
+    assert rows[0]["gap"] is None and rows[1]["gap"] == "+1.000" and rows[2]["gap"] == "+2.500"
+    assert rows[0]["best_lap_status"] == "purple" and len(rows[0]["sectors"]) == 3 and rows[0]["stints"]

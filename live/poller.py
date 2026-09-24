@@ -65,42 +65,124 @@ def _format_lap_time(td) -> Optional[str]:
     return f"{minutes}:{rest / 1000:06.3f}"
 
 
-def build_timed_positions(laps: pd.DataFrame) -> List[Dict[str, Any]]:
-    """Practice / qualifying table: drivers ordered by best lap so far. Drivers
-    with no timed lap yet are listed last (status "No time") rather than dropped."""
+def _format_sector(td) -> Optional[str]:
+    if td is None or pd.isna(td):
+        return None
+    seconds = td.total_seconds()
+    return f"{seconds:.3f}" if seconds < 60 else _format_lap_time(td)
+
+
+def sector_status(value, driver_best, session_best) -> str:
+    """Timing-screen colours for one sector of a driver's latest lap: purple = fastest
+    of the session, green = the driver's own best, yellow = slower, none = not set."""
+    if value is None or pd.isna(value):
+        return "none"
+    if session_best is not None and value == session_best:
+        return "purple"
+    if driver_best is not None and value == driver_best:
+        return "green"
+    return "yellow"
+
+
+_SECTOR_COLUMNS = ("Sector1Time", "Sector2Time", "Sector3Time")
+
+
+def _col(frame: pd.DataFrame, name: str):
+    return frame[name] if name in frame.columns else pd.Series([pd.NaT] * len(frame), index=frame.index)
+
+
+def build_driver_rows(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """One row per driver with everything the timing board shows (best lap and its colour,
+    latest-lap sectors and their colours, tyre and its age, stint history, in-pit flag).
+    Unordered and without position/gap — the caller orders them, since that is the only
+    thing that differs between a timed session (best lap) and a classified one (race position)."""
+    teams = teams or {}
+    session_fastest = laps["LapTime"].dropna().min() if "LapTime" in laps else None
+    session_sector_best = [_col(laps, c).dropna().min() if _col(laps, c).notna().any() else None for c in _SECTOR_COLUMNS]
+
     rows = []
     for driver, group in laps.groupby("Driver"):
+        group = group.sort_values("LapNumber")
+        last = group.iloc[-1]
         timed = group["LapTime"].dropna()
-        last = group.sort_values("LapNumber").iloc[-1]
+        best = timed.min() if not timed.empty else None
+
+        sectors = []
+        for column, session_best in zip(_SECTOR_COLUMNS, session_sector_best):
+            personal = _col(group, column).dropna()
+            value = last.get(column)
+            sectors.append({
+                "time": _format_sector(value),
+                "status": sector_status(value, personal.min() if not personal.empty else None, session_best),
+            })
+
+        stints = []
+        if "Stint" in group.columns and group["Stint"].notna().any():
+            for _, stint in group.dropna(subset=["Stint"]).groupby("Stint", sort=True):
+                compound = stint["Compound"].dropna()
+                stints.append({"compound": compound.iloc[0] if not compound.empty else None, "laps": int(len(stint))})
+
+        tyre_life = last.get("TyreLife")
         rows.append({
-            "driver": driver,
-            "best": timed.min() if not timed.empty else None,
-            "laps": int(group["LapNumber"].count()),
-            "tyre": last.get("Compound"),
+            "driver_id": driver,
+            "driver_name": driver,
+            "team": teams.get(driver),
+            "best": best,
+            "best_lap_time": _format_lap_time(best),
+            "best_lap_status": None if best is None else ("purple" if best == session_fastest else "green"),
             "last": last.get("LapTime"),
+            "last_lap_time": _format_lap_time(last.get("LapTime")),
+            "laps_completed": int(group["LapNumber"].count()),
+            "tyre": last.get("Compound") if pd.notna(last.get("Compound")) else None,
+            "tyre_age": int(tyre_life) if pd.notna(tyre_life) else None,
+            "stints": stints,
+            "in_pit": bool(pd.notna(last.get("PitInTime"))),
+            "sectors": sectors,
+            "position_hint": last.get("Position"),
         })
+    return rows
 
-    rows.sort(key=lambda r: (r["best"] is None, r["best"] if r["best"] is not None else pd.Timedelta(0), r["driver"]))
-    fastest = next((r["best"] for r in rows if r["best"] is not None), None)
 
+def _finish_rows(ordered: List[Dict[str, Any]], gaps: List[Optional[str]]) -> List[Dict[str, Any]]:
     positions = []
-    for index, r in enumerate(rows):
-        gap = None
-        if r["best"] is not None and fastest is not None and index > 0:
-            gap = f"+{(r['best'] - fastest).total_seconds():.3f}"
-        positions.append({
-            "driver_id": r["driver"],
-            "driver_name": r["driver"],
+    for index, (r, gap) in enumerate(zip(ordered, gaps)):
+        row = {k: v for k, v in r.items() if k not in ("best", "last", "position_hint")}
+        row.update({
             "position": index + 1,
-            "tyre": r["tyre"] if pd.notna(r["tyre"]) else None,
             "gap": gap,
             "interval": None,
-            "last_lap_time": _format_lap_time(r["last"]),
-            "best_lap_time": _format_lap_time(r["best"]),
-            "laps_completed": r["laps"],
             "status": "Running" if r["best"] is not None else "No time",
         })
+        positions.append(row)
     return positions
+
+
+def build_timed_positions(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """Practice / qualifying: drivers ordered by best lap so far, gap to the fastest.
+    Drivers with no timed lap yet are listed last (status "No time") rather than dropped."""
+    rows = build_driver_rows(laps, teams)
+    rows.sort(key=lambda r: (r["best"] is None, r["best"] if r["best"] is not None else pd.Timedelta(0), r["driver_id"]))
+    fastest = next((r["best"] for r in rows if r["best"] is not None), None)
+    gaps = [
+        f"+{(r['best'] - fastest).total_seconds():.3f}" if r["best"] is not None and fastest is not None and i > 0 else None
+        for i, r in enumerate(rows)
+    ]
+    return _finish_rows(rows, gaps)
+
+
+def build_classified_positions(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """Race / sprint: FastF1's race Position, gap as the difference between last laps (as before)."""
+    rows = build_driver_rows(laps, teams)
+    rows.sort(key=lambda r: (pd.isna(r["position_hint"]), r["position_hint"] if pd.notna(r["position_hint"]) else 0, r["driver_id"]))
+    leader_last = rows[0]["last"] if rows else None
+    gaps = []
+    for i, r in enumerate(rows):
+        if i == 0 or pd.isna(r["last"]) or leader_last is None or pd.isna(leader_last):
+            gaps.append(None)
+        else:
+            gaps.append(f"+{abs((r['last'] - leader_last).total_seconds()):.3f}")
+    return _finish_rows(rows, gaps)
+
 
 # Configure logging
 logging.basicConfig(
@@ -324,7 +406,7 @@ class LivePoller:
                 return
 
             if is_timed_session(self.session_code):
-                positions = build_timed_positions(laps)
+                positions = build_timed_positions(laps, self._teams())
                 state = {
                     "race_id": self.race_id,
                     "session": self.session_code,
@@ -353,26 +435,18 @@ class LivePoller:
         except Exception as e:
             logger.error(f"❌ Error updating live state: {str(e)}")
     
+    def _teams(self) -> Dict[str, str]:
+        """Driver abbreviation -> team name from the session results (best effort)."""
+        try:
+            results = self.session.results
+            return {str(r["Abbreviation"]): str(r["TeamName"]) for _, r in results.iterrows() if pd.notna(r.get("TeamName"))}
+        except Exception:
+            return {}
+
     def _classified_state(self, laps: pd.DataFrame) -> Dict[str, Any]:
         """Race / sprint: order by FastF1's race Position, with a lap counter."""
-        latest_data = laps.groupby('Driver').last()
+        positions = build_classified_positions(laps, self._teams())
         total_laps = getattr(self.session, 'total_laps', None)
-
-        # Fields match the frontend LiveState interface
-        positions = []
-        for driver, data in latest_data.iterrows():
-            positions.append({
-                "driver_id": driver,
-                "driver_name": driver,
-                "position": int(data['Position']),
-                "tyre": data['Compound'],
-                "gap": self._calculate_gap(data, latest_data),
-                "interval": None,
-                "last_lap_time": str(data['LapTime']) if pd.notna(data['LapTime']) else None,
-                "status": "Running",
-            })
-        positions.sort(key=lambda x: x['position'])
-
         return {
             "race_id": self.race_id,
             "session": self.session_code,
@@ -380,39 +454,12 @@ class LivePoller:
             "timestamp": datetime.utcnow().isoformat(),
             "session_status": "live",
             "track_status": "green",
-            "lap": int(latest_data['LapNumber'].max()),
+            "lap": int(laps['LapNumber'].max()),
             "total_laps": int(total_laps) if total_laps else None,
             "leader": positions[0]['driver_id'] if positions else None,
             "positions": positions,
         }
 
-    def _calculate_gap(self, driver_data: pd.Series, all_data: pd.DataFrame) -> Optional[str]:
-        """Calculate gap to leader"""
-        try:
-            if all_data.empty:
-                return None
-            
-            # Find leader (position 1)
-            leader_data = all_data[all_data['Position'] == 1]
-            if leader_data.empty:
-                return None
-            
-            leader_lap_time = leader_data.iloc[0]['LapTime']
-            driver_lap_time = driver_data['LapTime']
-            
-            if pd.isna(leader_lap_time) or pd.isna(driver_lap_time):
-                return None
-            
-            # Calculate gap
-            gap = driver_lap_time - leader_lap_time
-            
-            if gap.total_seconds() < 0:
-                return f"+{abs(gap)}"
-            else:
-                return f"+{gap}"
-                
-        except Exception:
-            return None
 
 async def main():
     """Main poller function"""

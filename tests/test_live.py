@@ -84,11 +84,21 @@ class TestSimulateEndpoint:
 
 
 class TestSimulateSessions:
+    @staticmethod
+    def _assert_timing_board_fields(positions):
+        first = positions[0]
+        assert first["best_lap_status"] == "purple" and all(p["best_lap_status"] in ("green", None) for p in positions[1:])
+        assert len(first["sectors"]) == 3 and {s["status"] for s in first["sectors"]} <= {"purple", "green", "yellow", "none"}
+        assert first["tyre"] and first["tyre_age"] is not None and first["stints"] and first["team"]
+        assert any(p["in_pit"] for p in positions)
+
     def test_race_simulation_is_classified_and_keeps_its_lap_counter(self, client):
         client.post("/simulate/live/2024_SimRace")
         state = client.get("/live/2024_SimRace/state").json()
         assert state["session_type"] == "classified" and state["session"] == "R"
         assert state["lap"] == 15
+        assert state["leader"] == "VER" and len(state["positions"]) == 22
+        self._assert_timing_board_fields(state["positions"])
 
     @pytest.mark.parametrize("session", ["FP1", "FP2", "FP3", "SQ", "Q"])
     def test_timed_sessions_are_best_lap_ordered_with_no_lap_counter(self, client, session):
@@ -103,6 +113,7 @@ class TestSimulateSessions:
         assert positions[0]["position"] == 1 and positions[0]["gap"] is None
         assert all("best_lap_time" in p and "laps_completed" in p for p in positions)
         assert positions[-1]["status"] == "No time"     # a driver with no timed lap is listed last
+        self._assert_timing_board_fields(positions)
 
     def test_an_unknown_session_is_rejected(self, client):
         assert client.post("/simulate/live/2024_SimBad?session=FP9").status_code == 422
