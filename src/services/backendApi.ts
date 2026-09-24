@@ -28,6 +28,25 @@ export interface DriverStanding {
   podiums?: number;
   nationality: string;
   number?: number;
+  /** Three-letter code (VER). Only in live API responses; the committed snapshots don't have it. */
+  code?: string | null;
+}
+
+/** Race and sprint wins/podiums per driver, counted from the stored results. */
+export interface DriverResultStats {
+  code: string;
+  driver_name: string | null;
+  race_wins: number;
+  race_podiums: number;
+  sprint_wins: number;
+  sprint_podiums: number;
+}
+
+export interface DriverStatsResponse {
+  year: number;
+  races_counted: number;
+  sprints_counted: number;
+  drivers: DriverResultStats[];
 }
 
 export interface ConstructorStanding {
@@ -288,6 +307,10 @@ class BackendApiService {
     if (!useCache) params.use_cache = false;
 
     return this.getCachedOrFetch('/api/drivers', params, 3600); // 1 hour cache
+  }
+
+  async getDriverStats(year: number): Promise<DriverStatsResponse> {
+    return this.getCachedOrFetch('/api/driver-stats', { year }, 600);
   }
 
   async getDriverDetails(driverId: string, year?: number): Promise<any> {

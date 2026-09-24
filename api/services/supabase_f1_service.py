@@ -15,6 +15,26 @@ logger = logging.getLogger(__name__)
 BACKEND = "postgres"
 
 
+
+# Race and sprint wins/podiums per driver for one season, from the stored results. Positions are
+# the classified ones as stored, so a post-race penalty shows once the race is re-ingested. Counting
+# distinct races keeps a stale duplicate row (same driver twice in one session) from counting twice.
+DRIVER_RESULT_COUNTS_SQL = """
+    SELECT rr.driver_id,
+           MAX(d.full_name) AS driver_name,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   THEN rr.race_id END)                      AS races,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position = 1 THEN rr.race_id END)  AS race_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id END) AS race_podiums,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                      AS sprints,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)  AS sprint_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id END) AS sprint_podiums
+    FROM race_results rr
+    JOIN races r ON rr.race_id = r.race_id
+    LEFT JOIN drivers d ON rr.driver_id = d.driver_id
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint') AND rr.driver_id IS NOT NULL
+    GROUP BY rr.driver_id
+"""
+
 class SupabaseF1Service:
     backend = BACKEND
 
@@ -183,6 +203,9 @@ class SupabaseF1Service:
             GROUP BY d.driver_id, d.full_name, d.nationality, d.number
         """, (year, driver_id))
         return rows[0] if rows else None
+
+    async def get_driver_result_counts(self, year: int) -> List[Dict]:
+        return await self._run_query(DRIVER_RESULT_COUNTS_SQL.format(year="$1"), (year,))
 
     async def get_races_by_year(self, year: int) -> List[Dict]:
         return await self._run_query("""

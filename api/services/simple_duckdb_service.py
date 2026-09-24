@@ -324,6 +324,15 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error fetching races by year: {str(e)}")
             return []
     
+    async def get_driver_result_counts(self, year: int) -> List[Dict]:
+        """Race and sprint wins/podiums per driver for one season (see DRIVER_RESULT_COUNTS_SQL)."""
+        from services.supabase_f1_service import DRIVER_RESULT_COUNTS_SQL
+        try:
+            return await self._run_query(DRIVER_RESULT_COUNTS_SQL.format(year="?"), (year,))
+        except Exception as e:
+            logger.error(f"❌ Error counting driver results: {str(e)}")
+            return []
+
     async def get_race_results(self, race_id: str, session_type: str = "race") -> List[Dict]:
         """Get race results for a specific race (main race by default; pass
         session_type='sprint' for that weekend's sprint results)."""

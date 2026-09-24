@@ -265,7 +265,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # (re)connecting they answer 503 "database_waking" — quickly, and with a message
 # the frontend can show — instead of failing with an opaque 500.
 DB_BACKED_PREFIXES = (
-    "/race/", "/admin/", "/auth/",
+    "/race/", "/admin/", "/auth/", "/api/driver-stats",
     "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
 )
 
@@ -903,6 +903,37 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
     except Exception as exc:
         logger.error("❌ legacy_driver_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/driver-stats")
+async def driver_result_stats(year: int = None):
+    """Race and sprint wins/podiums per driver for a season, counted from the stored results (the
+    standings feed only has total wins). Keyed by the three-letter code the standings now carry;
+    a season that isn't in the database returns no drivers."""
+    year = year or datetime.now().year
+    try:
+        rows = await duckdb_service.get_driver_result_counts(year)
+    except Exception as exc:
+        logger.error("❌ driver_result_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    drivers = [
+        {
+            "code": str(r["driver_id"]).upper(),
+            "driver_name": r.get("driver_name"),
+            **{k: int(r.get(k) or 0) for k in counts},
+        }
+        for r in rows
+    ]
+    drivers.sort(key=lambda d: tuple(-d[k] for k in counts))
+    return {
+        "year": year,
+        # Most races any one driver took part in — the rounds covered so far.
+        "races_counted": max((int(r.get("races") or 0) for r in rows), default=0),
+        "sprints_counted": max((int(r.get("sprints") or 0) for r in rows), default=0),
+        "drivers": drivers,
+    }
 
 
 @app.get("/api/constructors", response_model=List[ConstructorStanding])

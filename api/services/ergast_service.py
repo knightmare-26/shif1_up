@@ -135,7 +135,8 @@ class ErgastService:
                     wins=int(driver_data.get('wins', 0)),
                     nationality=driver_info.get('nationality', ''),
                     number=driver_info.get('permanentNumber', ''),
-                    podiums=0  # Ergast doesn't provide podiums directly
+                    podiums=0,  # not in the standings feed; see GET /api/driver-stats
+                    code=driver_info.get('code'),
                 )
                 standings.append(standing)
                 
