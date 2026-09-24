@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, Calendar, MapPin, Radio, TrendingUp } from 'lucide-react';
-import { backendApi, RaceEvent, LiveRaceState } from '../services/backendApi';
+import { backendApi, RaceEvent, LiveRaceState, LiveSessionInfo } from '../services/backendApi';
 import { daysUntil, describeDaysUntil, formatDate, isPastDate } from '../utils/dates';
-import { isRaceRound } from '../utils/races';
+import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveMonitorPath } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
+import LiveComingSoon from './LiveComingSoon';
+import { LIVE_TIMING_ENABLED } from '../config/features';
 import {
   Card, CardBody, CardHeader, DetailList, EmptyState, FadeIn, LoadingState, PageHeader, PageShell,
   PositionBadge, TabPanel,
@@ -12,11 +14,12 @@ import {
 
 const LIVE_POLL_MS = 15_000;
 
-const LiveAnalytics: React.FC = () => {
+const LiveOverview: React.FC = () => {
   const year = new Date().getFullYear();
   const [schedule, setSchedule] = useState<RaceEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [liveState, setLiveState] = useState<LiveRaceState | null>(null);
+  const [activeSession, setActiveSession] = useState<LiveSessionInfo | null>(null);
 
   useEffect(() => {
     backendApi.getRaceSchedule(year)
@@ -30,22 +33,31 @@ const LiveAnalytics: React.FC = () => {
   const completed = schedule.filter((r) => isPastDate(r.date)).length;
   const nextIn = nextRace ? daysUntil(nextRace.date) : null;
 
-  // Poll live state for the next race — shows positions if a session is active.
+  // Poll the next weekend for whichever of its sessions the poller is publishing right now
+  // (practice, qualifying, sprint, race) and show that session's positions.
+  const gpToken = nextRace ? nextRace.race_name.replace(/ /g, '_').replace(/\//g, '-') : '';
   useEffect(() => {
     if (!nextRace) return;
-    const raceId = `${year}_${nextRace.race_name.replace(/ /g, '_').replace(/\//g, '-')}`;
+    const raceId = `${year}_${gpToken}`;
     let cancelled = false;
-    const fetchState = () => {
-      backendApi.getLiveRaceState(raceId)
-        .then((s) => { if (!cancelled) setLiveState(s); })
-        .catch(() => {});
+    const fetchState = async () => {
+      try {
+        const { sessions } = await backendApi.getLiveSessions(raceId);
+        const active = sessions.find((s) => s.live) ?? null;
+        if (cancelled) return;
+        setActiveSession(active);
+        setLiveState(active ? await backendApi.getLiveRaceState(active.race_id) : null);
+      } catch { /* keep what we have */ }
     };
     fetchState();
     const id = setInterval(fetchState, LIVE_POLL_MS);
     return () => { cancelled = true; clearInterval(id); };
   }, [nextRace?.race_name, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sessionLive = liveState?.session_status === 'live' && (liveState?.positions?.length ?? 0) > 0;
+  const sessionLive = !!activeSession && liveState?.session_status === 'live' && (liveState?.positions?.length ?? 0) > 0;
+  const sessionCode = (activeSession?.session ?? 'R') as LiveSession;
+  const sessionLabel = LIVE_SESSION_LABELS[sessionCode] ?? activeSession?.session ?? '';
+  const isTimed = activeSession?.session_type === 'timed';
 
   return (
     <PageShell>
@@ -56,13 +68,13 @@ const LiveAnalytics: React.FC = () => {
         <FadeIn>
           <Card>
             <CardHeader
-              title="Live Race Status"
+              title={sessionLive ? `Live — ${sessionLabel}` : 'Live Session Status'}
               icon={<Activity className="h-4 w-4" />}
               action={
                 sessionLive ? (
                   <span className="flex items-center gap-2 rounded-full bg-racing-red/15 px-3 py-1 text-xs font-semibold text-racing-red">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-racing-red" aria-hidden="true" />
-                    LIVE — Lap {liveState?.lap ?? '?'}{liveState?.total_laps ? ` / ${liveState.total_laps}` : ''}
+                    LIVE{!isTimed && liveState?.lap ? ` — Lap ${liveState.lap}${liveState.total_laps ? ` / ${liveState.total_laps}` : ''}` : ''}
                   </span>
                 ) : (
                   <span className="rounded-full border border-gray-700 px-3 py-1 text-xs text-gray-400">No session active</span>
@@ -70,16 +82,29 @@ const LiveAnalytics: React.FC = () => {
               }
             />
             {sessionLive ? (
-              <CardBody className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <CardBody className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-gray-300">
+                    <span className="font-semibold text-white">{sessionLabel}</span> · {nextRace?.race_name}
+                  </p>
+                  <Link
+                    to={liveMonitorPath(year, gpToken, sessionCode)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-racing-red px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
+                  >
+                    <Radio className="h-4 w-4" aria-hidden="true" /> Go to {sessionLabel}
+                  </Link>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {liveState!.positions!.slice(0, 10).map((p) => (
                   <div key={p.driver_id} className="flex items-center justify-between rounded-lg bg-gray-800/50 px-3 py-2 text-sm">
                     <span className="flex items-center gap-3">
                       <PositionBadge position={p.position} label={`P${p.position}`} />
                       <span className="font-medium text-white">{p.driver_name || p.driver_id}</span>
                     </span>
-                    <span className="tabular-nums text-gray-400">{p.gap ?? p.last_lap_time ?? '—'}</span>
+                    <span className="tabular-nums text-gray-400">{(isTimed ? p.best_lap_time : p.gap) ?? p.last_lap_time ?? '—'}</span>
                   </div>
                 ))}
+                </div>
               </CardBody>
             ) : (
               <EmptyState
@@ -152,5 +177,7 @@ const LiveAnalytics: React.FC = () => {
     </PageShell>
   );
 };
+
+const LiveAnalytics: React.FC = () => (LIVE_TIMING_ENABLED ? <LiveOverview /> : <LiveComingSoon />);
 
 export default LiveAnalytics;

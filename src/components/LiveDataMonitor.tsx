@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Radio, Clock, AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { backendApi } from '../services/backendApi';
 import { isPastDate } from '../utils/dates';
 import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveRaceId, sessionsForWeekend } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
+import LiveComingSoon from './LiveComingSoon';
+import { LIVE_TIMING_ENABLED } from '../config/features';
 import LiveTimingBoard, { LiveState } from './LiveTimingBoard';
 import {
   Button, Card, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell, SelectField, TabPanel,
@@ -25,12 +28,21 @@ const CONNECTION = {
   error:        { color: 'text-red-500',    Icon: AlertCircle, label: 'Connection lost' },
 } as const;
 
-const LiveDataMonitor: React.FC = () => {
+const SESSION_CODES = Object.keys(LIVE_SESSION_LABELS) as LiveSession[];
+
+const LiveMonitor: React.FC = () => {
+  // A link from the Live Overview (?year=&gp=&session=) opens straight onto that session and starts monitoring.
+  const [params] = useSearchParams();
+  const linkedYear = Number(params.get('year')) || null;
+  const linkedGp = params.get('gp');
+  const linkedSessionParam = params.get('session') as LiveSession | null;
+  const linkedSession = linkedSessionParam && SESSION_CODES.includes(linkedSessionParam) ? linkedSessionParam : null;
   const [races, setRaces]             = useState<RaceOption[]>([]);
-  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
+  const [selectedYear, setSelectedYear] = useState(linkedYear && YEARS.includes(linkedYear) ? linkedYear : CURRENT_YEAR);
   const [selectedGp, setSelectedGp]   = useState('');
-  const [selectedSession, setSelectedSession] = useState<LiveSession>('R');
+  const [selectedSession, setSelectedSession] = useState<LiveSession>(linkedSession ?? 'R');
   const [isMonitoring, setIsMonitoring] = useState(false);
+  const autoStarted = useRef(false);
   const [liveState, setLiveState]     = useState<LiveState | null>(null);
   const [connStatus, setConnStatus]   = useState<keyof typeof CONNECTION>('disconnected');
   const [lastUpdate, setLastUpdate]   = useState<Date | null>(null);
@@ -59,11 +71,14 @@ const LiveDataMonitor: React.FC = () => {
         }));
         setRaces(options);
         const pick = list.find((r) => !isPastDate(r.date)) ?? list[list.length - 1];
-        setSelectedGp(pick ? pick.race_name.replace(/ /g, '_').replace(/\//g, '-') : '');
+        // The link only decides the first load; later year changes go back to the usual pick.
+        const linked = !autoStarted.current && linkedGp ? options.find((o) => o.gp === linkedGp) : undefined;
+        setSelectedGp(linked ? linked.gp : pick ? pick.race_name.replace(/ /g, '_').replace(/\//g, '-') : '');
+        if (linked) { autoStarted.current = true; if (linkedSession) setIsMonitoring(true); }
       })
       .catch(() => { if (!cancelled) { setRaces([]); setSelectedGp(''); } });
     return () => { cancelled = true; };
-  }, [selectedYear]);
+  }, [selectedYear, linkedGp, linkedSession]);
 
   const clearRetry = () => {
     if (retryTimeout.current) { clearTimeout(retryTimeout.current); retryTimeout.current = null; }
@@ -143,8 +158,9 @@ const LiveDataMonitor: React.FC = () => {
   const sessionOptions = useMemo(() => sessionsForWeekend(isSprintWeekend), [isSprintWeekend]);
   // A session that doesn't exist on this weekend (e.g. Sprint on a normal one) falls back to the race.
   useEffect(() => {
-    if (!sessionOptions.includes(selectedSession)) setSelectedSession('R');
-  }, [sessionOptions, selectedSession]);
+    // Only once the weekend is known — a linked Sprint session must survive the calendar still loading.
+    if (weekend && !sessionOptions.includes(selectedSession)) setSelectedSession('R');
+  }, [weekend, sessionOptions, selectedSession]);
 
   return (
     <PageShell>
@@ -227,5 +243,7 @@ const LiveDataMonitor: React.FC = () => {
     </PageShell>
   );
 };
+
+const LiveDataMonitor: React.FC = () => (LIVE_TIMING_ENABLED ? <LiveMonitor /> : <LiveComingSoon />);
 
 export default LiveDataMonitor;
