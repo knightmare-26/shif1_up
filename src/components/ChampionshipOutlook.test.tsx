@@ -22,7 +22,11 @@ const outlook = (extra: Partial<Outlook> = {}): Outlook => ({
   remaining: Array.from({ length: 9 }, (_, i) => ({ round: 15 + i, name: `GP${i}`, sprint: false })),
   sprint_calendar_known: true, clinched: false, champion: null, max_points_remaining: 233,
   next_race_clinch: null,
-  standings: [row(1, 'Antonelli'), row(2, 'Russell'), row(3, 'Hadjar', { alive: false, title_probability: 0 })],
+  standings: [
+    row(1, 'Antonelli'), row(2, 'Russell'),
+    row(3, 'Hadjar', { racing: false, title_probability: 0 }),        // injured: still mathematically alive
+    row(4, 'Stroll', { alive: false, title_probability: 0 }),
+  ],
   method: { simulations: 10000, beta: 0.18, calibration_races: 84, model_trained_at: null },
   computed_at: 't', ...extra,
 });
@@ -55,6 +59,7 @@ test('shows the title race, who is out of contention and the track record', asyn
   expect(screen.getByText(/up to 233 points/)).toBeInTheDocument();
   expect(screen.getByText('86%')).toBeInTheDocument();
   expect(screen.getAllByText('Out of contention')).toHaveLength(1);
+  expect(screen.getAllByText('Missed last race')).toHaveLength(1);   // not the same thing as eliminated
   expect(screen.getByText(/named the eventual champion 80% of the time/)).toBeInTheDocument();
 });
 

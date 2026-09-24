@@ -101,6 +101,9 @@ const OutlookTable: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kin
                   </>
                 ) : <span className="font-medium text-white"><TeamChip name={row.name} /></span>}
                 {eliminated && <span className="mt-1 block"><Pill tone="neutral">Out of contention</Pill></span>}
+                {!eliminated && row.racing === false && !decided && (
+                  <span className="mt-1 block"><Pill tone="warn">Missed last race</Pill></span>
+                )}
                 {outlook.clinched && row.position === 1 && <span className="mt-1 block"><Pill tone="good">Champion</Pill></span>}
               </Td>
               <Td align="right" className="font-bold tabular-nums text-white">{row.points}</Td>
@@ -149,7 +152,8 @@ const HowItWorks: React.FC<{ outlook: Outlook; kind: View; backtest: Championshi
           {outlook.method.simulations ? ` ${outlook.method.simulations.toLocaleString()} times` : ''}. Each race's order is drawn from
           the race-prediction model, tuned on {outlook.method.calibration_races} real races the model hadn't seen, and each run gives
           every driver a season-long form swing so one quick car can't look like a certainty. The range under projected points covers
-          the middle 80% of runs. {kind === 'constructors' && 'Team totals add up both cars from the same simulated races, so they always match the drivers\' view.'}
+          the middle 80% of runs. A driver who missed the latest race — injured or out of the seat — is projected to score
+          nothing more, since there's no telling when they'll be back; who can still win stays pure maths. {kind === 'constructors' && 'Team totals add up both cars from the same simulated races, so they always match the drivers\' view.'}
         </p>
         {!outlook.sprint_calendar_known && (
           <p className="text-yellow-300">The race calendar couldn't be loaded, so no sprint points are counted for the rounds still to run.</p>

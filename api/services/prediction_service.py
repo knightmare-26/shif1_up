@@ -484,7 +484,8 @@ class PredictionService:
         championship backtest passes history cut off at an earlier round."""
         df = self._df if df is None else df
         # Predict for the current field: the drivers in the latest race. (Everyone who raced this
-        # season used to be included, so a driver replaced mid-season was still predicted.)
+        # season used to be included, so a driver who wasn't racing — injured, or out of the
+        # seat — was still predicted. They're back in once they've raced again.)
         most_recent_year = int(df["year"].max())
         latest_round = int(df.loc[df["year"] == most_recent_year, "round"].max())
         recent_drivers = df[(df["year"] == most_recent_year) & (df["round"] == latest_round)]["driver_id"].unique()

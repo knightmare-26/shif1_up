@@ -455,11 +455,10 @@ class ChampionshipService:
         entrants = sorted(field["driver_id"].dropna().unique().tolist())
         team_of = field.drop_duplicates("driver_id").set_index("driver_id")["constructor_id"].to_dict()
 
-        # A driver who is no longer in the field can't score again, so can't still win it.
+        # "Still in contention" is pure maths. A driver who missed the latest race (injured,
+        # replaced — the data can't tell which) keeps that status; the simulation just can't
+        # know when they'll be back, so it projects no further points for them.
         driver_status = title_status(driver_table, remaining, year)
-        if remaining and entrants:
-            driver_status["alive"] = {k: v and (k in entrants or k == driver_status["leader"])
-                                      for k, v in driver_status["alive"].items()}
 
         sims = None
         if remaining and entrants and race_model is not None:
@@ -472,6 +471,7 @@ class ChampionshipService:
             "drivers": (driver_table, driver_status, sims["drivers"] if sims else None),
             "teams": (team_table, title_status(team_table, remaining, year, team=True), sims["teams"] if sims else None),
             "team_of": team_of,
+            "entrants": entrants,
         }
 
     # ---- public --------------------------------------------------------------------------
@@ -536,6 +536,9 @@ class ChampionshipService:
                     "points": entry["points"],
                     "wins": int(entry["countback"][0]),
                     "alive": bool(exact["alive"].get(k, False)),
+                    # In the latest race's line-up (drivers only). False for a driver who's
+                    # injured or has lost the seat — projected to score nothing more.
+                    "racing": (k in proj["entrants"]) if kind == "drivers" else None,
                 }
                 if sim:
                     row.update(sim)

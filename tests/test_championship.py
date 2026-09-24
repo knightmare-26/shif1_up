@@ -255,3 +255,21 @@ def test_without_the_calibration_or_scores_the_prediction_goes_out_unchanged():
     unscored = {"success": True, "predictions": [{"predicted_rank": 1}]}
     assert odds_service().with_finish_odds(unscored, "race") == {**unscored, "odds_available": False}
     assert odds_service().with_finish_odds(prediction([1.0, 0.0]), "sprint")["odds_available"] is False
+
+
+def test_a_driver_who_missed_the_latest_race_is_still_in_contention_on_the_maths():
+    """Missing a race (injury, or losing the seat — the data can't tell) doesn't eliminate anyone;
+    the driver just isn't in the field the simulation projects forward."""
+    from services.championship_service import ChampionshipService
+
+    results = clean_results(pd.DataFrame([
+        {"round": 1, "session_type": "race", "driver_id": "a", "constructor_id": "x", "position": 1, "points": 25},
+        {"round": 1, "session_type": "race", "driver_id": "hurt", "constructor_id": "y", "position": 2, "points": 18},
+        {"round": 2, "session_type": "race", "driver_id": "a", "constructor_id": "x", "position": 1, "points": 25},
+        {"round": 2, "session_type": "race", "driver_id": "sub", "constructor_id": "y", "position": 2, "points": 18},
+    ]))
+    svc = ChampionshipService(StubPrediction())
+    proj = svc._project(2026, results, rounds(5), 2, pd.DataFrame(), None, None, 1.0, 10, np.random.default_rng(0))
+
+    assert proj["drivers"][1]["alive"]["hurt"] is True        # 18 + 75 still beats 50
+    assert "hurt" not in proj["entrants"] and "sub" in proj["entrants"]

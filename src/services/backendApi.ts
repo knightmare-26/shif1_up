@@ -60,6 +60,8 @@ export interface ChampionshipRow {
   wins: number;
   /** Can still mathematically win the title. */
   alive: boolean;
+  /** Drivers: in the latest race's line-up. False when injured or out of the seat. */
+  racing?: boolean | null;
   projected_points: number;
   points_p10: number;
   points_p90: number;
