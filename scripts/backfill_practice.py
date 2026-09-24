@@ -32,6 +32,23 @@ log = logging.getLogger("backfill")
 
 FP_SESSION = {"fp1": "FP1", "fp2": "FP2", "fp3": "FP3"}
 RETRY_PAUSES = (20, 60, 180)  # seconds before the 2nd, 3rd and 4th attempt
+# FastF1 allows 500 API calls an hour and a practice session uses ~10. When it says the limit was
+# hit, short pauses can't help — wait out the window instead.
+RATE_LIMIT_PAUSE = 900
+RATE_LIMIT_WAITS = 5
+
+
+class _RateLimitSeen(logging.Handler):
+    """FastF1 logs RateLimitExceededError and carries on, so watch its log for it."""
+    hit = False
+
+    def emit(self, record):
+        text = record.getMessage() + (str(record.exc_info[1]) if record.exc_info else "")
+        if "RateLimitExceeded" in text or "calls/h" in text:
+            _RateLimitSeen.hit = True
+
+
+logging.getLogger("fastf1").addHandler(_RateLimitSeen())
 
 
 def expected_practice(is_sprint_weekend: bool) -> list:
@@ -69,7 +86,9 @@ async def missing_sessions(db, years):
 
 
 async def fetch_with_retries(db, year, round_n, session):
-    for attempt in range(len(RETRY_PAUSES) + 1):
+    attempt = limit_waits = 0
+    while True:
+        _RateLimitSeen.hit = False
         try:
             result = await ingest_service.ingest_single_race(db, year, round_n, include_laps=False, session=session)
             if result.get("stored"):
@@ -77,11 +96,18 @@ async def fetch_with_retries(db, year, round_n, session):
             reason = result.get("reason", "nothing stored")
         except Exception as exc:
             reason = str(exc)
+        if _RateLimitSeen.hit and limit_waits < RATE_LIMIT_WAITS:
+            limit_waits += 1
+            log.info("  %s hit FastF1's hourly limit — waiting %d min", session, RATE_LIMIT_PAUSE // 60)
+            await asyncio.sleep(RATE_LIMIT_PAUSE)
+            continue
         if attempt < len(RETRY_PAUSES):
             log.info("  %s failed (%s) — retrying in %ss", session, reason[:80], RETRY_PAUSES[attempt])
             await asyncio.sleep(RETRY_PAUSES[attempt])
-    log.warning("  %s gave up: %s", session, reason[:120])
-    return None
+            attempt += 1
+            continue
+        log.warning("  %s gave up: %s", session, reason[:120])
+        return None
 
 
 async def main():
