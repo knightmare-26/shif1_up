@@ -27,7 +27,7 @@ TIME_DECAY = 1.5
 RACE_FEATURES_FULL = [
     "grid", "driver_rolling_finish", "driver_circuit_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
-    "driver_dnf_rate", "driver_teammate_finish_delta",
+    "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
@@ -35,14 +35,13 @@ RACE_FEATURES_FULL = [
 RACE_FEATURES_NO_GRID = [
     "driver_rolling_finish", "driver_circuit_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
-    "driver_dnf_rate", "driver_teammate_finish_delta",
+    "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
 QUALI_FEATURES = [
     "driver_rolling_grid", "driver_circuit_grid_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
-    "driver_teammate_grid_delta",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
@@ -53,14 +52,14 @@ QUALI_FEATURES = [
 SPRINT_FEATURES_FULL = [
     "sprint_grid", "driver_rolling_finish", "driver_circuit_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
-    "driver_dnf_rate", "driver_teammate_finish_delta",
+    "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
 SPRINT_FEATURES_NO_GRID = [
     "driver_rolling_finish", "driver_circuit_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
-    "driver_dnf_rate", "driver_teammate_finish_delta",
+    "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
 ]
 
@@ -132,6 +131,7 @@ class PredictionService:
                     "driver_map": self._driver_map,
                     "constructor_map": self._constructor_map,
                     "race_features": self._race_features,
+                    "quali_features": self._quali_features,
                     "sprint_features": self._sprint_features,
                     "grid_available": self._grid_available,
                 },
@@ -165,6 +165,7 @@ class PredictionService:
             self._driver_map      = enc["driver_map"]
             self._constructor_map = enc["constructor_map"]
             self._race_features   = enc.get("race_features", RACE_FEATURES_NO_GRID)
+            self._quali_features  = enc.get("quali_features", QUALI_FEATURES)
             self._sprint_features = enc.get("sprint_features", SPRINT_FEATURES_NO_GRID)
             self._grid_available  = enc.get("grid_available", False)
 
@@ -235,32 +236,6 @@ class PredictionService:
         df["constructor_rolling_finish"] = df.groupby("constructor_id")["position"].transform(roll)
         df["constructor_circuit_avg"]    = df.groupby(["constructor_id", "circuit_name"])["position"].transform(expand)
 
-        # Teammate delta: a rolling average of (this driver's result - their teammate's,
-        # same race) isolates driver skill from car performance — a mid-season car upgrade
-        # moves both teammates' rolling_finish together but leaves this delta unchanged.
-        # Find the teammate via a self-merge on (race_id, constructor_id), excluding self;
-        # .mean() over the merge handles the rare case of >2 drivers sharing a constructor
-        # in one race (a mid-season swap) rather than double-counting.
-        teammates = df[["race_id", "constructor_id", "driver_id", "position", "grid"]].rename(
-            columns={"driver_id": "driver_id_team", "position": "position_team", "grid": "grid_team"}
-        )
-        paired = df[["race_id", "constructor_id", "driver_id"]].merge(
-            teammates, on=["race_id", "constructor_id"]
-        )
-        paired = paired[paired["driver_id"] != paired["driver_id_team"]]
-        teammate_avg = paired.groupby(["race_id", "driver_id"], as_index=False).agg(
-            teammate_position=("position_team", "mean"), teammate_grid=("grid_team", "mean")
-        )
-        df = df.merge(teammate_avg, on=["race_id", "driver_id"], how="left")
-
-        df["driver_teammate_finish_delta"] = df.groupby("driver_id").apply(
-            lambda g: roll(g["position"] - g["teammate_position"])
-        ).reset_index(level=0, drop=True)
-        df["driver_teammate_grid_delta"] = df.groupby("driver_id").apply(
-            lambda g: roll(g["grid"] - g["teammate_grid"])
-        ).reset_index(level=0, drop=True)
-        df = df.drop(columns=["teammate_position", "teammate_grid"])
-
         # DNF: anything that isn't "Finished" or "+X laps"
         df["dnf"] = (~df["status"].str.startswith("Finished", na=True) &
                      ~df["status"].str.startswith("+", na=True)).astype(int)
@@ -273,9 +248,6 @@ class PredictionService:
         df["driver_circuit_grid_avg"] = df["driver_circuit_grid_avg"].fillna(df["driver_rolling_grid"])
         df["constructor_circuit_avg"] = df["constructor_circuit_avg"].fillna(df["constructor_rolling_finish"])
         df["driver_dnf_rate"]         = df["driver_dnf_rate"].fillna(0.1)
-        # No measurable delta yet (a driver's first races, or no teammate that race) — neutral, not missing.
-        df["driver_teammate_finish_delta"] = df["driver_teammate_finish_delta"].fillna(0.0)
-        df["driver_teammate_grid_delta"]   = df["driver_teammate_grid_delta"].fillna(0.0)
 
         return df
 
@@ -535,8 +507,6 @@ class PredictionService:
                 "driver_dnf_rate":         float(r.get("driver_dnf_rate") or 0.1),
                 "driver_rolling_grid":     float(r.get("driver_rolling_grid")      or 10),
                 "driver_circuit_grid_avg": float(cir_d["grid"].mean()) if not cir_d.empty and cir_d["grid"].notna().any() else float(r.get("driver_rolling_grid") or 10),
-                "driver_teammate_finish_delta": float(r.get("driver_teammate_finish_delta") or 0.0),
-                "driver_teammate_grid_delta":   float(r.get("driver_teammate_grid_delta") or 0.0),
                 # Genuinely unknown for a future weekend — last race's practice pace at a
                 # different circuit isn't a meaningful proxy the way rolling form is, so
                 # this is left NaN rather than estimated, same as the other .fillna(10)

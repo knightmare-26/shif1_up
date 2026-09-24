@@ -85,7 +85,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 | Service | Purpose |
 |---|---|
 | `simple_duckdb_service.py` | DuckDB historical F1 storage (drivers, races, race_results, laps, users) |
-| `prediction_service.py` | XGBoost (qualifying) + LightGBM (race finish) ML models; trains on DuckDB data |
+| `prediction_service.py` | LightGBM rankers (qualifying, race, sprint); walk-forward backtest; trains on the F1 database |
 | `redis_service.py` | Real Redis client for live state and pub/sub |
 | `mock_redis_service.py` | In-memory Redis mock (used when Redis is unreachable) |
 | `fastf1_service.py` | FastF1 library wrapper (years 2020–2024) |
@@ -111,8 +111,9 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 ### Prediction service (`api/services/prediction_service.py`)
 
 - **Training**: starts in the background as soon as the database is ready (`_warm_prediction_models`, fired by `DatabaseGuardian`'s `on_ready` hook; local DuckDB starts it at boot), or on the first predict call, or via `POST /predict/train`. It is single-flight (`_train_lock`: the three parallel predictions on the Predictions page share one training) and the CPU-bound fit (`_fit`) runs in a worker thread on a private copy of the state that is swapped in atomically — the event loop, and so `/health`, stays responsive. Models are saved to `MODEL_DIR`, which is temporary storage on Render's free plan, so every cold start retrains (~10s locally); `/predict/status` reports `training` while it runs and the frontend shows "Models warming up" until `trained`
-- **Qualifying model**: XGBoost Regressor — features: circuit avg qualifying position, rolling 5-race form
-- **Race model**: LightGBM Regressor — features: grid position, circuit avg finish, rolling 5-race form, DNF rate
+- **Models**: qualifying, race and sprint are all `LGBMRanker` (lambdarank), grouped per race — a ranking objective, so predictions display as plain rank (#1, #2, …) with no fractional "expected position". `_fit_ranker` turns position/grid into a per-race relevance score (`field_size + 1 - value`, clipped ≥ 0; LightGBM rejects negative labels) and `_ranks_from_scores` turns scores back into ranks. Race/sprint predictions feed the qualifying *rank* in as their grid input
+- **Features**: rolling 5-race form, circuit history, constructor form, DNF rate, grid (see `RACE_FEATURES_*`, `QUALI_FEATURES`), plus `driver_practice_best_rank` (best FP1–3 rank that weekend) — only active once >50% of rows have it (`_practice_available`). Practice comes from `POST /admin/ingest` with `practice: true` (off by default; slow, and FastF1's timing API can fail partway). Upcoming-race predictions leave it NaN (no practice yet)
+- **Accuracy**: `GET /predict/backtest` serves the cached **walk-forward** result (each season scored by a model trained only on earlier seasons — the honest number, roughly 3.9 quali / 3.5 race rank error) and falls back to scoring the live model against its own training data (~3x too optimistic) only when none is cached. Compute it with `POST /predict/backtest/refresh` (admin, background, ~3–4 refits); it's stored in `prediction_cache` under `_walkforward`, which `clear_prediction_cache()` deliberately keeps. Re-run it after changing features or ingesting data
 - **Grid data availability**: `_grid_available = grid_coverage > 0.5`; shown as status on Predictions page
 - **Note**: bundled DuckDB has `grid = NULL` for existing rows — run `ingest/simple_ingest.py --years 2022 2023 2024` to populate
 

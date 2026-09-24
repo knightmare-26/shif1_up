@@ -260,31 +260,6 @@ async def test_ranks_from_scores_converts_relevance_to_1_through_n():
     assert sorted(ranks) == [1, 2, 3, 4]
 
 
-async def test_teammate_delta_is_a_rolling_average_of_prior_races_only():
-    svc = PredictionService(model_dir="unused")
-    # Two teammates (same constructor) across 3 races. Deltas are (own position - teammate's):
-    #   race 1: a=1-2=-1, b=2-1=1   race 2: a=3-1=2, b=1-3=-2   race 3: scored below
-    raw = pd.DataFrame([
-        {"race_id": "r1", "driver_id": "a", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "X", "year": 2024, "round": 1},
-        {"race_id": "r1", "driver_id": "b", "constructor_id": "c1", "position": 2, "grid": 2, "status": "Finished", "circuit_name": "X", "year": 2024, "round": 1},
-        {"race_id": "r2", "driver_id": "a", "constructor_id": "c1", "position": 3, "grid": 3, "status": "Finished", "circuit_name": "Y", "year": 2024, "round": 2},
-        {"race_id": "r2", "driver_id": "b", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "Y", "year": 2024, "round": 2},
-        {"race_id": "r3", "driver_id": "a", "constructor_id": "c1", "position": 2, "grid": 2, "status": "Finished", "circuit_name": "Z", "year": 2024, "round": 3},
-        {"race_id": "r3", "driver_id": "b", "constructor_id": "c1", "position": 1, "grid": 1, "status": "Finished", "circuit_name": "Z", "year": 2024, "round": 3},
-    ])
-
-    df = svc._engineer(raw)
-
-    a_r3 = df[(df["driver_id"] == "a") & (df["race_id"] == "r3")].iloc[0]
-    assert a_r3["driver_teammate_finish_delta"] == pytest.approx((-1 + 2) / 2)
-
-    # A driver's very first race has no prior deltas to average — neutral 0, not NaN.
-    a_r1 = df[(df["driver_id"] == "a") & (df["race_id"] == "r1")].iloc[0]
-    assert a_r1["driver_teammate_finish_delta"] == 0.0
-    assert not df["driver_teammate_finish_delta"].isna().any()
-    assert not df["driver_teammate_grid_delta"].isna().any()
-
-
 async def test_practice_pace_feature_is_included_only_once_coverage_crosses_50pct(tmp_path):
     svc = PredictionService(model_dir=str(tmp_path))
     raw = synthetic_raw(years=[2024], rounds_per_year=3, drivers=("d1", "d2", "d3", "d4"))
