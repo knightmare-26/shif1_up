@@ -38,6 +38,7 @@ services:
       - FASTF1_CACHE_DIR=/app/data/fastf1_cache
       - RACE_YEAR=2024
       - RACE_GP=Bahrain
+      - RACE_SESSION=R
       - POLL_INTERVAL=5
       - API_BASE_URL=http://api:8000
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}

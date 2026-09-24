@@ -33,6 +33,157 @@ INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 # Data Manager admin override remains the fallback if it misses a race.
 SESSION_END_STALL_POLLS = 3
 
+# FastF1 session codes the poller can follow. R and S are classified (race
+# position, lap counter); the rest are timed — ranked by best lap, with no
+# meaningful lap counter or classification to wait for.
+SESSIONS = ("FP1", "FP2", "FP3", "SQ", "S", "Q", "R")
+TIMED_SESSIONS = frozenset({"FP1", "FP2", "FP3", "SQ", "Q"})
+
+# Timed sessions have no leader "Status" to key the end off, so they end once
+# no lap has been completed for this long — generous enough to ride out a red
+# flag. Ingest is an idempotent upsert, so ending early can't lose data.
+TIMED_SESSION_END_STALL_SECONDS = 300
+
+
+def is_timed_session(session: str) -> bool:
+    return session in TIMED_SESSIONS
+
+
+def build_race_id(year: int, gp: str, session: str = "R") -> str:
+    """Must match the frontend's id convention (LiveDataMonitor.tsx): spaces ->
+    underscores, slashes -> hyphens. The race keeps the bare `{year}_{gp}` id
+    (LiveAnalytics and existing clients rely on it); other sessions get a suffix."""
+    base = f"{year}_{gp.replace(' ', '_').replace('/', '-')}"
+    return base if session == "R" else f"{base}_{session}"
+
+
+def _format_lap_time(td) -> Optional[str]:
+    if td is None or pd.isna(td):
+        return None
+    total_ms = int(round(td.total_seconds() * 1000))
+    minutes, rest = divmod(total_ms, 60_000)
+    return f"{minutes}:{rest / 1000:06.3f}"
+
+
+def _format_sector(td) -> Optional[str]:
+    if td is None or pd.isna(td):
+        return None
+    seconds = td.total_seconds()
+    return f"{seconds:.3f}" if seconds < 60 else _format_lap_time(td)
+
+
+def sector_status(value, driver_best, session_best) -> str:
+    """Timing-screen colours for one sector of a driver's latest lap: purple = fastest
+    of the session, green = the driver's own best, yellow = slower, none = not set."""
+    if value is None or pd.isna(value):
+        return "none"
+    if session_best is not None and value == session_best:
+        return "purple"
+    if driver_best is not None and value == driver_best:
+        return "green"
+    return "yellow"
+
+
+_SECTOR_COLUMNS = ("Sector1Time", "Sector2Time", "Sector3Time")
+
+
+def _col(frame: pd.DataFrame, name: str):
+    return frame[name] if name in frame.columns else pd.Series([pd.NaT] * len(frame), index=frame.index)
+
+
+def build_driver_rows(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """One row per driver with everything the timing board shows (best lap and its colour,
+    latest-lap sectors and their colours, tyre and its age, stint history, in-pit flag).
+    Unordered and without position/gap — the caller orders them, since that is the only
+    thing that differs between a timed session (best lap) and a classified one (race position)."""
+    teams = teams or {}
+    session_fastest = laps["LapTime"].dropna().min() if "LapTime" in laps else None
+    session_sector_best = [_col(laps, c).dropna().min() if _col(laps, c).notna().any() else None for c in _SECTOR_COLUMNS]
+
+    rows = []
+    for driver, group in laps.groupby("Driver"):
+        group = group.sort_values("LapNumber")
+        last = group.iloc[-1]
+        timed = group["LapTime"].dropna()
+        best = timed.min() if not timed.empty else None
+
+        sectors = []
+        for column, session_best in zip(_SECTOR_COLUMNS, session_sector_best):
+            personal = _col(group, column).dropna()
+            value = last.get(column)
+            sectors.append({
+                "time": _format_sector(value),
+                "status": sector_status(value, personal.min() if not personal.empty else None, session_best),
+            })
+
+        stints = []
+        if "Stint" in group.columns and group["Stint"].notna().any():
+            for _, stint in group.dropna(subset=["Stint"]).groupby("Stint", sort=True):
+                compound = stint["Compound"].dropna()
+                stints.append({"compound": compound.iloc[0] if not compound.empty else None, "laps": int(len(stint))})
+
+        tyre_life = last.get("TyreLife")
+        rows.append({
+            "driver_id": driver,
+            "driver_name": driver,
+            "team": teams.get(driver),
+            "best": best,
+            "best_lap_time": _format_lap_time(best),
+            "best_lap_status": None if best is None else ("purple" if best == session_fastest else "green"),
+            "last": last.get("LapTime"),
+            "last_lap_time": _format_lap_time(last.get("LapTime")),
+            "laps_completed": int(group["LapNumber"].count()),
+            "tyre": last.get("Compound") if pd.notna(last.get("Compound")) else None,
+            "tyre_age": int(tyre_life) if pd.notna(tyre_life) else None,
+            "stints": stints,
+            "in_pit": bool(pd.notna(last.get("PitInTime"))),
+            "sectors": sectors,
+            "position_hint": last.get("Position"),
+        })
+    return rows
+
+
+def _finish_rows(ordered: List[Dict[str, Any]], gaps: List[Optional[str]]) -> List[Dict[str, Any]]:
+    positions = []
+    for index, (r, gap) in enumerate(zip(ordered, gaps)):
+        row = {k: v for k, v in r.items() if k not in ("best", "last", "position_hint")}
+        row.update({
+            "position": index + 1,
+            "gap": gap,
+            "interval": None,
+            "status": "Running" if r["best"] is not None else "No time",
+        })
+        positions.append(row)
+    return positions
+
+
+def build_timed_positions(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """Practice / qualifying: drivers ordered by best lap so far, gap to the fastest.
+    Drivers with no timed lap yet are listed last (status "No time") rather than dropped."""
+    rows = build_driver_rows(laps, teams)
+    rows.sort(key=lambda r: (r["best"] is None, r["best"] if r["best"] is not None else pd.Timedelta(0), r["driver_id"]))
+    fastest = next((r["best"] for r in rows if r["best"] is not None), None)
+    gaps = [
+        f"+{(r['best'] - fastest).total_seconds():.3f}" if r["best"] is not None and fastest is not None and i > 0 else None
+        for i, r in enumerate(rows)
+    ]
+    return _finish_rows(rows, gaps)
+
+
+def build_classified_positions(laps: pd.DataFrame, teams: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
+    """Race / sprint: FastF1's race Position, gap as the difference between last laps (as before)."""
+    rows = build_driver_rows(laps, teams)
+    rows.sort(key=lambda r: (pd.isna(r["position_hint"]), r["position_hint"] if pd.notna(r["position_hint"]) else 0, r["driver_id"]))
+    leader_last = rows[0]["last"] if rows else None
+    gaps = []
+    for i, r in enumerate(rows):
+        if i == 0 or pd.isna(r["last"]) or leader_last is None or pd.isna(leader_last):
+            gaps.append(None)
+        else:
+            gaps.append(f"+{abs((r['last'] - leader_last).total_seconds()):.3f}")
+    return _finish_rows(rows, gaps)
+
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -43,19 +194,20 @@ logger = logging.getLogger(__name__)
 class LivePoller:
     """Live F1 data poller service"""
     
-    def __init__(self, redis_url: str, cache_dir: str, race_year: int, race_gp: str, poll_interval: int = 5):
+    def __init__(self, redis_url: str, cache_dir: str, race_year: int, race_gp: str,
+                 poll_interval: int = 5, session: str = "R"):
+        if session not in SESSIONS:
+            raise ValueError(f"Unknown session {session!r}; expected one of {', '.join(SESSIONS)}")
+        self.session_code = session
         self.redis_url = redis_url
         self.cache_dir = cache_dir
         self.race_year = race_year
         self.race_gp = race_gp
         self.poll_interval = poll_interval
         self.redis_service = RedisService(redis_url)
-        # Must match the frontend's race_id convention (LiveAnalytics.tsx,
-        # LiveDataMonitor.tsx): spaces -> underscores, slashes -> hyphens.
         # RACE_GP can be a full FastF1-matchable name like "Dutch Grand Prix";
         # only the id derived from it needs normalizing, not the FastF1 lookup.
-        normalized_gp = race_gp.replace(" ", "_").replace("/", "-")
-        self.race_id = f"{race_year}_{normalized_gp}"
+        self.race_id = build_race_id(race_year, race_gp, session)
         
         # Set FastF1 cache directory
         fastf1.Cache.enable_cache(cache_dir)
@@ -119,7 +271,7 @@ class LivePoller:
         """Check if the session is live or in progress"""
         try:
             if self.session is None:
-                self.session = fastf1.get_session(self.race_year, self.race_gp, 'R')
+                self.session = fastf1.get_session(self.race_year, self.race_gp, self.session_code)
             
             # Try to load session data
             self.session.load()
@@ -153,7 +305,9 @@ class LivePoller:
             
             if latest_lap > self.last_lap_number:
                 logger.info(f"📊 New lap data available: Lap {latest_lap}")
-                await self._process_lap_update(current_laps, latest_lap)
+                # Per-lap race positions mean nothing in a timed session.
+                if not is_timed_session(self.session_code):
+                    await self._process_lap_update(current_laps, latest_lap)
                 self.last_lap_number = latest_lap
                 self.stall_polls = 0
             else:
@@ -168,7 +322,11 @@ class LivePoller:
     async def _check_session_ended(self) -> bool:
         """Best-effort session-end heuristic: lap count has stalled for a
         few consecutive polls and the session's results show a terminal
-        status for the leader (not blank/"Running")."""
+        status for the leader (not blank/"Running"). Timed sessions have no such
+        status, so they end after a longer stall with no new laps."""
+        if is_timed_session(self.session_code):
+            needed = -(-TIMED_SESSION_END_STALL_SECONDS // max(self.poll_interval, 1))
+            return self.stall_polls >= needed
         if self.stall_polls < SESSION_END_STALL_POLLS:
             return False
         if self.session is None or self.session.results is None or self.session.results.empty:
@@ -186,7 +344,7 @@ class LivePoller:
         headers = {"Content-Type": "application/json"}
         if INTERNAL_API_KEY:
             headers["X-Internal-Key"] = INTERNAL_API_KEY
-        payload = {"year": self.race_year, "event": self.race_gp, "laps": False}
+        payload = {"year": self.race_year, "event": self.race_gp, "laps": False, "session": self.session_code}
         try:
             async with aiohttp.ClientSession() as http:
                 async with http.post(
@@ -247,40 +405,21 @@ class LivePoller:
             if laps.empty:
                 return
 
-            # Get latest data for each driver
-            latest_data = laps.groupby('Driver').last()
-            total_laps = getattr(self.session, 'total_laps', None)
-
-            # Create positions array (fields match frontend LiveState interface)
-            positions = []
-            for driver, data in latest_data.iterrows():
-                position_data = {
-                    "driver_id": driver,
-                    "driver_name": driver,
-                    "position": int(data['Position']),
-                    "tyre": data['Compound'],
-                    "gap": self._calculate_gap(data, latest_data),
-                    "interval": None,
-                    "last_lap_time": str(data['LapTime']) if pd.notna(data['LapTime']) else None,
-                    "status": "Running",
+            if is_timed_session(self.session_code):
+                positions = build_timed_positions(laps, self._teams())
+                state = {
+                    "race_id": self.race_id,
+                    "session": self.session_code,
+                    "session_type": "timed",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "session_status": "live",
+                    "track_status": "green",
+                    "leader": positions[0]['driver_id'] if positions else None,
+                    "positions": positions,
                 }
-                positions.append(position_data)
+            else:
+                state = self._classified_state(laps)
 
-            # Sort by position
-            positions.sort(key=lambda x: x['position'])
-
-            current_lap = int(latest_data['LapNumber'].max())
-            state = {
-                "race_id": self.race_id,
-                "timestamp": datetime.utcnow().isoformat(),
-                "session_status": "live",
-                "track_status": "green",
-                "lap": current_lap,
-                "total_laps": int(total_laps) if total_laps else None,
-                "leader": positions[0]['driver_id'] if positions else None,
-                "positions": positions,
-            }
-            
             # Store state in Redis
             await self.redis_service.set_live_state(self.race_id, state, ttl=3600)
             
@@ -296,39 +435,38 @@ class LivePoller:
         except Exception as e:
             logger.error(f"❌ Error updating live state: {str(e)}")
     
-    def _calculate_gap(self, driver_data: pd.Series, all_data: pd.DataFrame) -> Optional[str]:
-        """Calculate gap to leader"""
+    def _teams(self) -> Dict[str, str]:
+        """Driver abbreviation -> team name from the session results (best effort)."""
         try:
-            if all_data.empty:
-                return None
-            
-            # Find leader (position 1)
-            leader_data = all_data[all_data['Position'] == 1]
-            if leader_data.empty:
-                return None
-            
-            leader_lap_time = leader_data.iloc[0]['LapTime']
-            driver_lap_time = driver_data['LapTime']
-            
-            if pd.isna(leader_lap_time) or pd.isna(driver_lap_time):
-                return None
-            
-            # Calculate gap
-            gap = driver_lap_time - leader_lap_time
-            
-            if gap.total_seconds() < 0:
-                return f"+{abs(gap)}"
-            else:
-                return f"+{gap}"
-                
+            results = self.session.results
+            return {str(r["Abbreviation"]): str(r["TeamName"]) for _, r in results.iterrows() if pd.notna(r.get("TeamName"))}
         except Exception:
-            return None
+            return {}
+
+    def _classified_state(self, laps: pd.DataFrame) -> Dict[str, Any]:
+        """Race / sprint: order by FastF1's race Position, with a lap counter."""
+        positions = build_classified_positions(laps, self._teams())
+        total_laps = getattr(self.session, 'total_laps', None)
+        return {
+            "race_id": self.race_id,
+            "session": self.session_code,
+            "session_type": "classified",
+            "timestamp": datetime.utcnow().isoformat(),
+            "session_status": "live",
+            "track_status": "green",
+            "lap": int(laps['LapNumber'].max()),
+            "total_laps": int(total_laps) if total_laps else None,
+            "leader": positions[0]['driver_id'] if positions else None,
+            "positions": positions,
+        }
+
 
 async def main():
     """Main poller function"""
     parser = argparse.ArgumentParser(description='Live F1 Data Poller')
     parser.add_argument('--race-year', type=int, default=int(os.environ.get('RACE_YEAR', 2024)), help='Race year')
     parser.add_argument('--race-gp', type=str, default=os.environ.get('RACE_GP', 'Bahrain'), help='Race Grand Prix')
+    parser.add_argument('--session', choices=SESSIONS, default=os.environ.get('RACE_SESSION', 'R'), help='Session to follow: FP1/FP2/FP3, SQ (sprint qualifying), S (sprint), Q (qualifying), R (race)')
     parser.add_argument('--poll-interval', type=int, default=int(os.environ.get('POLL_INTERVAL', 5)), help='Poll interval in seconds')
     parser.add_argument('--redis-url', default=os.environ.get('REDIS_URL', 'redis://localhost:6379'), help='Redis URL')
     parser.add_argument('--cache-dir', default=os.environ.get('FASTF1_CACHE_DIR', 'data/fastf1_cache'), help='FastF1 cache directory')
@@ -341,7 +479,8 @@ async def main():
         cache_dir=args.cache_dir,
         race_year=args.race_year,
         race_gp=args.race_gp,
-        poll_interval=args.poll_interval
+        poll_interval=args.poll_interval,
+        session=args.session,
     )
     
     try:
