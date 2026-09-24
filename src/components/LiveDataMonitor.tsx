@@ -1,41 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Radio, Activity, Clock, Users, AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff } from 'lucide-react';
+import { Radio, Clock, AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { isPastDate } from '../utils/dates';
-import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveRaceId, qualifyingZone, sessionsForWeekend } from '../utils/races';
+import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveRaceId, sessionsForWeekend } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
+import LiveTimingBoard, { LiveState } from './LiveTimingBoard';
 import {
-  Button, Card, CardBody, CardHeader, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell,
-  PositionBadge, SelectField, TabPanel,
+  Button, Card, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell, SelectField, TabPanel,
 } from './ui';
 
 const WS_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:8000')
   .replace(/^http/, 'ws');
-
-interface LivePosition {
-  position: number;
-  driver_id: string;
-  driver_name?: string;
-  gap?: string;
-  interval?: string;
-  last_lap_time?: string;
-  best_lap_time?: string;
-  laps_completed?: number;
-  tyre?: string | null;
-  status: string;
-}
-
-interface LiveState {
-  // 'timed' sessions (practice, qualifying) are ordered by best lap and have no lap counter
-  session?: string;
-  session_type?: 'timed' | 'classified';
-  positions?: LivePosition[];
-  lap?: number;
-  total_laps?: number;
-  track_status?: string;
-  session_status?: string;
-  timestamp?: string;
-}
 
 interface RaceOption { round: number; race_name: string; circuit_name: string; gp: string; is_sprint: boolean; }
 
@@ -163,8 +138,6 @@ const LiveDataMonitor: React.FC = () => {
 
   const { color: statusColor, Icon: StatusIcon, label: statusLabel } = CONNECTION[connStatus];
   const hasData = liveState && (liveState.positions?.length ?? 0) > 0;
-  const isTimed = liveState?.session_type === 'timed';
-  const isQualifying = isTimed && (liveState?.session === 'Q' || liveState?.session === 'SQ');
   const weekend = races.find((r) => r.gp === selectedGp);
   const isSprintWeekend = !!weekend?.is_sprint;
   const sessionOptions = useMemo(() => sessionsForWeekend(isSprintWeekend), [isSprintWeekend]);
@@ -246,67 +219,8 @@ const LiveDataMonitor: React.FC = () => {
             )}
           </Card>
         ) : (
-          <FadeIn className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card>
-              <CardHeader
-                title="Live Positions"
-                icon={<Users className="h-4 w-4" />}
-                subtitle={isTimed
-                  ? 'Best lap order'
-                  : liveState?.lap ? `Lap ${liveState.lap}${liveState.total_laps ? ` / ${liveState.total_laps}` : ''}` : undefined}
-              />
-              <ul>
-                {liveState!.positions!.map((pos, index, all) => {
-                  const zone = isQualifying ? qualifyingZone(pos.position, all.length) : null;
-                  const startsZone = zone && zone !== (index > 0 ? qualifyingZone(all[index - 1].position, all.length) : null);
-                  return (
-                  <React.Fragment key={pos.driver_id}>
-                  {startsZone && (
-                    <li aria-hidden="true" className="border-b border-gray-800/60 bg-gray-800/40 px-5 py-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">
-                      {zone === 'Q3' ? 'Through to Q3 · top 10' : zone === 'Q2' ? 'Out in Q2 · positions 11–' + (10 + Math.floor((all.length - 10) / 2)) : 'Out in Q1 · positions ' + (11 + Math.floor((all.length - 10) / 2)) + '–' + all.length}
-                    </li>
-                  )}
-                  <li className="flex items-center justify-between gap-3 border-b border-gray-800/60 px-5 py-3 last:border-b-0">
-                    <span className="flex items-center gap-3">
-                      <PositionBadge position={pos.position} />
-                      <span>
-                        <span className="block font-medium text-white">{pos.driver_name ?? pos.driver_id.toUpperCase()}</span>
-                        <span className="block text-xs text-gray-500">
-                          {isTimed
-                            ? [pos.status === 'No time' ? 'No time set' : null, pos.laps_completed != null ? `${pos.laps_completed} laps` : null, pos.tyre].filter(Boolean).join(' · ')
-                            : pos.status}
-                        </span>
-                      </span>
-                    </span>
-                    <span className="text-right text-sm tabular-nums">
-                      <span className="block text-white">{(isTimed ? pos.best_lap_time : pos.last_lap_time) ?? '—'}</span>
-                      <span className="block text-gray-500">{pos.gap ?? ''}</span>
-                    </span>
-                  </li>
-                  </React.Fragment>
-                  );
-                })}
-              </ul>
-            </Card>
-
-            <Card>
-              <CardHeader title="Session Info" icon={<Activity className="h-4 w-4" />} />
-              <CardBody className="grid grid-cols-2 gap-3">
-                {[
-                  ['Session Status', liveState?.session_status ?? '—'],
-                  ['Track Status',   liveState?.track_status   ?? '—'],
-                  isTimed
-                    ? ['Session', LIVE_SESSION_LABELS[selectedSession]]
-                    : ['Lap', liveState?.lap ? `${liveState.lap} / ${liveState.total_laps ?? '?'}` : '—'],
-                  ['Last Update',    lastUpdate?.toLocaleTimeString() ?? '—'],
-                ].map(([label, value]) => (
-                  <div key={label} className="rounded-lg bg-gray-800/50 p-4 text-center">
-                    <p className="text-xl font-bold capitalize text-white">{value}</p>
-                    <p className="mt-1 text-xs uppercase tracking-wide text-gray-500">{label}</p>
-                  </div>
-                ))}
-              </CardBody>
-            </Card>
+          <FadeIn>
+            <LiveTimingBoard state={liveState!} sessionLabel={LIVE_SESSION_LABELS[selectedSession]} lastUpdate={lastUpdate} />
           </FadeIn>
         )}
       </TabPanel>
