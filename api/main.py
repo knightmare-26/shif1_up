@@ -1015,14 +1015,35 @@ async def db_stats(user=Depends(get_current_user)):
 # SIMULATE (dev / testing only)
 # ===========================================================================
 
-_SIMULATED_TIMED_LAPS = [
-    # driver_id, name, best, gap to fastest, last lap, laps, tyre
-    ("NOR", "Lando Norris",     "1:31.204", None,      "1:32.010", 14, "SOFT"),
-    ("VER", "Max Verstappen",   "1:31.377", "+0.173",  "1:31.377", 12, "SOFT"),
-    ("LEC", "Charles Leclerc",  "1:31.902", "+0.698",  "1:33.415", 15, "MEDIUM"),
-    ("HAM", "Lewis Hamilton",   "1:32.115", "+0.911",  "1:32.115", 11, "MEDIUM"),
-    ("ALB", "Alexander Albon",  None,       None,      None,        1, "HARD"),
+_SIMULATED_DRIVERS = [
+    ("NOR", "Lando Norris"), ("VER", "Max Verstappen"), ("LEC", "Charles Leclerc"), ("HAM", "Lewis Hamilton"),
+    ("RUS", "George Russell"), ("ANT", "Kimi Antonelli"), ("PIA", "Oscar Piastri"), ("ALO", "Fernando Alonso"),
+    ("SAI", "Carlos Sainz"), ("GAS", "Pierre Gasly"), ("HAD", "Isack Hadjar"), ("LAW", "Liam Lawson"),
+    ("TSU", "Yuki Tsunoda"), ("OCO", "Esteban Ocon"), ("BEA", "Oliver Bearman"), ("HUL", "Nico Hulkenberg"),
+    ("BOR", "Gabriel Bortoleto"), ("STR", "Lance Stroll"), ("COL", "Franco Colapinto"), ("LIN", "Arvid Lindblad"),
+    ("PER", "Sergio Perez"), ("ALB", "Alexander Albon"),
 ]
+
+
+def _simulated_timed_positions() -> list:
+    """A full 22-car field ordered by best lap; the last driver has not set a time."""
+    fastest = 91.204
+    rows = []
+    for i, (driver, name) in enumerate(_SIMULATED_DRIVERS):
+        timed = i < len(_SIMULATED_DRIVERS) - 1
+        best = fastest + i * 0.11
+        fmt = lambda t: f"{int(t // 60)}:{t % 60:06.3f}"
+        rows.append({
+            "driver_id": driver, "driver_name": name, "position": i + 1,
+            "tyre": ["SOFT", "MEDIUM", "HARD"][i % 3],
+            "gap": f"+{best - fastest:.3f}" if timed and i else None,
+            "interval": None,
+            "last_lap_time": fmt(best + 0.9) if timed else None,
+            "best_lap_time": fmt(best) if timed else None,
+            "laps_completed": 14 - (i % 5) if timed else 1,
+            "status": "Running" if timed else "No time",
+        })
+    return rows
 
 
 @app.post("/simulate/live/{race_id}")
@@ -1034,12 +1055,7 @@ async def simulate_live(request: Request, race_id: str, session: str = "R"):
         raise HTTPException(status_code=422, detail=f"session must be one of {', '.join(ingest_service.SESSION_TYPE_MAP)}")
     try:
         if session in ("FP1", "FP2", "FP3", "SQ", "Q"):
-            positions = [
-                {"driver_id": d, "driver_name": name, "position": i + 1, "tyre": tyre, "gap": gap,
-                 "interval": None, "last_lap_time": last, "best_lap_time": best, "laps_completed": laps,
-                 "status": "Running" if best else "No time"}
-                for i, (d, name, best, gap, last, laps, tyre) in enumerate(_SIMULATED_TIMED_LAPS)
-            ]
+            positions = _simulated_timed_positions()
             state = {
                 "race_id": race_id, "session": session, "session_type": "timed",
                 "session_status": "live", "track_status": "green",

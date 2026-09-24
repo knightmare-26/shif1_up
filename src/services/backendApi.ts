@@ -48,6 +48,7 @@ export interface RaceEvent {
   date: string;
   time: string;
   url?: string;
+  is_sprint?: boolean;
 }
 
 export interface PredictableRace {

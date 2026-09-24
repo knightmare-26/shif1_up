@@ -48,7 +48,8 @@ python ingest/incremental_ingest.py --years 2024
 
 ### Live poller (separate process)
 ```bash
-RACE_YEAR=2024 RACE_GP=Bahrain python live/poller.py
+RACE_YEAR=2024 RACE_GP=Bahrain python live/poller.py                  # the race
+RACE_YEAR=2024 RACE_GP=Bahrain python live/poller.py --session Q      # FP1 FP2 FP3 SQ S Q R
 ```
 
 ### Docker
@@ -104,9 +105,10 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 ### WebSocket live data flow
 
-1. `live/poller.py` polls FastF1 for live session data → writes canonical `LiveState` to Redis via `set_live_state()` + `publish_update()`
-2. `api/main.py:/ws/live/{race_id}` accepts WebSocket connections, sends initial state, streams Redis pub/sub messages; `_unwrap_live_state()` flattens Redis envelope so frontend always gets a flat `LiveState`
-3. Frontend `LiveDataMonitor` connects to WebSocket with exponential backoff; `LiveAnalytics` polls REST every 15s
+1. `live/poller.py` polls FastF1 for **one session per process** (`--session`, default `R`) → writes `LiveState` to Redis via `set_live_state()` + `publish_update()`. Start one poller per session you want to follow. The race id is `{year}_{gp}`; other sessions get a suffix (`2026_Belgian_Grand_Prix_FP1`) — ids are opaque to the API, Redis and WebSocket. Existing limitation: the poller calls `session.load()` and treats non-empty results as "live"; it is not a true live-timing client
+2. Two state shapes, marked by `session_type`: **classified** (`R`, `S`) — FastF1 race `Position`, lap counter; **timed** (`FP1-3`, `SQ`, `Q`) — ordered by best lap so far with gap to the fastest, `best_lap_time`, `laps_completed`, no lap counter; drivers with no timed lap are listed last ("No time"). Timed sessions have no classification to wait for, so they end after 5 minutes with no new lap; the end-of-session ingest sends the session
+3. `api/main.py:/ws/live/{race_id}` accepts WebSocket connections, sends initial state, streams Redis pub/sub messages; `_unwrap_live_state()` flattens Redis envelope so frontend always gets a flat `LiveState`. `POST /simulate/live/{race_id}?session=...` writes either shape for local testing (22-car field for timed sessions)
+4. Frontend `LiveDataMonitor` has a Session select (Practice 1-3, Qualifying, Race; a sprint weekend — `RaceEvent.is_sprint` — is Practice 1, Sprint Qualifying, Sprint, Qualifying, Race), connects with exponential backoff, and renders by `session_type`. Qualifying and sprint qualifying show knockout-zone headers (Q3 = top 10, then six out in Q2, six out in Q1 on a 22-car grid; `qualifyingZone` in `utils/races.ts`) based on the *current best-lap order* — exact for the final order, but mid-session eliminated drivers keep their Q1 laps. `LiveAnalytics` polls REST every 15s and follows the race only
 
 ### Prediction service (`api/services/prediction_service.py`)
 
@@ -156,7 +158,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `DATABASE_URL` | — | Supabase PostgreSQL connection string |
 | `FASTF1_CACHE_DIR` | `data/fastf1_cache` | FastF1 session cache |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Allowed CORS origins |
-| `RACE_YEAR` / `RACE_GP` / `POLL_INTERVAL` | 2024 / Bahrain / 5 | For `live/poller.py` |
+| `RACE_YEAR` / `RACE_GP` / `RACE_SESSION` / `POLL_INTERVAL` | 2024 / Bahrain / R / 5 | For `live/poller.py`. `RACE_SESSION` (or `--session`) is one of `FP1 FP2 FP3 SQ S Q R` |
 | `API_BASE_URL` | `http://localhost:8000` | Where `live/poller.py` calls back to trigger post-race ingest |
 | `INTERNAL_API_KEY` | — | Shared secret so `live/poller.py` can call `POST /admin/ingest/race` without a user login |
 | `REACT_APP_API_URL` | `http://localhost:8000` | Frontend API base URL |

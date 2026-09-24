@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Radio, Activity, Clock, Users, AlertCircle, CheckCircle, RefreshCw, Play, Square, Wifi, WifiOff } from 'lucide-react';
 import { backendApi } from '../services/backendApi';
 import { isPastDate } from '../utils/dates';
-import { isRaceRound } from '../utils/races';
+import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveRaceId, qualifyingZone, sessionsForWeekend } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
 import {
   Button, Card, CardBody, CardHeader, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell,
@@ -20,10 +20,15 @@ interface LivePosition {
   interval?: string;
   last_lap_time?: string;
   best_lap_time?: string;
+  laps_completed?: number;
+  tyre?: string | null;
   status: string;
 }
 
 interface LiveState {
+  // 'timed' sessions (practice, qualifying) are ordered by best lap and have no lap counter
+  session?: string;
+  session_type?: 'timed' | 'classified';
   positions?: LivePosition[];
   lap?: number;
   total_laps?: number;
@@ -32,7 +37,7 @@ interface LiveState {
   timestamp?: string;
 }
 
-interface RaceOption { round: number; race_name: string; circuit_name: string; gp: string; }
+interface RaceOption { round: number; race_name: string; circuit_name: string; gp: string; is_sprint: boolean; }
 
 const MAX_BACKOFF = 30_000;
 const CURRENT_YEAR = new Date().getFullYear();
@@ -49,6 +54,7 @@ const LiveDataMonitor: React.FC = () => {
   const [races, setRaces]             = useState<RaceOption[]>([]);
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR);
   const [selectedGp, setSelectedGp]   = useState('');
+  const [selectedSession, setSelectedSession] = useState<LiveSession>('R');
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [liveState, setLiveState]     = useState<LiveState | null>(null);
   const [connStatus, setConnStatus]   = useState<keyof typeof CONNECTION>('disconnected');
@@ -74,6 +80,7 @@ const LiveDataMonitor: React.FC = () => {
           race_name: r.race_name,
           circuit_name: r.circuit_name,
           gp: r.race_name.replace(/ /g, '_').replace(/\//g, '-'),
+          is_sprint: !!r.is_sprint,
         }));
         setRaces(options);
         const pick = list.find((r) => !isPastDate(r.date)) ?? list[list.length - 1];
@@ -95,9 +102,9 @@ const LiveDataMonitor: React.FC = () => {
     setConnStatus('disconnected');
   }, []);
 
-  const connect = useCallback((year: number, gp: string) => {
+  const connect = useCallback((year: number, gp: string, session: LiveSession) => {
     if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); }
-    const raceId = `${year}_${gp}`;
+    const raceId = liveRaceId(year, gp, session);
     const url    = `${WS_BASE}/ws/live/${raceId}`;
     setConnStatus('connecting');
     const ws = new WebSocket(url);
@@ -139,23 +146,32 @@ const LiveDataMonitor: React.FC = () => {
       }, 1000);
 
       retryTimeout.current = setTimeout(() => {
-        if (wsRef.current === null) connect(year, gp);
+        if (wsRef.current === null) connect(year, gp, session);
       }, delay);
     };
   }, [isMonitoring]);
 
   useEffect(() => {
     if (isMonitoring && selectedGp) {
-      connect(selectedYear, selectedGp);
+      connect(selectedYear, selectedGp, selectedSession);
     } else {
       disconnect();
       setLiveState(null);
     }
     return () => disconnect();
-  }, [isMonitoring, selectedYear, selectedGp]);   // eslint-disable-line
+  }, [isMonitoring, selectedYear, selectedGp, selectedSession]);   // eslint-disable-line
 
   const { color: statusColor, Icon: StatusIcon, label: statusLabel } = CONNECTION[connStatus];
   const hasData = liveState && (liveState.positions?.length ?? 0) > 0;
+  const isTimed = liveState?.session_type === 'timed';
+  const isQualifying = isTimed && (liveState?.session === 'Q' || liveState?.session === 'SQ');
+  const weekend = races.find((r) => r.gp === selectedGp);
+  const isSprintWeekend = !!weekend?.is_sprint;
+  const sessionOptions = useMemo(() => sessionsForWeekend(isSprintWeekend), [isSprintWeekend]);
+  // A session that doesn't exist on this weekend (e.g. Sprint on a normal one) falls back to the race.
+  useEffect(() => {
+    if (!sessionOptions.includes(selectedSession)) setSelectedSession('R');
+  }, [sessionOptions, selectedSession]);
 
   return (
     <PageShell>
@@ -176,6 +192,10 @@ const LiveDataMonitor: React.FC = () => {
                 Round {r.round} — {showCircuitName ? r.circuit_name : r.race_name}
               </option>
             ))}
+          </SelectField>
+          <SelectField label="Session" value={selectedSession} disabled={isMonitoring || !selectedGp}
+            className="min-w-[190px]" onChange={(v) => { setSelectedSession(v as LiveSession); setIsMonitoring(false); }}>
+            {sessionOptions.map((code) => <option key={code} value={code}>{LIVE_SESSION_LABELS[code]}</option>)}
           </SelectField>
           <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
@@ -206,8 +226,8 @@ const LiveDataMonitor: React.FC = () => {
           <Card>
             <EmptyState
               icon={<Radio className="h-10 w-10" />}
-              title="Select a Grand Prix and press Start Monitoring"
-              message="Live data streams automatically during active F1 race weekends."
+              title="Select a Grand Prix and session, then press Start Monitoring"
+              message="Live data streams during active F1 sessions — practice, qualifying, sprint and race."
             />
           </Card>
         ) : !hasData ? (
@@ -216,7 +236,7 @@ const LiveDataMonitor: React.FC = () => {
               <EmptyState
                 icon={<Radio className="h-10 w-10" />}
                 title="No live session active"
-                message="Live data appears here during an active F1 session. It streams automatically when a race weekend is underway."
+                message={`Nothing is streaming for ${LIVE_SESSION_LABELS[selectedSession]} yet. Live data appears here while the session is running.`}
               />
             ) : (
               <EmptyState
@@ -231,24 +251,41 @@ const LiveDataMonitor: React.FC = () => {
               <CardHeader
                 title="Live Positions"
                 icon={<Users className="h-4 w-4" />}
-                subtitle={liveState?.lap ? `Lap ${liveState.lap}${liveState.total_laps ? ` / ${liveState.total_laps}` : ''}` : undefined}
+                subtitle={isTimed
+                  ? 'Best lap order'
+                  : liveState?.lap ? `Lap ${liveState.lap}${liveState.total_laps ? ` / ${liveState.total_laps}` : ''}` : undefined}
               />
               <ul>
-                {liveState!.positions!.map((pos) => (
-                  <li key={pos.driver_id} className="flex items-center justify-between gap-3 border-b border-gray-800/60 px-5 py-3 last:border-b-0">
+                {liveState!.positions!.map((pos, index, all) => {
+                  const zone = isQualifying ? qualifyingZone(pos.position, all.length) : null;
+                  const startsZone = zone && zone !== (index > 0 ? qualifyingZone(all[index - 1].position, all.length) : null);
+                  return (
+                  <React.Fragment key={pos.driver_id}>
+                  {startsZone && (
+                    <li aria-hidden="true" className="border-b border-gray-800/60 bg-gray-800/40 px-5 py-1.5 text-xs font-medium uppercase tracking-wide text-gray-400">
+                      {zone === 'Q3' ? 'Through to Q3 · top 10' : zone === 'Q2' ? 'Out in Q2 · positions 11–' + (10 + Math.floor((all.length - 10) / 2)) : 'Out in Q1 · positions ' + (11 + Math.floor((all.length - 10) / 2)) + '–' + all.length}
+                    </li>
+                  )}
+                  <li className="flex items-center justify-between gap-3 border-b border-gray-800/60 px-5 py-3 last:border-b-0">
                     <span className="flex items-center gap-3">
                       <PositionBadge position={pos.position} />
                       <span>
                         <span className="block font-medium text-white">{pos.driver_name ?? pos.driver_id.toUpperCase()}</span>
-                        <span className="block text-xs text-gray-500">{pos.status}</span>
+                        <span className="block text-xs text-gray-500">
+                          {isTimed
+                            ? [pos.status === 'No time' ? 'No time set' : null, pos.laps_completed != null ? `${pos.laps_completed} laps` : null, pos.tyre].filter(Boolean).join(' · ')
+                            : pos.status}
+                        </span>
                       </span>
                     </span>
                     <span className="text-right text-sm tabular-nums">
-                      <span className="block text-white">{pos.last_lap_time ?? '—'}</span>
+                      <span className="block text-white">{(isTimed ? pos.best_lap_time : pos.last_lap_time) ?? '—'}</span>
                       <span className="block text-gray-500">{pos.gap ?? ''}</span>
                     </span>
                   </li>
-                ))}
+                  </React.Fragment>
+                  );
+                })}
               </ul>
             </Card>
 
@@ -258,7 +295,9 @@ const LiveDataMonitor: React.FC = () => {
                 {[
                   ['Session Status', liveState?.session_status ?? '—'],
                   ['Track Status',   liveState?.track_status   ?? '—'],
-                  ['Lap',            liveState?.lap ? `${liveState.lap} / ${liveState.total_laps ?? '?'}` : '—'],
+                  isTimed
+                    ? ['Session', LIVE_SESSION_LABELS[selectedSession]]
+                    : ['Lap', liveState?.lap ? `${liveState.lap} / ${liveState.total_laps ?? '?'}` : '—'],
                   ['Last Update',    lastUpdate?.toLocaleTimeString() ?? '—'],
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-lg bg-gray-800/50 p-4 text-center">
