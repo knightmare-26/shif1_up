@@ -164,7 +164,9 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
     <Card>
       <CardHeader
         title={`Round ${race.round} — ${race.race_name}`}
-        subtitle={`${race.circuit_name} · ${race.year}`}
+        subtitle={race.practice_data === false
+          ? `${race.circuit_name} · ${race.year} · no practice data stored, so predicted without practice pace`
+          : `${race.circuit_name} · ${race.year}`}
         action={
           <div className="flex items-center gap-2">
             <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.quali_mae)}`}>

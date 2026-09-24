@@ -698,8 +698,14 @@ class PredictionService:
         so the two callers can pass different ones."""
         drivers: Dict[str, Dict[str, Any]] = {}
 
+        # Practice pace is optional here: a weekend without stored practice is scored with it
+        # missing (filled like any missing input, the way an upcoming race is predicted) rather
+        # than dropped, and flagged, so recent races don't vanish from the accuracy tab.
+        def required(features: List[str]) -> List[str]:
+            return [f for f in features if f != "driver_practice_best_rank"]
+
         if quali_model is not None:
-            qdf = group.dropna(subset=quali_features + ["grid"])
+            qdf = group.dropna(subset=required(quali_features) + ["grid"])
             if not qdf.empty:
                 ranks = self._ranks_from_scores(quali_model.predict(qdf[quali_features].fillna(10)))
                 for (_, row), rank in zip(qdf.iterrows(), ranks):
@@ -711,7 +717,7 @@ class PredictionService:
                     d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
 
         if race_model is not None:
-            rdf = group.dropna(subset=race_features + ["position"])
+            rdf = group.dropna(subset=required(race_features) + ["position"])
             if not rdf.empty:
                 ranks = self._ranks_from_scores(race_model.predict(rdf[race_features].fillna(10)))
                 for (_, row), rank in zip(rdf.iterrows(), ranks):
@@ -740,6 +746,9 @@ class PredictionService:
             "circuit_name": group["circuit_name"].iloc[0],
             "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
             "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+            # Whether the practice-pace input was known for this weekend (None: not a model input).
+            "practice_data": (bool(group["driver_practice_best_rank"].notna().mean() > 0.5)
+                              if "driver_practice_best_rank" in set(race_features) | set(quali_features) else None),
             "drivers": driver_rows,
         }
 

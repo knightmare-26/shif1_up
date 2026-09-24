@@ -148,6 +148,9 @@ export interface BacktestRace {
   circuit_name: string;
   quali_mae: number | null;
   race_mae: number | null;
+  /** false: no practice stored for this weekend, so it was predicted without practice pace
+   *  (like an upcoming race). Absent/null when practice pace isn't a model input. */
+  practice_data?: boolean | null;
   drivers: BacktestDriverRow[];
 }
 
