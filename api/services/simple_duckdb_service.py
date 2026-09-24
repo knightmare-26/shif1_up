@@ -469,14 +469,23 @@ class SimpleDuckDBService:
     async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
         """Store race results in DuckDB or memory. `session_type` is 'race' or
         'sprint' — a sprint's results share the race_id but never collide
-        with the main race's since the primary key includes session_type."""
+        with the main race's since the primary key includes session_type.
+
+        Replaces the session's rows rather than upserting them: an upsert keyed by position
+        leaves a row behind at any position the new results no longer use (a stale duplicate
+        driver after a re-ingest)."""
         try:
             if not results:
                 return True
 
             if self.connection:
+                # Two steps, not one transaction: DuckDB can't delete and re-insert the same key in a
+                # single transaction (a documented index limitation). Supabase does it atomically.
+                self.connection.execute(
+                    "DELETE FROM race_results WHERE race_id = ? AND session_type = ?", (race_id, session_type)
+                )
                 self.connection.executemany(
-                    """INSERT OR REPLACE INTO race_results
+                    """INSERT INTO race_results
                        (race_id, session_type, position, driver_id, constructor_id, grid, points, time, fastest_lap, fastest_lap_time, status, laps_completed)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     [(race_id, session_type, r["position"], r["driver_id"], r.get("constructor_id"),

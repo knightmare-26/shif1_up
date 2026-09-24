@@ -29,12 +29,12 @@ def client():
             # 2030: aaa wins both races; bbb wins the only sprint but no race.
             (db.store_race_results, ["2030_One", [result(1, "aaa"), result(2, "bbb"), result(3, "ccc"), result(4, "ddd")]]),
             (db.store_race_results, ["2030_Two", [result(1, "aaa"), result(2, "ccc"), result(3, "ddd"), result(4, "bbb")]]),
-            (db.store_race_results, ["2030_Two", [result(1, "bbb"), result(2, "ddd"), result(3, "aaa"), result(4, "ccc")], "sprint"]),
+            # (bbb also has a stale leftover row in the sprint — counted once, see below.)
+            (db.store_race_results, ["2030_Two", [result(1, "bbb"), result(2, "ddd"), result(3, "aaa"), result(4, "ccc"),
+                                                  result(99, "bbb")], "sprint"]),
             # Qualifying and practice rows must not count.
             (db.store_race_results, ["2030_Two", [result(1, "ddd")], "qualifying"]),
             (db.store_race_results, ["2030_Two", [result(1, "ddd")], "fp1"]),
-            # A stale duplicate (same driver twice in one sprint, e.g. an old unclassified row) counts once.
-            (db.store_race_results, ["2030_Two", [result(99, "bbb")], "sprint"]),
             # 2031: no sprints.
             (db.store_race_results, ["2031_One", [result(1, "ccc"), result(2, "aaa"), result(3, "bbb")]]),
         ]

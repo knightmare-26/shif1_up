@@ -166,6 +166,34 @@ async def _warm_prediction_models() -> None:
     await prediction_service._ensure_trained(duckdb_service)
 
 
+# Results change after they're first stored (post-race penalties, disqualifications), so once a
+# day the API re-fetches the race, sprint and qualifying results of the last N days' rounds and
+# retrains if anything moved. RESULTS_REFRESH_DAYS=0 turns it off.
+RESULTS_REFRESH_DAYS = int(os.getenv("RESULTS_REFRESH_DAYS", "14"))
+RESULTS_REFRESH_FIRST_DELAY = 600       # let a cold start settle (and the models train) first
+RESULTS_REFRESH_INTERVAL = 24 * 3600
+
+
+async def _results_refresh_loop() -> None:
+    await asyncio.sleep(RESULTS_REFRESH_FIRST_DELAY)
+    while True:
+        busy = (duckdb_service is None or (database_guardian is not None and not database_guardian.ready)
+                or ingest_service.status.get("running"))
+        if busy:
+            await asyncio.sleep(900)
+            continue
+        try:
+            changed = await ingest_service.refresh_recent_results(duckdb_service, RESULTS_REFRESH_DAYS)
+            if changed:
+                logger.info("Results refresh changed %d session(s); retraining", len(changed))
+                await prediction_service.train(duckdb_service)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Results refresh failed: %s", exc)
+        await asyncio.sleep(RESULTS_REFRESH_INTERVAL)
+
+
 async def _ping_database() -> bool:
     pool = getattr(duckdb_service, "pool", None)
     if pool is None:
@@ -184,6 +212,7 @@ async def _ping_database() -> bool:
 async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
     warmup_task = None
+    refresh_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
 
@@ -205,6 +234,8 @@ async def lifespan(app: FastAPI):
             api_url=os.getenv("SUPABASE_API_URL", "https://api.supabase.com"),
         )
         await database_guardian.start()
+        if RESULTS_REFRESH_DAYS > 0:
+            refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
     else:
         logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
@@ -230,8 +261,9 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
-    if warmup_task:
-        warmup_task.cancel()
+    for task in (warmup_task, refresh_task):
+        if task:
+            task.cancel()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:

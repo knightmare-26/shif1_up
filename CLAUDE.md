@@ -37,6 +37,7 @@ pytest tests/ --cov=api          # With coverage
 Use the project venv (`venv/Scripts/python.exe -m pytest tests --ignore=tests/test_api.py`; `test_api.py` imports a module that no longer exists). `tests/conftest.py` isolates the suite from every production service before the app is imported — in-memory Redis mock, no `DATABASE_URL` (local DuckDB in a temp dir), temp `MODEL_DIR`/`CACHE_DIR`, no background model warm-up — so it never writes to the real Upstash Redis or Supabase. Keep new tests inside that isolation.
 
 ### Data ingestion
+A session is stored by replacing its rows (not upserting), so a re-ingest can't leave stale rows behind. Drivers without a classified position are numbered after the classified ones (they used to share P99 and overwrite each other).
 ```bash
 # Fast ingest (race results + standings, no telemetry — runs in minutes)
 python ingest/simple_ingest.py --years 2024
@@ -45,6 +46,12 @@ python ingest/simple_ingest.py --years 2022 2023 2024   # also populates grid co
 # Full ingest with telemetry/Parquet (takes hours, large download)
 python ingest/historical_ingest.py --years 2024
 python ingest/incremental_ingest.py --years 2024
+
+# Missing FP1-FP3 only, with retries (FastF1's timing API is flaky)
+python scripts/backfill_practice.py --years 2025 2026 --dry-run
+
+# Static snapshots for FINISHED seasons (public/data); run after a season's last race
+python scripts/generate_static_data.py --year 2026
 ```
 
 ### Live poller (separate process)
@@ -176,6 +183,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `JWT_SECRET` | — | Auth JWT signing key — see `CLAUDE.local.md` |
 | `SUPABASE_ACCESS_TOKEN` | — | **Set in production.** Lets the API (`db_guardian.py`) and `scripts/health_poller.py` restore a paused Supabase project (Supabase dashboard → Account → Access Tokens). Optional `SUPABASE_PROJECT_REF` (else parsed from `DATABASE_URL`) and `SUPABASE_API_URL` (test override) |
 | `CACHE_DIR` | `./cache` | On-disk response cache (expired files are deleted at start-up) |
+| `RESULTS_REFRESH_DAYS` | `14` | With Supabase: once a day (first run 10 min after start) re-fetch race/sprint/qualifying results of rounds held in the last N days — catches post-race penalties — and retrain if anything changed. `0` = off |
 | `LOG_FORMAT` | plain text | Set to `json` for structured JSON logging |
 | `LOG_LEVEL` | `INFO` | Logging level |
 

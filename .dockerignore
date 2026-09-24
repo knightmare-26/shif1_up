@@ -1,0 +1,20 @@
+# The image only COPYs api/, ingest/, live/, start_backend.py and docker-entrypoint.sh (see
+# Dockerfile). Everything else would just be sent as build context — venv/ (committed),
+# node_modules/ and data/ alone are ~2 GB.
+.git
+venv/
+node_modules/
+data/
+build/
+cache/
+logs/
+public/
+src/
+tests/
+coverage/
+api/data/fastf1_cache/
+**/__pycache__/
+**/*.pyc
+.env
+.env.*
+CLAUDE.local.md

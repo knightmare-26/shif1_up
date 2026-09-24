@@ -432,7 +432,10 @@ class ChampionshipService:
             for r in races
         ]
 
-        key = (year, self.pred._meta.get("trained_at"), len(results), tuple(sorted(sprint_rounds or ())))
+        # Keyed on the results' content, not their count: a post-race penalty re-ingest changes
+        # positions and points without adding a row.
+        content = pd.util.hash_pandas_object(results[["round", "session_type", "driver_id", "position", "points"]], index=False).sum() if not results.empty else 0
+        key = (year, self.pred._meta.get("trained_at"), int(content), tuple(sorted(sprint_rounds or ())))
         if key in self._cache:
             return self._cache[key]
 

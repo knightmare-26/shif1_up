@@ -336,11 +336,18 @@ class SupabaseF1Service:
     async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
         """`session_type` is 'race' or 'sprint' — a sprint's results share the
         race_id but never collide with the main race's since the primary key
-        includes session_type."""
+        includes session_type.
+
+        Replaces the session's rows (in one transaction) rather than upserting them: an upsert
+        keyed by position leaves a row behind at any position the new results no longer use —
+        e.g. a driver stored twice after a re-ingest re-numbered the unclassified cars."""
         if not results or not self.pool:
             return True
         try:
-            async with self.pool.acquire() as conn:
+            async with self.pool.acquire() as conn, conn.transaction():
+                await conn.execute(
+                    "DELETE FROM race_results WHERE race_id = $1 AND session_type = $2", race_id, session_type
+                )
                 await conn.executemany(
                     """INSERT INTO race_results
                            (race_id, session_type, position, driver_id, constructor_id, grid, points,
