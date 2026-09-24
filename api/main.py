@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.middleware.base import BaseHTTPMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -953,7 +953,14 @@ class IngestRaceRequest(BaseModel):
     year: int
     event: str  # GP name (e.g. "Bahrain") or round number as a string
     laps: bool = False
-    session: str = "R"  # "R" for the main race, "S" for a sprint race
+    session: str = "R"  # R race, S sprint, Q qualifying, SQ sprint qualifying, FP1/FP2/FP3 practice
+
+    @field_validator("session")
+    @classmethod
+    def _known_session(cls, v: str) -> str:
+        if v not in ingest_service.SESSION_TYPE_MAP:
+            raise ValueError(f"session must be one of {', '.join(ingest_service.SESSION_TYPE_MAP)}")
+        return v
 
 
 async def _ingest_race_and_retrain(year: int, event, laps: bool, session: str):
@@ -1008,25 +1015,54 @@ async def db_stats(user=Depends(get_current_user)):
 # SIMULATE (dev / testing only)
 # ===========================================================================
 
+_SIMULATED_TIMED_LAPS = [
+    # driver_id, name, best, gap to fastest, last lap, laps, tyre
+    ("NOR", "Lando Norris",     "1:31.204", None,      "1:32.010", 14, "SOFT"),
+    ("VER", "Max Verstappen",   "1:31.377", "+0.173",  "1:31.377", 12, "SOFT"),
+    ("LEC", "Charles Leclerc",  "1:31.902", "+0.698",  "1:33.415", 15, "MEDIUM"),
+    ("HAM", "Lewis Hamilton",   "1:32.115", "+0.911",  "1:32.115", 11, "MEDIUM"),
+    ("ALB", "Alexander Albon",  None,       None,      None,        1, "HARD"),
+]
+
+
 @app.post("/simulate/live/{race_id}")
 @limiter.limit(RATE_LIMIT_AUTH)
-async def simulate_live(request: Request, race_id: str):
-    """Push mock live state into Redis for local testing."""
+async def simulate_live(request: Request, race_id: str, session: str = "R"):
+    """Push mock live state into Redis for local testing. `session` picks the shape:
+    R/S are classified (positions + lap counter), FP1-3/SQ/Q are timed (best-lap order)."""
+    if session not in ingest_service.SESSION_TYPE_MAP:
+        raise HTTPException(status_code=422, detail=f"session must be one of {', '.join(ingest_service.SESSION_TYPE_MAP)}")
     try:
-        state = {
-            "race_id": race_id,
-            "session_status": "live",
-            "track_status": "green",
-            "lap": 15,
-            "total_laps": 57,
-            "leader": "VER",
-            "positions": [
-                {"driver_id": "VER", "driver_name": "Max Verstappen",  "position": 1, "tyre": "SOFT", "gap": None,      "interval": None,      "last_lap_time": "1:33.660", "status": "Running"},
-                {"driver_id": "NOR", "driver_name": "Lando Norris",    "position": 2, "tyre": "SOFT", "gap": "+22.457", "interval": "+22.457", "last_lap_time": "1:34.120", "status": "Running"},
-                {"driver_id": "LEC", "driver_name": "Charles Leclerc", "position": 3, "tyre": "MEDIUM","gap": "+31.204", "interval": "+8.747",  "last_lap_time": "1:34.510", "status": "Running"},
-            ],
-            "timestamp": datetime.utcnow().isoformat(),
-        }
+        if session in ("FP1", "FP2", "FP3", "SQ", "Q"):
+            positions = [
+                {"driver_id": d, "driver_name": name, "position": i + 1, "tyre": tyre, "gap": gap,
+                 "interval": None, "last_lap_time": last, "best_lap_time": best, "laps_completed": laps,
+                 "status": "Running" if best else "No time"}
+                for i, (d, name, best, gap, last, laps, tyre) in enumerate(_SIMULATED_TIMED_LAPS)
+            ]
+            state = {
+                "race_id": race_id, "session": session, "session_type": "timed",
+                "session_status": "live", "track_status": "green",
+                "leader": positions[0]["driver_id"], "positions": positions,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+        else:
+            state = {
+                "race_id": race_id,
+                "session": session,
+                "session_type": "classified",
+                "session_status": "live",
+                "track_status": "green",
+                "lap": 15,
+                "total_laps": 57,
+                "leader": "VER",
+                "positions": [
+                    {"driver_id": "VER", "driver_name": "Max Verstappen",  "position": 1, "tyre": "SOFT", "gap": None,      "interval": None,      "last_lap_time": "1:33.660", "status": "Running"},
+                    {"driver_id": "NOR", "driver_name": "Lando Norris",    "position": 2, "tyre": "SOFT", "gap": "+22.457", "interval": "+22.457", "last_lap_time": "1:34.120", "status": "Running"},
+                    {"driver_id": "LEC", "driver_name": "Charles Leclerc", "position": 3, "tyre": "MEDIUM","gap": "+31.204", "interval": "+8.747",  "last_lap_time": "1:34.510", "status": "Running"},
+                ],
+                "timestamp": datetime.utcnow().isoformat(),
+            }
         await redis_service.set_live_state(race_id, state)
         await redis_service.publish_update(race_id, {"type": "state_update", "state": state})
         return {"message": f"Simulation started for {race_id}"}

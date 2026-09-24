@@ -83,6 +83,39 @@ class TestSimulateEndpoint:
         assert first["position"] == 1
 
 
+class TestSimulateSessions:
+    def test_race_simulation_is_classified_and_keeps_its_lap_counter(self, client):
+        client.post("/simulate/live/2024_SimRace")
+        state = client.get("/live/2024_SimRace/state").json()
+        assert state["session_type"] == "classified" and state["session"] == "R"
+        assert state["lap"] == 15
+
+    @pytest.mark.parametrize("session", ["FP1", "FP2", "FP3", "SQ", "Q"])
+    def test_timed_sessions_are_best_lap_ordered_with_no_lap_counter(self, client, session):
+        race_id = f"2024_SimTimed_{session}"          # a session-qualified id works unchanged
+        assert client.post(f"/simulate/live/{race_id}?session={session}").status_code == 200
+
+        state = client.get(f"/live/{race_id}/state").json()
+
+        assert state["session_type"] == "timed" and state["session"] == session
+        assert "lap" not in state and "total_laps" not in state
+        positions = state["positions"]
+        assert positions[0]["position"] == 1 and positions[0]["gap"] is None
+        assert all("best_lap_time" in p and "laps_completed" in p for p in positions)
+        assert positions[-1]["status"] == "No time"     # a driver with no timed lap is listed last
+
+    def test_an_unknown_session_is_rejected(self, client):
+        assert client.post("/simulate/live/2024_SimBad?session=FP9").status_code == 422
+
+    def test_the_sprint_is_classified(self, client):
+        client.post("/simulate/live/2024_SimSprint_S?session=S")
+        assert client.get("/live/2024_SimSprint_S/state").json()["session_type"] == "classified"
+
+    def test_ingest_only_accepts_known_sessions(self, client):
+        r = client.post("/admin/ingest/race", json={"year": 2024, "event": "1", "session": "FP9"})
+        assert r.status_code in (401, 403, 422)          # rejected either at auth or validation, never ingested
+
+
 class TestLiveStateEndpoint:
     def test_live_state_when_no_data(self, client):
         r = client.get("/live/9999_NothingPublished/state")
