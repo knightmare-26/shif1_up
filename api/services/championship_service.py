@@ -38,6 +38,7 @@ SPRINT_POINTS = [8, 7, 6, 5, 4, 3, 2, 1]
 CB_LEN = 30  # countback positions tracked (P1..P30)
 
 LIVE_SIMULATIONS = 10000
+ODDS_SIMULATIONS = 20000
 BACKTEST_SIMULATIONS = 2000
 BETA_GRID = np.logspace(-2, 1.5, 141)
 
@@ -320,6 +321,7 @@ class ChampionshipService:
         years = sorted(int(y) for y in df["year"].unique())
         models: Dict[int, Tuple[Any, Any]] = {}
         races: Dict[int, List[np.ndarray]] = {}
+        qualifyings: List[np.ndarray] = []
         for year in years[1:]:
             quali_model, race_model = self._season_models(lgb, year)
             if race_model is None:
@@ -330,6 +332,10 @@ class ChampionshipService:
             for _, rows in season.groupby("race_id"):
                 rows = rows.sort_values("position")
                 races[year].append(np.asarray(self._score_rows(rows, quali_model, race_model)))
+                graded = rows.dropna(subset=["grid"]).sort_values("grid")
+                if quali_model is not None and len(graded) >= 2:
+                    graded = graded.assign(driver_practice_best_rank=np.nan)
+                    qualifyings.append(np.asarray(quali_model.predict(graded[p._quali_features].astype(float).fillna(10))))
         all_races = [r for rs in races.values() for r in rs]
         return {
             "fingerprint": (p._meta.get("trained_at"), len(df)),
@@ -337,6 +343,7 @@ class ChampionshipService:
             "races": races,
             "beta": fit_beta(all_races),
             "races_used": len(all_races),
+            "beta_qualifying": fit_beta(qualifyings) if qualifyings else None,
         }
 
     def _held_out_state(self) -> Dict[str, Any]:
@@ -346,6 +353,57 @@ class ChampionshipService:
             logger.info("championship: beta=%.3f from %d held-out races",
                         self._held_out["beta"], self._held_out["races_used"])
         return self._held_out
+
+    # ---- odds for one upcoming session (the Predictions page) -----------------------------
+
+    def odds_ready(self) -> bool:
+        p = self.pred
+        return (self._held_out is not None and p._df is not None
+                and self._held_out["fingerprint"] == (p._meta.get("trained_at"), len(p._df)))
+
+    async def warm(self) -> None:
+        """Build the held-out calibration in the background (a few model fits)."""
+        if self.odds_ready() or self.pred._df is None:
+            return
+        async with self._lock:
+            if not self.odds_ready():
+                await asyncio.to_thread(self._held_out_state)
+
+    def with_finish_odds(self, result: Dict[str, Any], kind: str) -> Dict[str, Any]:
+        """Add expected position and win/podium chances to a race or qualifying prediction,
+        by playing the session out with the same calibrated Plackett-Luce model as the title
+        outlook. Expected position follows the predicted order (a higher score is always a
+        better expected finish), so it can sit next to the rank without contradicting it.
+        Needs the calibration (warm()); without it the result is returned unchanged."""
+        preds = result.get("predictions") or []
+        if kind not in ("race", "qualifying") or not preds or any("score" not in r for r in preds) or not self.odds_ready():
+            return {**result, "odds_available": False}
+        beta = self._held_out["beta"] if kind == "race" else self._held_out.get("beta_qualifying")
+        if not beta:
+            return {**result, "odds_available": False}
+        scores = np.array([float(r["score"]) for r in preds])
+        pos = sample_orders(scores, beta, ODDS_SIMULATIONS, np.random.default_rng(0))
+        stats = {
+            "expected_position": pos.mean(axis=0) + 1,
+            "win_probability": (pos == 0).mean(axis=0),
+            "podium_probability": (pos < 3).mean(axis=0),
+        }
+        if kind == "race":
+            stats["points_probability"] = (pos < 10).mean(axis=0)
+        # Under Plackett-Luce a higher score is always at least as good on every one of these,
+        # so drivers with near-equal scores can only swap through sampling noise: put the
+        # estimates back in score order.
+        by_score = np.argsort(-scores, kind="stable")
+        for key, values in stats.items():
+            ordered = np.sort(values) if key == "expected_position" else np.sort(values)[::-1]
+            fixed = np.empty_like(values)
+            fixed[by_score] = ordered
+            stats[key] = fixed
+        enriched = []
+        for i, r in enumerate(preds):
+            extra = {k: round(float(v[i]), 1 if k == "expected_position" else 4) for k, v in stats.items()}
+            enriched.append({**r, **extra})
+        return {**result, "predictions": enriched, "odds_available": True}
 
     # ---- scores for the rounds still to run ----------------------------------------------
 

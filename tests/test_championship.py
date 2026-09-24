@@ -206,3 +206,52 @@ def test_the_drivers_and_constructors_views_share_one_outlook(client):
 
 def test_the_championship_backtest_is_empty_until_computed(client):
     assert client.get("/predict/championship/backtest").json()["seasons"] == []
+
+
+# --- finish odds on the Predictions page (#13) --------------------------------------------------
+
+class StubPrediction:
+    _meta = {"trained_at": "t1"}
+    _df = pd.DataFrame({"x": range(5)})
+
+
+def odds_service(ready=True):
+    from services.championship_service import ChampionshipService
+    svc = ChampionshipService(StubPrediction())
+    if ready:
+        svc._held_out = {"fingerprint": ("t1", 5), "beta": 1.0, "beta_qualifying": 0.8}
+    return svc
+
+
+def prediction(scores):
+    return {"success": True, "predictions": [{"predicted_rank": i + 1, "driver_id": f"d{i}", "score": s}
+                                             for i, s in enumerate(scores)]}
+
+
+def test_finish_odds_are_consistent_and_follow_the_predicted_order():
+    # d1 and d2 are near-equal: sampling noise alone must not put them out of order.
+    out = odds_service().with_finish_odds(prediction([3.0, 1.0, 0.999, -1.0, -2.0]), "race")
+    rows = out["predictions"]
+
+    assert out["odds_available"] is True
+    assert sum(r["win_probability"] for r in rows) == pytest.approx(1.0, abs=1e-3)
+    assert sum(r["podium_probability"] for r in rows) == pytest.approx(3.0, abs=1e-3)
+    assert sum(r["expected_position"] for r in rows) == pytest.approx(15.0, abs=0.3)   # 1 + 2 + ... + 5
+    for key in ("win_probability", "podium_probability", "points_probability"):
+        assert [r[key] for r in rows] == sorted((r[key] for r in rows), reverse=True)
+    assert [r["expected_position"] for r in rows] == sorted(r["expected_position"] for r in rows)
+
+
+def test_qualifying_uses_its_own_calibration_and_has_no_points_chance():
+    rows = odds_service().with_finish_odds(prediction([2.0, 0.0]), "qualifying")["predictions"]
+
+    assert "points_probability" not in rows[0]
+    # beta 0.8: P(first) = e^1.6 / (e^1.6 + 1) ~ 0.83
+    assert rows[0]["win_probability"] == pytest.approx(0.832, abs=0.02)
+
+
+def test_without_the_calibration_or_scores_the_prediction_goes_out_unchanged():
+    assert odds_service(ready=False).with_finish_odds(prediction([1.0, 0.0]), "race")["odds_available"] is False
+    unscored = {"success": True, "predictions": [{"predicted_rank": 1}]}
+    assert odds_service().with_finish_odds(unscored, "race") == {**unscored, "odds_available": False}
+    assert odds_service().with_finish_odds(prediction([1.0, 0.0]), "sprint")["odds_available"] is False

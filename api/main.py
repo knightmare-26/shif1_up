@@ -164,6 +164,7 @@ async def _warm_prediction_models() -> None:
         return
     logger.info("Training prediction models in the background…")
     await prediction_service._ensure_trained(duckdb_service)
+    await championship_service.warm()  # the odds on the Predictions page and the title outlook
 
 
 # Results change after they're first stored (post-race penalties, disqualifications), so once a
@@ -1276,6 +1277,14 @@ async def predict_train(background_tasks: BackgroundTasks, user=Depends(get_curr
     return {"message": "Model training started in background. Check /predict/status for progress."}
 
 
+def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
+    """Expected position and win/podium chances, once the calibration is ready (built in the
+    background after training; until then the prediction goes out without them)."""
+    if not championship_service.odds_ready():
+        asyncio.create_task(championship_service.warm())
+    return championship_service.with_finish_odds(result, kind)
+
+
 @app.get("/predict/qualifying")
 async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
@@ -1283,7 +1292,7 @@ async def predict_qualifying(circuit: str):
         result = await prediction_service.predict_qualifying(circuit, duckdb_service)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "qualifying")
     except HTTPException:
         raise
     except Exception as exc:
@@ -1298,7 +1307,7 @@ async def predict_race(circuit: str):
         result = await prediction_service.predict_race(circuit, duckdb_service)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "race")
     except HTTPException:
         raise
     except Exception as exc:

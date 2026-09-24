@@ -8,20 +8,13 @@ import {
   Card, CardBody, CardHeader, EmptyState, ErrorState, FadeIn, LoadingState, Notice, Pill, PositionBadge,
   TabPanel, Tabs, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
+import { formatChance } from '../utils/probability';
 
 type View = 'drivers' | 'constructors';
 const VIEWS: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: 'drivers', label: 'Drivers', icon: <Users className="h-4 w-4" /> },
   { id: 'constructors', label: 'Constructors', icon: <Flag className="h-4 w-4" /> },
 ];
-
-/** "38%", "<1%", ">99%" — a simulation can't honestly claim more precision than that. */
-export function formatChance(p: number): string {
-  if (p <= 0) return '0%';
-  if (p < 0.01) return '<1%';
-  if (p > 0.99 && p < 1) return '>99%';
-  return `${Math.round(p * 100)}%`;
-}
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 

@@ -1,7 +1,8 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import ChampionshipOutlook, { formatChance } from './ChampionshipOutlook';
+import ChampionshipOutlook from './ChampionshipOutlook';
+import { formatChance } from '../utils/probability';
 import { backendApi, ChampionshipOutlook as Outlook, ChampionshipRow } from '../services/backendApi';
 
 jest.mock('../services/backendApi', () => ({
