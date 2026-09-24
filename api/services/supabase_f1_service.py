@@ -364,13 +364,15 @@ class SupabaseF1Service:
             return False
 
     async def clear_prediction_cache(self) -> bool:
-        """Drop all cached predictions — called after a retrain since old
-        cached output no longer reflects the current model."""
+        """Drop cached per-circuit predictions — called after a retrain since old
+        cached output no longer reflects the current model. The walk-forward
+        backtest row is kept: it's expensive, evaluates held-out seasons rather
+        than the live model, and is keyed to the training data, not the model."""
         if not self.pool:
             return True
         try:
             async with self.pool.acquire() as conn:
-                await conn.execute("DELETE FROM prediction_cache")
+                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name <> '_walkforward'")
             return True
         except Exception as exc:
             logger.error("❌ Error clearing prediction cache: %s", exc)

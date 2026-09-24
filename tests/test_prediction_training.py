@@ -8,6 +8,7 @@ These guard three real problems seen on Render's free tier:
 import asyncio
 import time
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -34,7 +35,7 @@ def service(monkeypatch, fit_seconds=0.0, load_delay=0.0):
         await asyncio.sleep(load_delay)
         return pd.DataFrame({"x": range(50)})
 
-    def fake_fit(self, raw, xgb, lgb):
+    def fake_fit(self, raw, lgb):
         calls["fit"] += 1
         time.sleep(fit_seconds)              # CPU-bound stand-in: blocks the thread it runs in
         self._trained = True
@@ -111,7 +112,7 @@ async def test_fitting_happens_on_a_private_copy_and_is_swapped_in_atomically(mo
     svc._trained, svc._df, svc._meta = True, pd.DataFrame({"old": [1]}), {"trained_at": "before"}
     seen_during_fit = {}
 
-    def spying_fit(self, raw, xgb, lgb):
+    def spying_fit(self, raw, lgb):
         seen_during_fit["is_copy"] = self is not svc
         seen_during_fit["live_meta_untouched"] = svc._meta == {"trained_at": "before"}
         self._meta = {"trained_at": "after"}
@@ -130,7 +131,7 @@ async def test_a_model_that_is_skipped_keeps_the_previous_one(monkeypatch):
     svc, _ = service(monkeypatch)
     svc._quali_model = "previous quali model"
 
-    def fit_without_quali(self, raw, xgb, lgb):     # e.g. grid column NULL this time: quali is skipped
+    def fit_without_quali(self, raw, lgb):          # e.g. grid column NULL this time: quali is skipped
         self._trained, self._df, self._meta = True, pd.DataFrame({"a": [1]}), {}
         return {}
 
@@ -151,3 +152,190 @@ async def test_insufficient_data_reports_failure_and_leaves_state_alone(monkeypa
 
     assert result["success"] is False and "Insufficient" in result["error"]
     assert calls["fit"] == 0 and svc._trained is False
+
+
+# ----------------------------------------------------------------------
+# Walk-forward backtest: a season is only ever scored by a model that was
+# fit on strictly earlier seasons. _fit()/train() above are all mocked out
+# (no real lightgbm) — these instead inject a fake estimator class, the same
+# dependency-injection seam _fit(self, raw, lgb) already uses.
+# ----------------------------------------------------------------------
+
+class FakeEstimator:
+    """Stands in for LGBMRanker: 'predicts' by returning the training target
+    itself as the relevance score, so higher target (via _fit_ranker's
+    field_size + 1 - value transform, i.e. a better real position) sorts as a
+    better predicted rank — good enough to exercise the surrounding pipeline
+    without needing a real ranking model."""
+    def __init__(self, *a, **k):
+        self._seen = None
+
+    def fit(self, X, y, group=None, sample_weight=None):
+        self._seen = np.asarray(y)
+        return self
+
+    def predict(self, X):
+        n = len(X)
+        return self._seen[:n] if self._seen is not None and len(self._seen) >= n else np.zeros(n)
+
+
+class FakeLgb:
+    LGBMRanker = FakeEstimator
+
+
+def synthetic_raw(years, rounds_per_year=10, drivers=("d1", "d2", "d3", "d4")):
+    """A minimal race_results-shaped DataFrame spanning multiple seasons —
+    the shape _load_raw() would return, before _engineer()/_encode()."""
+    rows = []
+    for year in years:
+        for rnd in range(1, rounds_per_year + 1):
+            race_id = f"{year}_{rnd}"
+            for i, d in enumerate(drivers):
+                rows.append({
+                    "race_id": race_id, "driver_id": d, "constructor_id": f"c{i % 2}",
+                    "position": (i + rnd) % len(drivers) + 1, "grid": (i + rnd + 1) % len(drivers) + 1,
+                    "points": 0.0, "status": "Finished", "session_type": "race",
+                    "circuit_name": f"circuit{rnd}", "year": year, "round": rnd,
+                    "race_name": f"GP{rnd}", "driver_name": d, "constructor_name": f"Team {i % 2}",
+                })
+    return pd.DataFrame(rows)
+
+
+async def test_walk_forward_backtest_reports_insufficient_data():
+    svc = PredictionService(model_dir="unused")
+
+    async def tiny(_db):
+        return pd.DataFrame({"x": range(3)})
+
+    svc._load_raw = tiny
+    result = await svc.walk_forward_backtest(FakeDb(), years_back=3)
+
+    assert result["races"] == [] and "Insufficient" in result["error"]
+
+
+async def test_walk_forward_fit_never_tests_the_earliest_season():
+    svc = PredictionService(model_dir="unused")
+    raw = synthetic_raw(years=[2022, 2023, 2024])
+
+    result = svc._walk_forward_fit(raw, FakeLgb(), years_back=3)
+
+    # 2022 is the earliest season in the data — a model can't be trained on
+    # "seasons before 2022" with nothing before it, so it's never a test year.
+    assert 2022 not in result["seasons_tested"]
+    assert set(result["seasons_tested"]) <= {2023, 2024}
+    assert all(r["year"] in result["seasons_tested"] for r in result["races"])
+    assert result["data_fingerprint"]  # non-empty, used as the cache invalidation key
+
+
+async def test_walk_forward_fit_scores_each_season_against_a_model_trained_only_on_earlier_ones():
+    svc = PredictionService(model_dir="unused")
+    raw = synthetic_raw(years=[2022, 2023, 2024])
+    trained_on = {}
+
+    class SpyingEstimator(FakeEstimator):
+        def fit(self, X, y, group=None, sample_weight=None):
+            trained_on.setdefault(len(y), []).append(len(y))
+            return super().fit(X, y, group=group, sample_weight=sample_weight)
+
+    class SpyingLgb:
+        LGBMRanker = SpyingEstimator
+
+    result = svc._walk_forward_fit(raw, SpyingLgb(), years_back=3)
+
+    # Sanity: races were actually scored for the held-out seasons, with real
+    # per-driver predicted/actual pairs (not an empty pass-through).
+    races_2024 = [r for r in result["races"] if r["year"] == 2024]
+    assert races_2024 and races_2024[0]["drivers"][0]["predicted_position"] is not None
+
+
+async def test_ranks_from_scores_converts_relevance_to_1_through_n():
+    svc = PredictionService(model_dir="unused")
+
+    # Higher score = better predicted finish (a ranker's relevance), so the
+    # highest score gets rank 1, not the lowest — the reverse of sorting raw
+    # position/grid values, which is exactly what _ranks_from_scores exists to invert.
+    ranks = svc._ranks_from_scores([0.5, 9.0, 3.0, -1.0])
+
+    assert list(ranks) == [3, 1, 2, 4]
+    assert sorted(ranks) == [1, 2, 3, 4]
+
+
+async def test_practice_pace_feature_is_included_only_once_coverage_crosses_50pct(tmp_path):
+    svc = PredictionService(model_dir=str(tmp_path))
+    raw = synthetic_raw(years=[2024], rounds_per_year=3, drivers=("d1", "d2", "d3", "d4"))
+
+    # Practice ingested for 2 of the 3 races (8 of 12 driver-race rows) — over the 50%
+    # coverage threshold, so the feature should be picked up; best (lowest) rank across
+    # the two sessions a driver ran should be what's kept.
+    practice_rows = []
+    for rnd in (1, 2):
+        race_id = f"2024_{rnd}"
+        for i, d in enumerate(("d1", "d2", "d3", "d4")):
+            for session, pos in (("fp1", i + 2), ("fp2", i + 1)):  # fp2 is always the better rank
+                practice_rows.append({
+                    "race_id": race_id, "driver_id": d, "constructor_id": f"c{i % 2}",
+                    "position": pos, "grid": None, "points": 0.0, "status": "Finished",
+                    "session_type": session, "circuit_name": f"circuit{rnd}", "year": 2024, "round": rnd,
+                    "race_name": f"GP{rnd}", "driver_name": d, "constructor_name": f"Team {i % 2}",
+                })
+    raw = pd.concat([raw, pd.DataFrame(practice_rows)], ignore_index=True)
+
+    result = svc._fit(raw, FakeLgb())
+
+    assert svc._practice_available is True
+    assert result["practice_coverage"] != "0%"
+    assert "driver_practice_best_rank" in svc._race_features
+    assert "driver_practice_best_rank" in svc._quali_features
+
+    d1_r1 = svc._df[(svc._df["driver_id"] == "d1") & (svc._df["race_id"] == "2024_1")].iloc[0]
+    assert d1_r1["driver_practice_best_rank"] == 1   # fp2's rank (2), i.e. i+1 for d1 (i=0) -> 1, the lower of fp1=2/fp2=1
+
+    # The one race without practice data ingested falls back to NaN, not a crash or 0.
+    d1_r3 = svc._df[(svc._df["driver_id"] == "d1") & (svc._df["race_id"] == "2024_3")].iloc[0]
+    assert pd.isna(d1_r3["driver_practice_best_rank"])
+
+
+async def test_practice_pace_feature_is_left_out_below_the_coverage_threshold(tmp_path):
+    svc = PredictionService(model_dir=str(tmp_path))
+    raw = synthetic_raw(years=[2024], rounds_per_year=3, drivers=("d1", "d2", "d3", "d4"))
+    # No practice rows ingested at all — the common case right after this ships.
+
+    result = svc._fit(raw, FakeLgb())
+
+    assert svc._practice_available is False
+    assert result["practice_coverage"] == "0%"
+    assert "driver_practice_best_rank" not in svc._race_features
+    assert "driver_practice_best_rank" not in svc._quali_features
+
+
+async def test_backtest_still_scores_via_the_extracted_helper_after_refactor():
+    svc = PredictionService(model_dir="unused")
+    svc._race_model = FakeEstimator().fit(pd.DataFrame({"a": [1, 2]}), [3.0, 4.0])
+    svc._race_features = ["driver_enc"]
+    svc._driver_map = {"d1": "Driver One"}
+    svc._df = pd.DataFrame({
+        "year": [2026], "round": [1], "race_id": ["r1"], "race_name": ["GP"],
+        "circuit_name": ["Monza"], "driver_id": ["d1"], "driver_enc": [0],
+        "position": [1], "grid": [1],
+    })
+
+    out = svc.backtest(years_back=3)
+
+    assert len(out["races"]) == 1
+    race = out["races"][0]
+    assert race["drivers"][0]["driver_name"] == "Driver One"
+    assert race["drivers"][0]["actual_position"] == 1
+    assert race["race_mae"] is not None
+
+
+async def test_clearing_the_prediction_cache_keeps_the_walk_forward_result(tmp_path):
+    from services.simple_duckdb_service import SimpleDuckDBService
+    db = SimpleDuckDBService(str(tmp_path / "t.duckdb"))
+    await db.initialize()
+    await db.set_prediction_cache("Monza", "race", "t1", {"x": 1})
+    await db.set_prediction_cache("_walkforward", "v1", "fp", {"races": [1]})
+
+    await db.clear_prediction_cache()      # runs after every retrain, incl. each Render cold start
+
+    assert await db.get_prediction_cache("Monza", "race") is None
+    assert (await db.get_prediction_cache("_walkforward", "v1"))["result"] == {"races": [1]}
