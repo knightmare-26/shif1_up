@@ -351,3 +351,16 @@ async def test_backtest_still_scores_via_the_extracted_helper_after_refactor():
     assert race["drivers"][0]["driver_name"] == "Driver One"
     assert race["drivers"][0]["actual_position"] == 1
     assert race["race_mae"] is not None
+
+
+async def test_clearing_the_prediction_cache_keeps_the_walk_forward_result(tmp_path):
+    from services.simple_duckdb_service import SimpleDuckDBService
+    db = SimpleDuckDBService(str(tmp_path / "t.duckdb"))
+    await db.initialize()
+    await db.set_prediction_cache("Monza", "race", "t1", {"x": 1})
+    await db.set_prediction_cache("_walkforward", "v1", "fp", {"races": [1]})
+
+    await db.clear_prediction_cache()      # runs after every retrain, incl. each Render cold start
+
+    assert await db.get_prediction_cache("Monza", "race") is None
+    assert (await db.get_prediction_cache("_walkforward", "v1"))["result"] == {"races": [1]}
