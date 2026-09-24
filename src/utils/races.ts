@@ -35,3 +35,7 @@ export const qualifyingZone = (position: number, fieldSize: number): QualifyingZ
 /** The poller's id for a session: the race keeps the bare `{year}_{gp}`, others get a `_{code}` suffix. */
 export const liveRaceId = (year: number, gp: string, session: LiveSession): string =>
   session === 'R' ? `${year}_${gp}` : `${year}_${gp}_${session}`;
+
+/** Deep link into the Live Monitor for one session; the page starts monitoring it straight away. */
+export const liveMonitorPath = (year: number, gp: string, session: LiveSession): string =>
+  `/live-monitor?year=${year}&gp=${encodeURIComponent(gp)}&session=${session}`;

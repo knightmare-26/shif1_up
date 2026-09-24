@@ -189,3 +189,14 @@ def test_classified_sessions_are_ordered_by_race_position_with_the_same_fields()
     assert [r["driver_id"] for r in rows] == ["NOR", "VER", "LEC"]
     assert rows[0]["gap"] is None and rows[1]["gap"] == "+1.000" and rows[2]["gap"] == "+2.500"
     assert rows[0]["best_lap_status"] == "purple" and len(rows[0]["sectors"]) == 3 and rows[0]["stints"]
+
+
+def test_the_poller_starts_as_a_standalone_script():
+    """conftest.py puts api/ on sys.path, which hid a real bug: run as `python live/poller.py` the
+    poller couldn't import redis_service (it imports `services.redact`) and died before doing anything."""
+    import subprocess, sys, pathlib
+    root = pathlib.Path(__file__).resolve().parent.parent
+    result = subprocess.run([sys.executable, str(root / "live" / "poller.py"), "--help"],
+                            capture_output=True, text=True, cwd=str(root.parent), timeout=60)
+    assert result.returncode == 0, result.stderr[-500:]
+    assert "--session" in result.stdout

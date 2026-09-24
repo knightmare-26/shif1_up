@@ -129,6 +129,15 @@ export interface LiveRaceState {
   message?: string;
 }
 
+export interface LiveSessionInfo {
+  session: string;        // FP1 FP2 FP3 SQ S Q R
+  race_id: string;        // the id to fetch state / open a WebSocket with
+  session_type?: 'timed' | 'classified';
+  session_status?: string;
+  timestamp: string;
+  live: boolean;          // the poller has refreshed it in the last couple of minutes
+}
+
 class BackendApiService {
   private baseUrl: string;
   private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
@@ -360,6 +369,10 @@ class BackendApiService {
 
   async getLivePositions(): Promise<LivePosition[]> {
     return this.getCachedOrFetch('/api/live/positions', {}, 30); // 30 seconds cache for live data
+  }
+
+  async getLiveSessions(raceId: string): Promise<{ race_id: string; sessions: LiveSessionInfo[] }> {
+    return this.getCachedOrFetch(`/live/${raceId}/sessions`, {}, 10);
   }
 
   async getLiveRaceState(raceId: string): Promise<LiveRaceState> {

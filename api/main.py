@@ -753,6 +753,40 @@ async def get_live_state(race_id: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# A session's state is kept for an hour after the poller's last write, so "has state" isn't "is on now":
+# it counts as live only while the poller keeps refreshing it.
+LIVE_FRESH_SECONDS = 120
+
+
+@app.get("/live/{race_id}/sessions")
+async def get_live_sessions(race_id: str):
+    """Which sessions of this weekend have live data (race id = the race's own `{year}_{gp}` id; the
+    poller publishes other sessions as `{race_id}_{FP1|FP2|FP3|SQ|S|Q}`). Newest first."""
+    try:
+        now = datetime.utcnow()
+        found = []
+        for code in ingest_service.SESSION_TYPE_MAP:
+            session_id = race_id if code == "R" else f"{race_id}_{code}"
+            state = _unwrap_live_state(await redis_service.get_live_state(session_id))
+            if not state or not state.get("positions"):
+                continue
+            stamp = str(state.get("timestamp") or "")
+            try:
+                age = (now - datetime.fromisoformat(stamp.replace("Z", "")).replace(tzinfo=None)).total_seconds()
+            except ValueError:
+                age = float("inf")
+            found.append({
+                "session": code, "race_id": session_id,
+                "session_type": state.get("session_type"), "session_status": state.get("session_status"),
+                "timestamp": stamp, "live": age <= LIVE_FRESH_SECONDS,
+            })
+        found.sort(key=lambda s: s["timestamp"], reverse=True)
+        return {"race_id": race_id, "sessions": found}
+    except Exception as exc:
+        logger.error("❌ get_live_sessions: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
 @app.websocket("/ws/live/{race_id}")
 async def websocket_live_updates(websocket: WebSocket, race_id: str):
     await websocket.accept()

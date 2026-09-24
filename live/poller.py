@@ -20,7 +20,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(_ROOT)
+# api/ services import each other as top-level `services.*` (redis_service -> services.redact)
+sys.path.append(os.path.join(_ROOT, "api"))
 
 from api.services.redis_service import RedisService
 

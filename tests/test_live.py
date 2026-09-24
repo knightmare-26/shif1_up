@@ -127,6 +127,35 @@ class TestSimulateSessions:
         assert r.status_code in (401, 403, 422)          # rejected either at auth or validation, never ingested
 
 
+class TestLiveSessionsEndpoint:
+    def test_lists_only_the_sessions_that_have_state_and_marks_fresh_ones_live(self, client):
+        client.post("/simulate/live/2024_SessionsGP")                       # race
+        client.post("/simulate/live/2024_SessionsGP_FP1?session=FP1")       # practice 1
+
+        body = client.get("/live/2024_SessionsGP/sessions").json()
+
+        sessions = {s["session"]: s for s in body["sessions"]}
+        assert set(sessions) == {"R", "FP1"}
+        assert sessions["FP1"]["race_id"] == "2024_SessionsGP_FP1" and sessions["FP1"]["session_type"] == "timed"
+        assert sessions["R"]["session_type"] == "classified"
+        assert all(s["live"] for s in sessions.values())              # just written, so within the freshness window
+
+    def test_a_session_the_poller_stopped_refreshing_is_listed_but_not_live(self, client):
+        from datetime import datetime, timedelta
+        import api.main as main
+        stale = {"race_id": "2024_StaleGP_Q", "session": "Q", "session_type": "timed", "session_status": "live",
+                 "positions": [{"driver_id": "NOR", "position": 1}],
+                 "timestamp": (datetime.utcnow() - timedelta(minutes=10)).isoformat()}
+        client.portal.call(main.redis_service.set_live_state, "2024_StaleGP_Q", stale)
+
+        sessions = client.get("/live/2024_StaleGP/sessions").json()["sessions"]
+
+        assert [(s["session"], s["live"]) for s in sessions] == [("Q", False)]
+
+    def test_a_weekend_with_nothing_published_is_empty(self, client):
+        assert client.get("/live/2024_NothingHere/sessions").json()["sessions"] == []
+
+
 class TestLiveStateEndpoint:
     def test_live_state_when_no_data(self, client):
         r = client.get("/live/9999_NothingPublished/state")
