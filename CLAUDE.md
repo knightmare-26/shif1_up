@@ -34,6 +34,7 @@ pytest tests/                    # All tests
 pytest tests/test_api.py -v      # Single file, verbose
 pytest tests/ --cov=api          # With coverage
 ```
+Use the project venv (`venv/Scripts/python.exe -m pytest tests --ignore=tests/test_api.py`; `test_api.py` imports a module that no longer exists). `tests/conftest.py` isolates the suite from every production service before the app is imported — in-memory Redis mock, no `DATABASE_URL` (local DuckDB in a temp dir), temp `MODEL_DIR`/`CACHE_DIR`, no background model warm-up — so it never writes to the real Upstash Redis or Supabase. Keep new tests inside that isolation.
 
 ### Data ingestion
 ```bash
@@ -109,7 +110,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 1. `live/poller.py` polls FastF1 for **one session per process** (`--session`, default `R`) → writes `LiveState` to Redis via `set_live_state()` + `publish_update()`. Start one poller per session you want to follow. The race id is `{year}_{gp}`; other sessions get a suffix (`2026_Belgian_Grand_Prix_FP1`) — ids are opaque to the API, Redis and WebSocket. Existing limitation: the poller calls `session.load()` and treats non-empty results as "live"; it is not a true live-timing client
 2. Two state shapes, marked by `session_type`: **classified** (`R`, `S`) — FastF1 race `Position` order plus a lap counter; **timed** (`FP1-3`, `SQ`, `Q`) — ordered by best lap so far with gap to the fastest, no lap counter. Both are built from one `build_driver_rows()`, so every driver carries the same timing-board fields: `best_lap_time` + `best_lap_status` (`purple` = session fastest, else `green`), `sectors` (latest lap's S1–S3, each `purple` session best / `green` own best / `yellow` slower / `none` not set), `tyre`, `tyre_age`, `stints`, `in_pit` (dims the row), `team`, `laps_completed`; drivers with no timed lap are listed last ("No time"). Timed sessions have no classification to wait for, so they end after 5 minutes with no new lap; the end-of-session ingest sends the session
-3. `api/main.py:/ws/live/{race_id}` accepts WebSocket connections, sends initial state, streams Redis pub/sub messages; `_unwrap_live_state()` flattens Redis envelope so frontend always gets a flat `LiveState`. `POST /simulate/live/{race_id}?session=...` writes either shape for local testing (22-car field for timed sessions)
+3. `api/main.py:/ws/live/{race_id}` accepts WebSocket connections, sends initial state, streams Redis pub/sub messages (one pub/sub subscription per viewer, released the moment the viewer disconnects — not at the next update); `_unwrap_live_state()` flattens Redis envelope so frontend always gets a flat `LiveState`. `POST /simulate/live/{race_id}?session=...` writes either shape for local testing (22-car field for timed sessions)
 4. Frontend `LiveDataMonitor` has a Session select (Practice 1-3, Qualifying, Race; a sprint weekend — `RaceEvent.is_sprint` — is Practice 1, Sprint Qualifying, Sprint, Qualifying, Race), connects with exponential backoff, and renders `LiveTimingBoard` (a live-timing style board with **Laps / Sectors / Tyres** tabs; no *Segments* tab — those mini-sector bars need live telemetry that FastF1's lap data doesn't include). Qualifying and sprint qualifying add knockout-zone headers (Q3 = top 10, then six out in Q2, six out in Q1 on a 22-car grid; `qualifyingZone` in `utils/races.ts`) from the *current best-lap order* — exact for the final order, but mid-session eliminated drivers keep their Q1 laps. Sector/tyre data only changes when a lap completes, so the board lags the official timing screen. `LiveAnalytics` polls REST every 15s and follows the race only
 
 ### Prediction service (`api/services/prediction_service.py`)
@@ -166,6 +167,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 | `REACT_APP_API_URL` | `http://localhost:8000` | Frontend API base URL |
 | `JWT_SECRET` | — | Auth JWT signing key — see `CLAUDE.local.md` |
 | `SUPABASE_ACCESS_TOKEN` | — | **Set in production.** Lets the API (`db_guardian.py`) and `scripts/health_poller.py` restore a paused Supabase project (Supabase dashboard → Account → Access Tokens). Optional `SUPABASE_PROJECT_REF` (else parsed from `DATABASE_URL`) and `SUPABASE_API_URL` (test override) |
+| `CACHE_DIR` | `./cache` | On-disk response cache (expired files are deleted at start-up) |
 | `LOG_FORMAT` | plain text | Set to `json` for structured JSON logging |
 | `LOG_LEVEL` | `INFO` | Logging level |
 

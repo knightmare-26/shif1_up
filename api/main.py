@@ -210,7 +210,7 @@ async def lifespan(app: FastAPI):
 
     fastf1_service = FastF1Service()
     ergast_service = ErgastService()
-    cache_service = CacheService()
+    cache_service = CacheService(os.getenv("CACHE_DIR", "./cache"))
     await cache_service.initialize()
 
     if not DATABASE_URL:
@@ -796,17 +796,32 @@ async def websocket_live_updates(websocket: WebSocket, race_id: str):
         if initial_state:
             await websocket.send_text(json.dumps({"type": "initial_state", "data": initial_state}))
 
-        async for message in redis_service.subscribe_to_race(race_id):
-            flat = _unwrap_live_state(message)
-            if flat is None:
-                continue
-            try:
-                await websocket.send_text(json.dumps({"type": "update", "data": flat}))
-            except WebSocketDisconnect:
-                break
-            except Exception as exc:
-                logger.error("❌ WS send error: %s", exc)
-                break
+        async def forward_updates() -> None:
+            async for message in redis_service.subscribe_to_race(race_id):
+                flat = _unwrap_live_state(message)
+                if flat is None:
+                    continue
+                try:
+                    await websocket.send_text(json.dumps({"type": "update", "data": flat}))
+                except WebSocketDisconnect:
+                    return
+                except Exception as exc:
+                    logger.error("❌ WS send error: %s", exc)
+                    return
+
+        async def until_client_leaves() -> None:
+            # The client never sends anything, but reading is how a disconnect is noticed.
+            # Without this the subscription outlives the viewer until the next update is sent.
+            while (await websocket.receive())["type"] != "websocket.disconnect":
+                pass
+
+        tasks = [asyncio.create_task(forward_updates()), asyncio.create_task(until_client_leaves())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
     except WebSocketDisconnect:
         logger.info("WS disconnected for race %s", race_id)
     except Exception as exc:

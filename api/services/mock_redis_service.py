@@ -89,31 +89,26 @@ class MockRedisService:
             return False
     
     async def subscribe_to_race(self, race_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Subscribe to live updates for a race"""
+        """Subscribe to live updates for a race; the subscriber is removed when it stops."""
+        channel = f"race:{race_id}:updates"
+
+        # Create a queue for this subscriber
+        queue = asyncio.Queue()
+        self.subscribers.setdefault(channel, []).append(queue)
         try:
-            channel = f"race:{race_id}:updates"
-            
-            # Create a queue for this subscriber
-            queue = asyncio.Queue()
-            if channel not in self.subscribers:
-                self.subscribers[channel] = []
-            self.subscribers[channel].append(queue)
-            
             # Send any existing messages
             if channel in self.pubsub_channels:
                 for message in self.pubsub_channels[channel][-10:]:  # Last 10 messages
                     await queue.put(message)
-            
+
             # Listen for new messages
             while True:
-                try:
-                    message = await asyncio.wait_for(queue.get(), timeout=1.0)
-                    yield message
-                except asyncio.TimeoutError:
-                    continue
-                    
+                yield await queue.get()
+
         except Exception as e:
             logger.error(f"❌ Error subscribing to race {race_id}: {str(e)}")
+        finally:
+            self.subscribers[channel].remove(queue)
     
     async def set_prediction(self, race_id: str, prediction: Dict[str, Any], ttl: int = 3600) -> bool:
         """Set prediction for a race"""
