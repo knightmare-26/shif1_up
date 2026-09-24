@@ -88,6 +88,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 |---|---|
 | `simple_duckdb_service.py` | DuckDB historical F1 storage (drivers, races, race_results, laps, users) |
 | `prediction_service.py` | LightGBM rankers (qualifying, race, sprint); walk-forward backtest; trains on the F1 database |
+| `championship_service.py` | Drivers'/constructors' title outlook: exact clinch/elimination maths + Monte Carlo projection from the race ranker |
 | `redis_service.py` | Real Redis client for live state and pub/sub |
 | `mock_redis_service.py` | In-memory Redis mock (used when Redis is unreachable) |
 | `fastf1_service.py` | FastF1 library wrapper (years 2020–2024) |
@@ -121,6 +122,13 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 - **Accuracy**: `GET /predict/backtest` serves the cached **walk-forward** result (each season scored by a model trained only on earlier seasons — the honest number, roughly 3.9 quali / 3.5 race rank error) and falls back to scoring the live model against its own training data (~3x too optimistic) only when none is cached. Compute it with `POST /predict/backtest/refresh` (admin, background, ~3–4 refits); it's stored in `prediction_cache` under `_walkforward`, which `clear_prediction_cache()` deliberately keeps. Re-run it after changing features or ingesting data
 - **Grid data availability**: `_grid_available = grid_coverage > 0.5`; shown as status on Predictions page
 - **Note**: bundled DuckDB has `grid = NULL` for existing rows — run `ingest/simple_ingest.py --years 2022 2023 2024` to populate
+
+### Championship outlook (`api/services/championship_service.py`)
+
+Dashboard tab **Title Race** (`?tab=title`, `&view=constructors`). Two parts:
+- **Exact maths**: standings from stored `race_results` (race + sprint points; countback on Grand Prix finishes only; a stale duplicate row keeps its best position). A contender is alive if scoring the max in every remaining round (25, 33 with a sprint; teams 43/58; +1 fastest lap 2019–2024) with the leader scoring nothing puts them ahead on points or countback; a driver no longer in the field can't be alive. Clinched = no rival alive. `next_race_clinch` = the margin over P2 that clinches it at the next race
+- **Projection**: 10,000 simulated seasons. Each remaining race's order is Plackett-Luce over the race ranker's scores (`_build_prediction_rows` per circuit, qualifying rank as grid, no practice), strength `beta` fitted to races the models hadn't seen (a model per season trained on earlier seasons only), plus a season-long per-driver form shock `FORM_SHOCK_SD` (chosen by the backtest's log score across drivers + constructors; 0 made favourites ~100% pre-season). A driver who changed teams is scored with the new team's form. Constructors sum the same simulated races. Sprint rounds for the future come from the schedule (`is_sprint`); sprint orders reuse race scores
+- `GET /api/predictions/championship?year=` / `constructors-championship` (one shared computation, cached in memory per season + training run + results count). `POST /predict/championship/backtest/refresh` (admin, ~1 min) replays finished seasons round by round and caches to `prediction_cache` (`_championship`, kept by `clear_prediction_cache()`); `GET /predict/championship/backtest` serves it — the page shows it as the track record. Last run: names the eventual champion 80% (drivers) / 76% (constructors) of checkpoints vs 74% / 73% for "the current leader wins", 2023–2025 only
 
 ### Frontend routing (`src/App.tsx`)
 
@@ -186,6 +194,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 - `GET /predict/qualifying/{circuit}` — qualifying position predictions
 - `GET /predict/race/{circuit}` — race finish predictions
 - `POST /predict/train` — re-train models on latest DuckDB data
+- `GET /api/predictions/championship?year=`, `GET /api/predictions/constructors-championship?year=` — title outlook (see Championship outlook above)
 - `POST /auth/signup`, `POST /auth/login`, `GET /auth/me` — JWT auth
 
 ### Development notes

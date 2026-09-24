@@ -333,6 +333,15 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error counting driver results: {str(e)}")
             return []
 
+    async def get_season_results(self, year: int) -> List[Dict]:
+        """Every race and sprint result of one season (see SEASON_RESULTS_SQL)."""
+        from services.supabase_f1_service import SEASON_RESULTS_SQL
+        try:
+            return await self._run_query(SEASON_RESULTS_SQL.format(year="?"), (year,))
+        except Exception as e:
+            logger.error(f"❌ Error loading season results: {str(e)}")
+            return []
+
     async def get_race_results(self, race_id: str, session_type: str = "race") -> List[Dict]:
         """Get race results for a specific race (main race by default; pass
         session_type='sprint' for that weekend's sprint results)."""
@@ -520,11 +529,11 @@ class SimpleDuckDBService:
     async def clear_prediction_cache(self) -> bool:
         """Drop cached per-circuit predictions — called after a retrain since old
         cached output no longer reflects the current model. The walk-forward
-        backtest row is kept: it's expensive, evaluates held-out seasons rather
-        than the live model, and is keyed to the training data, not the model."""
+        and championship backtest rows are kept: they are expensive, evaluate held-out seasons rather
+        than the live model, and are keyed to the training data, not the model."""
         try:
             if self.connection:
-                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name <> '_walkforward'")
+                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship')")
             return True
         except Exception as e:
             logger.error(f"❌ Error clearing prediction cache: {str(e)}")

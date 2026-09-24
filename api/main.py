@@ -42,6 +42,7 @@ from services.auth_service import (
 )
 from services import ingest_service
 from services.prediction_service import PredictionService
+from services.championship_service import ChampionshipService
 from models.f1_models import (
     DriverStanding, ConstructorStanding, RaceEvent,
     SessionData, LapData, TelemetryData, WeatherData, RaceResult,
@@ -99,6 +100,7 @@ cache_service = None
 database_guardian: Optional[DatabaseGuardian] = None
 MODEL_DIR = os.getenv("MODEL_DIR", "data/models")
 prediction_service = PredictionService(model_dir=MODEL_DIR)
+championship_service = ChampionshipService(prediction_service)
 
 
 async def _init_redis() -> Any:
@@ -265,7 +267,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # (re)connecting they answer 503 "database_waking" — quickly, and with a message
 # the frontend can show — instead of failing with an opaque 500.
 DB_BACKED_PREFIXES = (
-    "/race/", "/admin/", "/auth/", "/api/driver-stats",
+    "/race/", "/admin/", "/auth/", "/api/driver-stats", "/api/predictions/", "/predict/championship",
     "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
 )
 
@@ -1330,6 +1332,82 @@ async def predict_backtest_refresh(background_tasks: BackgroundTasks, user=Depen
 
     background_tasks.add_task(_do_refresh)
     return {"message": "Walk-forward backtest started in background. GET /predict/backtest will use it once ready."}
+
+
+# ---------------------------------------------------------------------------
+# Championship outlook (drivers' and constructors' titles)
+# ---------------------------------------------------------------------------
+
+async def _sprint_rounds(year: int) -> Optional[set]:
+    """Rounds with a sprint, from the schedule — the database only knows sprints already run.
+    None when the schedule can't be fetched (the outlook then counts no future sprints and says so)."""
+    try:
+        schedule = await legacy_race_schedule(year)
+    except Exception:
+        return None
+    rounds = set()
+    for event in schedule or []:
+        e = event if isinstance(event, dict) else event.model_dump()
+        if e.get("is_sprint") and e.get("round"):
+            rounds.add(int(e["round"]))
+    return rounds
+
+
+async def _championship(year: Optional[int]) -> Dict[str, Any]:
+    year = year or datetime.now().year
+    try:
+        return await championship_service.outlook(year, duckdb_service, await _sprint_rounds(year))
+    except Exception as exc:
+        logger.error("championship outlook %s: %s", year, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _championship_view(outlook: Dict[str, Any], kind: str) -> Dict[str, Any]:
+    shared = {k: v for k, v in outlook.items() if k not in ("drivers", "constructors")}
+    return {**shared, **outlook[kind]}
+
+
+@app.get("/api/predictions/championship")
+async def drivers_championship_outlook(year: int = None):
+    """Drivers' title: exact status (clinched / still in contention / what the leader needs next
+    race) plus a Monte Carlo projection of the final table from the race model."""
+    return _championship_view(await _championship(year), "drivers")
+
+
+@app.get("/api/predictions/constructors-championship")
+async def constructors_championship_outlook(year: int = None):
+    """Constructors' title, from the same simulated races as the drivers' outlook."""
+    return _championship_view(await _championship(year), "constructors")
+
+
+@app.get("/predict/championship/backtest")
+async def championship_backtest():
+    """How the championship projection would have done on finished seasons (cached; compute it
+    with POST /predict/championship/backtest/refresh)."""
+    cached = await duckdb_service.get_prediction_cache("_championship", "backtest")
+    if cached and cached.get("result", {}).get("seasons"):
+        return cached["result"]
+    return {"seasons": [], "drivers": {}, "constructors": {}, "computed_at": None}
+
+
+@app.post("/predict/championship/backtest/refresh")
+async def championship_backtest_refresh(background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    async def _do_refresh():
+        try:
+            result = await championship_service.backtest(duckdb_service)
+            if result.get("seasons"):
+                await duckdb_service.set_prediction_cache("_championship", "backtest", result["computed_at"], result)
+                logger.info("Championship backtest cached: seasons %s", [s["year"] for s in result["seasons"]])
+            else:
+                logger.warning("Championship backtest produced no seasons")
+        except Exception as exc:
+            logger.error("championship backtest failed: %s", exc, exc_info=True)
+
+    background_tasks.add_task(_do_refresh)
+    return {"message": "Championship backtest started in background (about a minute)."}
 
 
 if __name__ == "__main__":

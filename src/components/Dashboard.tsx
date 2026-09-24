@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { BarChart3, Calendar, ChevronRight, Flag, ListOrdered, MapPin, TrendingUp, Users } from 'lucide-react';
+import { BarChart3, Calendar, ChevronRight, Flag, ListOrdered, MapPin, TrendingUp, Trophy, Users } from 'lucide-react';
 import { backendApi, DriverStanding, ConstructorStanding, RaceEvent } from '../services/backendApi';
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
+import ChampionshipOutlook from './ChampionshipOutlook';
 import DriverAnalytics from './DriverAnalytics';
 import TrackAnalytics from './TrackAnalytics';
 import RaceResults from './RaceResults';
@@ -12,12 +13,13 @@ import {
   PositionBadge, SelectField, StatCard, TabPanel, Tabs, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
 
-type Tab = 'overview' | 'drivers' | 'teams' | 'tracks' | 'results';
+type Tab = 'overview' | 'drivers' | 'teams' | 'title' | 'tracks' | 'results';
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: 'Overview',     icon: <BarChart3 className="h-4 w-4" /> },
   { id: 'drivers',  label: 'Drivers',      icon: <Users className="h-4 w-4" /> },
   { id: 'teams',    label: 'Teams',        icon: <Flag className="h-4 w-4" /> },
+  { id: 'title',    label: 'Title Race',   icon: <Trophy className="h-4 w-4" /> },
   { id: 'tracks',   label: 'Tracks',       icon: <MapPin className="h-4 w-4" /> },
   { id: 'results',  label: 'Race Results', icon: <ListOrdered className="h-4 w-4" /> },
 ];
@@ -231,6 +233,7 @@ const Dashboard: React.FC = () => {
         )}
 
         {tab === 'drivers' && <TabPanel id="drivers" idPrefix="dash"><DriverAnalytics year={year} /></TabPanel>}
+        {tab === 'title'   && <TabPanel id="title"   idPrefix="dash"><ChampionshipOutlook year={year} /></TabPanel>}
         {tab === 'tracks'  && <TabPanel id="tracks"  idPrefix="dash"><TrackAnalytics  year={year} /></TabPanel>}
         {tab === 'results' && (
           <TabPanel id="results" idPrefix="dash">

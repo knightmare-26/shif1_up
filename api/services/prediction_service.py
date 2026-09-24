@@ -479,8 +479,10 @@ class PredictionService:
     # Feature rows for a future race at a given circuit
     # ------------------------------------------------------------------
 
-    def _build_prediction_rows(self, circuit_name: str) -> pd.DataFrame:
-        df = self._df
+    def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """`df` is the history to build from — the full training frame by default; the
+        championship backtest passes history cut off at an earlier round."""
+        df = self._df if df is None else df
         # Only predict for drivers who raced in the most recent season
         most_recent_year = int(df["year"].max())
         recent_drivers = df[df["year"] == most_recent_year]["driver_id"].unique()
