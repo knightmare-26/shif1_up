@@ -155,7 +155,7 @@ Dashboard tab **Title Race** (`?tab=title`, `&view=constructors`). Two parts:
 *             → redirect to /
 ```
 
-The Dashboard keeps its state in the URL: `?tab=overview|drivers|teams|tracks|results&year=YYYY&gp=<GP token>` (e.g. `/dashboard?tab=results&year=2026&gp=Spanish`), plus `cols=` for the Drivers tab's optional columns (`race_wins,race_podiums,sprint_wins,sprint_podiums`; default is just driver, team and points).
+The Dashboard keeps its state in the URL: `?tab=overview|drivers|teams|tracks|results&year=YYYY&gp=<GP token>` (e.g. `/dashboard?tab=results&year=2026&gp=Spanish`), plus `cols=` for the optional win/podium columns shared by the Drivers and Teams tabs (`race_wins,race_podiums,sprint_wins,sprint_podiums`; off by default; `components/statColumns.tsx`).
 
 ### Frontend UI kit (`src/components/ui/`)
 
@@ -198,6 +198,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 - `WS /ws/live/{race_id}` — WebSocket live updates
 - `GET /api/drivers`, `/api/constructors`, `/api/races` — legacy endpoints (frontend uses these). Standings for years served by Jolpica (2025+) are fetched with `strict=True` and go through `_standings_or_stale`: up to 3 attempts within an 8s budget, then the last good copy, then `503 {"detail": "source_unavailable"}` — never a silent `200 []` (Jolpica rate-limits by IP and Render's free instances share one). A source that answers with no standings yet still returns `[]`. The frontend caches empty lists for ≤15s, not the full TTL
 - `GET /api/driver-stats?year=` — race and sprint wins/podiums per driver, counted from the stored `race_results` (2022 onwards; the standings feed has no podiums and doesn't split sprint wins). Keyed by the three-letter `code` that `/api/drivers` rows now carry; the frontend falls back to matching by name for the committed snapshots, which lack it
+- `GET /api/constructor-stats?year=` — the same per team, keyed by `constructor_id` (identical in standings and results); wins once per race, podiums per car (a one-two is two)
 - `POST /simulate/live/{race_id}` — inject mock live state for testing
 - `GET /predict/status` — ML model readiness + grid data availability flag
 - `GET /predict/circuits` — circuits available for prediction

@@ -1,25 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Award, Columns3, TrendingUp, Users } from 'lucide-react';
-import { backendApi, DriverResultStats, DriverStanding, DriverStatsResponse } from '../services/backendApi';
+import { Award, TrendingUp, Users } from 'lucide-react';
+import { backendApi, DriverResultStats, DriverStanding } from '../services/backendApi';
 import {
-  Card, CardHeader, CheckboxMenu, EmptyState, ErrorState, FadeIn, LoadingState, PositionBadge, StatCard,
+  Card, CardHeader, EmptyState, ErrorState, FadeIn, LoadingState, PositionBadge, StatCard,
   TableWrap, TeamChip, Td, Th, Tr,
 } from './ui';
+import { STAT_COLUMNS, StatColumn, StatColumnsMenu, statsNote, statValue, useResultStats, useStatColumns } from './statColumns';
 
 const clean = (v?: string | null) => (!v || v === 'Unavailable' ? '—' : v);
 const teamOf = (d: DriverStanding) => (typeof d.constructor === 'string' ? d.constructor : '');
-
-// Optional columns, off by default. The standings feed has no podiums and doesn't split sprint
-// from race wins, so these come from GET /api/driver-stats (the stored results, 2022 onwards).
-export const STAT_COLUMNS = [
-  { id: 'race_wins', label: 'Race wins', short: 'Wins' },
-  { id: 'race_podiums', label: 'Race podiums', short: 'Podiums' },
-  { id: 'sprint_wins', label: 'Sprint wins', short: 'Sprint wins' },
-  { id: 'sprint_podiums', label: 'Sprint podiums', short: 'Sprint podiums' },
-] as const;
-type StatColumn = typeof STAT_COLUMNS[number]['id'];
-const STAT_IDS: string[] = STAT_COLUMNS.map((c) => c.id);
 
 /** Accent- and case-insensitive name, so "Nico Hülkenberg" (standings) matches "Nico Hulkenberg" (results). */
 const nameKey = (name?: string | null) =>
@@ -49,20 +38,10 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
   const [error, setError] = useState<string | null>(null);
   const requestId = useRef(0);
 
-  // The chosen columns live in the URL (?cols=race_wins,sprint_podiums) like the Dashboard's other state.
-  const [params, setParams] = useSearchParams();
-  const columns = (params.get('cols') ?? '').split(',').filter((c): c is StatColumn => STAT_IDS.includes(c));
-  const setColumns = (next: string[]) => {
-    const p = new URLSearchParams(params);
-    if (next.length) p.set('cols', next.join(','));
-    else p.delete('cols');
-    setParams(p, { replace: true });
-  };
-
-  const [stats, setStats] = useState<DriverStatsResponse | null>(null);
-  const [statsState, setStatsState] = useState<'idle' | 'loading' | 'error'>('idle');
-  const statsRequest = useRef(0);
+  const [columns, setColumns] = useStatColumns();
   const wantStats = columns.length > 0;
+  const fetchStats = useCallback((y: number) => backendApi.getDriverStats(y), []);
+  const { stats, state: statsState, reload: loadStats } = useResultStats(fetchStats, year, wantStats);
 
   const load = useCallback(async () => {
     const id = ++requestId.current;
@@ -80,52 +59,17 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Only fetched once a stats column is switched on.
-  const loadStats = useCallback(async () => {
-    const id = ++statsRequest.current;
-    setStatsState('loading');
-    try {
-      const data = await backendApi.getDriverStats(year);
-      if (id !== statsRequest.current) return;
-      setStats(data);
-      setStatsState('idle');
-    } catch {
-      if (id === statsRequest.current) setStatsState('error');
-    }
-  }, [year]);
-
-  useEffect(() => {
-    setStats(null);
-    if (wantStats) loadStats();
-  }, [wantStats, loadStats]);
-
   const findStats = useMemo(() => statsMatcher(stats?.drivers ?? []), [stats]);
-  const noStatsForSeason = stats !== null && stats.drivers.length === 0;
 
   const leader = drivers[0];
   const mostWins = drivers.reduce<DriverStanding | undefined>(
     (best, d) => (!best || d.wins > best.wins ? d : best), undefined,
   );
 
-  const statCell = (d: DriverStanding, col: StatColumn) => {
-    if (statsState === 'loading' || !stats) return <span className="text-gray-600">…</span>;
-    const s = findStats(d);
-    return s ? s[col] : <span className="text-gray-600">—</span>;
-  };
-
-  let statsNote: React.ReactNode = null;
-  if (wantStats) {
-    if (statsState === 'error') {
-      statsNote = (
-        <>Couldn't load wins and podiums. <button type="button" onClick={loadStats} className="text-racing-red underline">Try again</button></>
-      );
-    } else if (noStatsForSeason) {
-      statsNote = `Wins and podiums are counted from stored race results, which start in 2022 — not available for ${year}.`;
-    } else if (stats) {
-      statsNote = `Wins and podiums counted from ${stats.races_counted} ${stats.races_counted === 1 ? 'race' : 'races'}`
-        + `${stats.sprints_counted ? ` and ${stats.sprints_counted} ${stats.sprints_counted === 1 ? 'sprint' : 'sprints'}` : ''}.`;
-    }
-  }
+  const statCell = (d: DriverStanding, col: StatColumn) =>
+    statValue(stats ? findStats(d)?.[col] : undefined, statsState === 'loading' || !stats);
+  const note = statsNote(wantStats, stats, statsState, stats !== null && stats.drivers.length === 0, year, loadStats);
+  const shown = STAT_COLUMNS.filter((c) => columns.includes(c.id));
 
   return (
     <FadeIn className="space-y-6">
@@ -146,16 +90,8 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
         <CardHeader
           title={`Driver Standings — ${year}`}
           icon={<Users className="h-4 w-4" />}
-          subtitle={statsNote}
-          action={(
-            <CheckboxMenu
-              label="Columns"
-              icon={<Columns3 className="h-4 w-4" aria-hidden="true" />}
-              options={STAT_COLUMNS.map(({ id, label }) => ({ id, label }))}
-              selected={columns}
-              onChange={setColumns}
-            />
-          )}
+          subtitle={note}
+          action={<StatColumnsMenu columns={columns} onChange={setColumns} />}
         />
         {loading ? <LoadingState label="Loading driver standings…" /> : error ? (
           <ErrorState title="Couldn't load driver standings" message={error} onRetry={load} />
@@ -166,9 +102,7 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
                 <Th className="w-14">Pos</Th>
                 <Th>Driver</Th>
                 <Th className="hidden sm:table-cell">Team</Th>
-                {STAT_COLUMNS.filter((c) => columns.includes(c.id)).map((c) => (
-                  <Th key={c.id} align="right">{c.short}</Th>
-                ))}
+                {shown.map((c) => <Th key={c.id} align="right">{c.short}</Th>)}
                 <Th align="right">Points</Th>
               </tr>
             </thead>
@@ -183,7 +117,7 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
                     </span>
                   </Td>
                   <Td className="hidden text-gray-300 sm:table-cell"><TeamChip name={teamOf(d)} /></Td>
-                  {STAT_COLUMNS.filter((c) => columns.includes(c.id)).map((c) => (
+                  {shown.map((c) => (
                     <Td key={c.id} align="right" className="tabular-nums text-gray-300">{statCell(d, c.id)}</Td>
                   ))}
                   <Td align="right" className="font-bold text-white">{d.points}</Td>

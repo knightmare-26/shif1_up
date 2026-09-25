@@ -5,12 +5,13 @@ import { backendApi, DriverStanding, ConstructorStanding, RaceEvent } from '../s
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import ChampionshipOutlook from './ChampionshipOutlook';
+import ConstructorAnalytics from './ConstructorAnalytics';
 import DriverAnalytics from './DriverAnalytics';
 import TrackAnalytics from './TrackAnalytics';
 import RaceResults from './RaceResults';
 import {
   Card, CardHeader, DetailList, ErrorState, EmptyState, FadeIn, LoadingState, PageHeader, PageShell,
-  PositionBadge, SelectField, StatCard, TabPanel, Tabs, TableWrap, TeamChip, Td, Th, Tr, teamColor,
+  PositionBadge, SelectField, StatCard, TabPanel, Tabs, TableWrap, TeamChip, Td, Tr,
 } from './ui';
 
 type Tab = 'overview' | 'drivers' | 'teams' | 'title' | 'tracks' | 'results';
@@ -243,48 +244,7 @@ const Dashboard: React.FC = () => {
 
         {tab === 'teams' && (
           <TabPanel id="teams" idPrefix="dash">
-            <FadeIn>
-              <Card>
-                <CardHeader title={`Constructor Standings — ${year}`} icon={<Flag className="h-4 w-4" />} />
-                {loading ? <LoadingState /> : error ? (
-                  <ErrorState title="Couldn't load constructor standings" message={error} onRetry={load} />
-                ) : teams.length ? (
-                  <TableWrap>
-                    <thead>
-                      <tr className="border-b border-gray-800">
-                        <Th className="w-14">Pos</Th>
-                        <Th>Constructor</Th>
-                        <Th align="right">Wins</Th>
-                        <Th align="right">Points</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {teams.map((t) => (
-                        <Tr key={t.constructor_id}>
-                          <Td><PositionBadge position={t.position} /></Td>
-                          <Td className="font-medium text-white"><TeamChip name={t.constructor_name} /></Td>
-                          <Td align="right" className="text-gray-400">{t.wins ?? '—'}</Td>
-                          <Td align="right">
-                            <span className="flex items-center justify-end gap-3">
-                              <span className="hidden h-1.5 w-28 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
-                                <span
-                                  className="block h-full rounded"
-                                  style={{
-                                    width: `${teams[0]?.points ? (t.points / teams[0].points) * 100 : 0}%`,
-                                    backgroundColor: teamColor(t.constructor_name),
-                                  }}
-                                />
-                              </span>
-                              <span className="w-12 font-bold text-white">{t.points}</span>
-                            </span>
-                          </Td>
-                        </Tr>
-                      ))}
-                    </tbody>
-                  </TableWrap>
-                ) : <EmptyState title="No constructor standings available" />}
-              </Card>
-            </FadeIn>
+            <ConstructorAnalytics year={year} teams={teams} loading={loading} error={error} onRetry={load} />
           </TabPanel>
         )}
       </div>

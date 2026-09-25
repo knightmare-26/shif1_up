@@ -300,7 +300,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # (re)connecting they answer 503 "database_waking" — quickly, and with a message
 # the frontend can show — instead of failing with an opaque 500.
 DB_BACKED_PREFIXES = (
-    "/race/", "/admin/", "/auth/", "/api/driver-stats", "/api/predictions/", "/predict/championship",
+    "/race/", "/admin/", "/auth/", "/api/driver-stats", "/api/constructor-stats", "/api/predictions/", "/predict/championship",
     "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
 )
 
@@ -968,6 +968,32 @@ async def driver_result_stats(year: int = None):
         "races_counted": max((int(r.get("races") or 0) for r in rows), default=0),
         "sprints_counted": max((int(r.get("sprints") or 0) for r in rows), default=0),
         "drivers": drivers,
+    }
+
+
+@app.get("/api/constructor-stats")
+async def constructor_result_stats(year: int = None):
+    """Race and sprint wins/podiums per team for a season, from the stored results. Keyed by
+    constructor_id, which matches the standings' ids. Podiums count every car on the podium."""
+    year = year or datetime.now().year
+    try:
+        rows = await duckdb_service.get_constructor_result_counts(year)
+    except Exception as exc:
+        logger.error("❌ constructor_result_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    teams = [
+        {"constructor_id": r["constructor_id"], "constructor_name": r.get("constructor_name"),
+         **{k: int(r.get(k) or 0) for k in counts}}
+        for r in rows
+    ]
+    teams.sort(key=lambda t: tuple(-t[k] for k in counts))
+    return {
+        "year": year,
+        "races_counted": max((int(r.get("races") or 0) for r in rows), default=0),
+        "sprints_counted": max((int(r.get("sprints") or 0) for r in rows), default=0),
+        "constructors": teams,
     }
 
 

@@ -72,3 +72,14 @@ def test_a_season_not_in_the_database_has_no_drivers(client):
     body = client.get("/api/driver-stats?year=1999").json()
 
     assert body == {"year": 1999, "races_counted": 0, "sprints_counted": 0, "drivers": []}
+
+
+def test_team_counts_add_up_both_cars(client):
+    """Every seeded result is for one team ("team"), so it has all the wins and every podium car."""
+    body = client.get("/api/constructor-stats?year=2030").json()
+    team = {t["constructor_id"]: t for t in body["constructors"]}["team"]
+
+    assert (body["races_counted"], body["sprints_counted"]) == (2, 1)
+    assert team["race_wins"] == 2                 # once per race, however many of its cars finish
+    assert team["race_podiums"] == 6              # 3 cars x 2 races
+    assert team["sprint_wins"] == 1 and team["sprint_podiums"] == 3   # the stale P99 row doesn't count

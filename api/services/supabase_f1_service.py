@@ -35,6 +35,25 @@ DRIVER_RESULT_COUNTS_SQL = """
     GROUP BY rr.driver_id
 """
 
+# The same per team. Wins count once per race; podiums count every car on the podium (a one-two is
+# two podiums), the usual way team podiums are counted.
+CONSTRUCTOR_RESULT_COUNTS_SQL = """
+    SELECT rr.constructor_id,
+           MAX(c.constructor_name) AS constructor_name,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   THEN rr.race_id END)                                        AS races,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position = 1 THEN rr.race_id END)                    AS race_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END)   AS race_podiums,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                                        AS sprints,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)                    AS sprint_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END) AS sprint_podiums
+    FROM race_results rr
+    JOIN races r ON rr.race_id = r.race_id
+    LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint')
+      AND rr.constructor_id IS NOT NULL AND rr.constructor_id <> ''
+    GROUP BY rr.constructor_id
+"""
+
 # Every race and sprint result of one season, for the championship outlook.
 SEASON_RESULTS_SQL = """
     SELECT r.round, rr.session_type, rr.driver_id, rr.constructor_id, rr.position, rr.points,
@@ -218,6 +237,9 @@ class SupabaseF1Service:
 
     async def get_driver_result_counts(self, year: int) -> List[Dict]:
         return await self._run_query(DRIVER_RESULT_COUNTS_SQL.format(year="$1"), (year,))
+
+    async def get_constructor_result_counts(self, year: int) -> List[Dict]:
+        return await self._run_query(CONSTRUCTOR_RESULT_COUNTS_SQL.format(year="$1"), (year,))
 
     async def get_season_results(self, year: int) -> List[Dict]:
         return await self._run_query(SEASON_RESULTS_SQL.format(year="$1"), (year,))

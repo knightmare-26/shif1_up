@@ -324,6 +324,15 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error fetching races by year: {str(e)}")
             return []
     
+    async def get_constructor_result_counts(self, year: int) -> List[Dict]:
+        """Race and sprint wins/podiums per team for one season (see CONSTRUCTOR_RESULT_COUNTS_SQL)."""
+        from services.supabase_f1_service import CONSTRUCTOR_RESULT_COUNTS_SQL
+        try:
+            return await self._run_query(CONSTRUCTOR_RESULT_COUNTS_SQL.format(year="?"), (year,))
+        except Exception as e:
+            logger.error(f"❌ Error counting constructor results: {str(e)}")
+            return []
+
     async def get_driver_result_counts(self, year: int) -> List[Dict]:
         """Race and sprint wins/podiums per driver for one season (see DRIVER_RESULT_COUNTS_SQL)."""
         from services.supabase_f1_service import DRIVER_RESULT_COUNTS_SQL

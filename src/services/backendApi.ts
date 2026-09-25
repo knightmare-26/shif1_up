@@ -49,6 +49,23 @@ export interface DriverStatsResponse {
   drivers: DriverResultStats[];
 }
 
+/** Race and sprint wins/podiums per team (podiums count every car on the podium). */
+export interface ConstructorResultStats {
+  constructor_id: string;
+  constructor_name: string | null;
+  race_wins: number;
+  race_podiums: number;
+  sprint_wins: number;
+  sprint_podiums: number;
+}
+
+export interface ConstructorStatsResponse {
+  year: number;
+  races_counted: number;
+  sprints_counted: number;
+  constructors: ConstructorResultStats[];
+}
+
 /** One driver's or team's row in the championship outlook (GET /api/predictions/championship). */
 export interface ChampionshipRow {
   id: string;
@@ -369,6 +386,10 @@ class BackendApiService {
 
   async getDriverStats(year: number): Promise<DriverStatsResponse> {
     return this.getCachedOrFetch('/api/driver-stats', { year }, 600);
+  }
+
+  async getConstructorStats(year: number): Promise<ConstructorStatsResponse> {
+    return this.getCachedOrFetch('/api/constructor-stats', { year }, 600);
   }
 
   async getChampionshipOutlook(kind: 'drivers' | 'constructors', year: number): Promise<ChampionshipOutlook> {
