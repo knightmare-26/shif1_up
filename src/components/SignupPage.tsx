@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { User, Lock, Mail } from 'lucide-react';
+import { Wordmark } from './ui';
 
 interface LocationState { from?: string; fromLabel?: string; }
 
@@ -84,7 +85,7 @@ const SignupPage: React.FC = () => {
       >
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-6xl font-racing text-racing-red mb-4">Shif1 UP</h1>
+          <h1 className="mb-4"><Wordmark className="text-6xl" /></h1>
           <p className="text-xl text-pure-white font-f1 mb-1">Create your account</p>
           {fromLabel && (
             <p className="text-sm text-turbo-teal mt-2">

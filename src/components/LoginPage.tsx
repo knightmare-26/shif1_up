@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { Lock } from 'lucide-react';
+import { Wordmark } from './ui';
 
 type LoginRedirectState = { from?: string; fromLabel?: string };
 
@@ -47,9 +48,7 @@ const LoginPage: React.FC = () => {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="text-center mb-8"
         >
-          <h1 className="text-6xl font-racing text-racing-red mb-4">
-            Shif1 UP
-          </h1>
+          <h1 className="mb-4"><Wordmark className="text-6xl" /></h1>
           <p className="text-xl text-pure-white font-f1">
             Your F1 Insights Hub
           </p>

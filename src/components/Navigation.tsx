@@ -6,6 +6,7 @@ import {
   Database, Menu, X, TrendingUp,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { LogoMark, Wordmark } from './ui';
 
 type NavItem = { path: string; label: string; icon: LucideIcon };
 
@@ -54,11 +55,9 @@ const Navigation: React.FC = () => {
     >
       <div className="max-w-[1600px] mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Logo */}
-        <Link to="/" className="flex items-center space-x-2 flex-shrink-0">
-          <div className="w-9 h-9 bg-racing-red rounded-full flex items-center justify-center">
-            <span className="text-pure-white font-bold text-lg">S</span>
-          </div>
-          <span className="text-xl font-racing text-racing-red hidden sm:inline">Shif1 UP</span>
+        <Link to="/" aria-label="Shif1 UP home" className="flex items-center flex-shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60">
+          <LogoMark className="h-9 w-9 sm:hidden" />
+          <Wordmark className="hidden text-2xl sm:inline-flex" />
         </Link>
 
         {/* Desktop nav */}
