@@ -1,7 +1,7 @@
 import React from 'react';
 import { Check, RefreshCw } from 'lucide-react';
 import { ServiceStatus, SERVER_WAKING_MESSAGE } from '../services/serviceStatus';
-import { Button } from './ui';
+import { Button, Wordmark } from './ui';
 
 // Longer than a normal cold start, so the wait screen never reads as broken too early.
 const HINT_AFTER_S = 60;
@@ -59,7 +59,7 @@ export const ServiceGate: React.FC<{
       <div className="pointer-events-none absolute -bottom-20 right-1/4 h-80 w-80 rounded-full bg-turbo-teal/20 blur-3xl" aria-hidden="true" />
 
       <div className="relative w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900/80 p-8 shadow-2xl backdrop-blur">
-        <h2 id="gate-title" className="font-racing text-3xl text-racing-red">Shif1 UP</h2>
+        <h2 id="gate-title"><Wordmark className="text-3xl" /></h2>
         <p className="mt-1 text-sm text-gray-400">Getting things ready</p>
 
         <ul className="mt-6 space-y-3" aria-label="Progress">

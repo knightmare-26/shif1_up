@@ -83,11 +83,11 @@ test('a clinched title is announced with the rounds to spare', async () => {
   expect(screen.getByText('Champion')).toBeInTheDocument();
 });
 
-test('switching to constructors loads that view and keeps it in the URL', async () => {
+test('choosing the constructors championship loads that view', async () => {
   await renderAt();
   api.getChampionshipOutlook.mockResolvedValue(outlook({ standings: [row(1, 'Mercedes')] }));
 
-  await act(async () => { fireEvent.click(screen.getByRole('tab', { name: /constructors/i })); });
+  await act(async () => { fireEvent.change(screen.getByLabelText('Championship'), { target: { value: 'constructors' } }); });
 
   expect(api.getChampionshipOutlook).toHaveBeenLastCalledWith('constructors', 2026);
   expect(screen.getByText("Constructors' Championship — 2026")).toBeInTheDocument();

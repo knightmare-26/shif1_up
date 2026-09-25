@@ -6,7 +6,7 @@ import { backendApi, ConstructorStanding, DriverStanding, RaceEvent } from '../s
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import { useLiveTiming } from '../config/features';
-import { Button, Card, FadeIn, PageShell, Pill, StatCard } from './ui';
+import { Button, Card, FadeIn, PageShell, Pill, StatCard, Wordmark } from './ui';
 
 const features = (liveOn: boolean) => [
   { to: '/dashboard',                 icon: Users,       title: 'Championship Standings', text: 'Driver and constructor points, season by season.' },
@@ -55,7 +55,7 @@ const MainPage: React.FC = () => {
           {isAuthenticated && user ? (
             <p className="mb-2 text-sm text-gray-400">Welcome back, {user.username}</p>
           ) : null}
-          <h1 className="font-racing text-5xl leading-tight text-racing-red sm:text-6xl">Shif1 UP</h1>
+          <h1><Wordmark className="text-5xl sm:text-6xl" /></h1>
           <p className="mt-3 text-xl text-white">Your F1 insights hub</p>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-gray-400">
             Championship standings, race results, model-based predictions{liveOn ? ' and live timing' : ''} for

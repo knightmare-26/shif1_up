@@ -832,6 +832,11 @@ class PredictionService:
         raw_race = raw[raw["session_type"] == "race"].copy()
         if raw_race.empty:
             return {"races": []}
+        # Names for the scored rows: a service that hasn't trained yet has no name map, and the
+        # results would show driver codes ("ant") instead.
+        if "driver_name" in raw_race:
+            names = raw_race.dropna(subset=["driver_name"]).drop_duplicates("driver_id", keep="last")
+            self._driver_map = {**names.set_index("driver_id")["driver_name"].to_dict(), **self._driver_map}
 
         raw_practice = (raw[raw["session_type"].isin(["fp1", "fp2", "fp3"])]
                          .groupby(["race_id", "driver_id"])["position"].min()
