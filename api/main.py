@@ -45,6 +45,7 @@ from services.prediction_service import PredictionService
 from services.championship_service import ChampionshipService
 from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
+from services.entry_list import EntryListService
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
@@ -115,6 +116,7 @@ async def _ingest_finished_session(year: int, gp: str, session: str) -> None:
 
 live_relays = LiveRelayManager(lambda: redis_service, on_session_finished=_ingest_finished_session)
 session_replays = SessionReplayService(lambda: duckdb_service)
+entry_lists = EntryListService()
 
 
 async def _init_redis() -> Any:
@@ -286,6 +288,7 @@ async def lifespan(app: FastAPI):
             task.cancel()
     await live_relays.stop_all()
     await session_replays.close()
+    await entry_lists.close()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
@@ -1429,11 +1432,23 @@ def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
     return championship_service.with_finish_odds(result, kind)
 
 
+async def _weekend_field(circuit: str):
+    """Who's entered for the weekend at `circuit` (None: not known yet — the last race's line-up
+    is used). See services/entry_list.py."""
+    await prediction_service._ensure_trained(duckdb_service)
+    field = await entry_lists.field(duckdb_service, circuit, datetime.now().year, prediction_service._constructor_map)
+    if field:
+        for driver_id, name in field.names.items():
+            prediction_service._driver_map.setdefault(driver_id, name)   # a debutant's name
+    return (field.teams, field.source) if field else (None, None)
+
+
 @app.get("/predict/qualifying")
 async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_qualifying(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "qualifying")
@@ -1448,7 +1463,8 @@ async def predict_qualifying(circuit: str):
 async def predict_race(circuit: str):
     """Predict race finishing positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_race(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_race(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "race")
@@ -1463,7 +1479,8 @@ async def predict_race(circuit: str):
 async def predict_sprint(circuit: str):
     """Predict sprint race finishing positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_sprint(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return result

@@ -479,17 +479,27 @@ class PredictionService:
     # Feature rows for a future race at a given circuit
     # ------------------------------------------------------------------
 
-    def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
-        """`df` is the history to build from — the full training frame by default; the
-        championship backtest passes history cut off at an earlier round."""
+    # Driver inputs a debutant gets: the field's median (the team's form still comes from the team).
+    _DRIVER_INPUTS = ("grid", "driver_rolling_finish", "driver_circuit_avg", "driver_dnf_rate",
+                      "driver_rolling_grid", "driver_circuit_grid_avg")
+
+    def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None,
+                               field: Optional[Dict[str, Optional[str]]] = None) -> pd.DataFrame:
+        """One feature row per driver for a race at `circuit_name`.
+
+        `field` is who's actually entered, driver_id -> constructor_id (None: their last team) —
+        see services/entry_list.py. Without it the field is the latest race's line-up, which
+        misses a driver returning (e.g. from injury) and keeps one who's out. `df` is the history
+        to build from — the full training frame by default; the championship backtest passes
+        history cut off at an earlier round."""
         df = self._df if df is None else df
-        # Predict for the current field: the drivers in the latest race. (Everyone who raced this
-        # season used to be included, so a driver who wasn't racing — injured, or out of the
-        # seat — was still predicted. They're back in once they've raced again.)
-        most_recent_year = int(df["year"].max())
-        latest_round = int(df.loc[df["year"] == most_recent_year, "round"].max())
-        recent_drivers = df[(df["year"] == most_recent_year) & (df["round"] == latest_round)]["driver_id"].unique()
-        df_recent = df[df["driver_id"].isin(recent_drivers)]
+        if field is None:
+            most_recent_year = int(df["year"].max())
+            latest_round = int(df.loc[df["year"] == most_recent_year, "round"].max())
+            drivers = list(df[(df["year"] == most_recent_year) & (df["round"] == latest_round)]["driver_id"].unique())
+        else:
+            drivers = list(field)
+        df_recent = df[df["driver_id"].isin(drivers)]
         latest = df_recent.sort_values(["year", "round"]).groupby("driver_id").last().reset_index()
 
         circuit_round_series = df[df["circuit_name"] == circuit_name]["round"]
@@ -520,20 +530,59 @@ class PredictionService:
                 "round": circuit_round,
             })
 
-        return pd.DataFrame(rows)
+        out = pd.DataFrame(rows)
+        if field is None:
+            return out
+
+        # Entered drivers with no history at all (a debut): the field's typical driver inputs.
+        known = set(out["driver_id"]) if not out.empty else set()
+        debutants = [d for d in drivers if d not in known]
+        if debutants:
+            typical = out[list(self._DRIVER_INPUTS)].median() if not out.empty else pd.Series(10.0, index=self._DRIVER_INPUTS)
+            out = pd.concat([out, pd.DataFrame([{
+                "driver_id": d, "constructor_id": field.get(d) or "unknown", "circuit_name": circuit_name,
+                **typical.to_dict(), "driver_practice_best_rank": np.nan, "round": circuit_round,
+            } for d in debutants])], ignore_index=True)
+        return self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name)
+
+    def _with_teams(self, rows: pd.DataFrame, teams: Dict[str, str], history: pd.DataFrame,
+                    circuit_name: str) -> pd.DataFrame:
+        """A driver in a different car from their last history row races the new car: give them
+        that team's form (Sainz at Williams in 2025, not Ferrari; a debutant's team)."""
+        if rows.empty or not teams:
+            return rows
+        rows = rows.copy()
+        team_form = history.sort_values(["year", "round"]).groupby("constructor_id")["constructor_rolling_finish"].last()
+        for i, row in rows.iterrows():
+            team = teams.get(row["driver_id"])
+            if not team or (team == row["constructor_id"] and pd.notna(row.get("constructor_rolling_finish"))):
+                continue
+            at_circuit = history.loc[(history["constructor_id"] == team) & (history["circuit_name"] == circuit_name), "position"]
+            form = team_form.get(team, np.nan)
+            rows.at[i, "constructor_id"] = team
+            rows.at[i, "constructor_rolling_finish"] = form
+            rows.at[i, "constructor_circuit_avg"] = at_circuit.mean() if not at_circuit.empty else form
+        return rows
 
     # ------------------------------------------------------------------
     # Public predict API
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _cache_usable(cached: Optional[Dict[str, Any]], trained_at: Optional[str]) -> bool:
-        """A cached prediction from the current model, in the current shape (with scores —
-        rows cached before scores were kept are recomputed once)."""
+    def _cache_usable(cached: Optional[Dict[str, Any]], trained_at: Optional[str],
+                      field: Optional[Dict[str, Optional[str]]] = None, need_scores: bool = True) -> bool:
+        """A cached prediction from the current model, in the current shape (with scores — rows
+        cached before scores were kept are recomputed once), for the same drivers in the same
+        cars (the entry list can change between sessions of a weekend)."""
         if not cached or cached.get("model_trained_at") != trained_at:
             return False
         preds = cached.get("result", {}).get("predictions") or []
-        return bool(preds) and "score" in preds[0]
+        if not preds or (need_scores and "score" not in preds[0]) or "field_source" not in cached["result"]:
+            return False
+        if field is None:
+            return True
+        return ({p["driver_id"] for p in preds} == set(field)
+                and all(field[p["driver_id"]] in (None, p.get("constructor_id")) for p in preds))
 
     async def _ensure_trained(self, duckdb_service):
         # Also retrain if df is missing (e.g. loaded from disk but df not persisted)
@@ -547,7 +596,8 @@ class PredictionService:
             if not self.load_from_disk() or self._df is None:
                 await self._train_locked(duckdb_service)
 
-    async def predict_qualifying(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
+    async def predict_qualifying(self, circuit_name: str, duckdb_service,
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._quali_model is None:
@@ -559,10 +609,10 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "qualifying")
-        if self._cache_usable(cached, trained_at):
+        if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
-        feat  = self._build_prediction_rows(circuit_name)
+        feat  = self._build_prediction_rows(circuit_name, field=field)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[self._quali_features].fillna(10))
         feat["score"] = preds
@@ -588,12 +638,14 @@ class PredictionService:
             "circuit": circuit_name,
             "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
+            "field_source": field_source or "the last race's line-up",
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "qualifying", trained_at, result)
         return result
 
-    async def predict_race(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
+    async def predict_race(self, circuit_name: str, duckdb_service,
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._race_model is None:
@@ -601,10 +653,10 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "race")
-        if self._cache_usable(cached, trained_at):
+        if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
-        feat = self._build_prediction_rows(circuit_name)
+        feat = self._build_prediction_rows(circuit_name, field=field)
 
         # Pipe qualifying predictions in as the grid input — as a rank (1..N), the same
         # scale the race model's own "grid" training column is on, not the ranker's raw
@@ -640,12 +692,14 @@ class PredictionService:
             "circuit": circuit_name,
             "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
+            "field_source": field_source or "the last race's line-up",
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "race", trained_at, result)
         return result
 
-    async def predict_sprint(self, circuit_name: str, duckdb_service) -> Dict[str, Any]:
+    async def predict_sprint(self, circuit_name: str, duckdb_service,
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._sprint_model is None:
@@ -657,10 +711,10 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "sprint")
-        if cached and cached.get("model_trained_at") == trained_at:
+        if self._cache_usable(cached, trained_at, field, need_scores=False):
             return cached["result"]
 
-        feat = self._build_prediction_rows(circuit_name)
+        feat = self._build_prediction_rows(circuit_name, field=field)
 
         # No separate sprint-qualifying model (too little data to train one
         # reliably) — the main qualifying model's prediction is used as a
@@ -697,6 +751,7 @@ class PredictionService:
             "circuit": circuit_name,
             "model": "LightGBM (ranker, sprint)",
             "grid_data_available": self._grid_available,
+            "field_source": field_source or "the last race's line-up",
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "sprint", trained_at, result)

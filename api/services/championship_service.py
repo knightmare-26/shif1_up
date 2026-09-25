@@ -412,21 +412,11 @@ class ChampionshipService:
         p = self.pred
         out = []
         cache: Dict[str, np.ndarray] = {}
-        team_form = history.sort_values(["year", "round"]).groupby("constructor_id")["constructor_rolling_finish"].last()
         for rnd in remaining:
             if rnd.circuit not in cache:
                 rows = p._build_prediction_rows(rnd.circuit, history)
-                # A driver who changed teams races the new car: use the team they drive for now,
-                # not the one in their last history row (Sainz at Williams in 2025, not Ferrari).
-                for i, row in rows.iterrows():
-                    team = team_of.get(row["driver_id"])
-                    if team and team != row["constructor_id"]:
-                        at_circuit = history.loc[(history["constructor_id"] == team)
-                                                 & (history["circuit_name"] == rnd.circuit), "position"]
-                        form = team_form.get(team, np.nan)
-                        rows.at[i, "constructor_id"] = team
-                        rows.at[i, "constructor_rolling_finish"] = form
-                        rows.at[i, "constructor_circuit_avg"] = at_circuit.mean() if not at_circuit.empty else form
+                # A driver who changed teams races the new car (Sainz at Williams in 2025, not Ferrari).
+                rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit)
                 rows = p._encode(rows)
                 rows = rows.set_index("driver_id").reindex(entrants)
                 # A driver with no history (a debut) gets the field's median inputs.
