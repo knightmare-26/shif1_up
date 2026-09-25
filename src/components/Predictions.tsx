@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import ChampionshipOutlook from './ChampionshipOutlook';
 import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
@@ -321,11 +323,14 @@ const BacktestTab: React.FC = () => {
   );
 };
 
-type PredictionTab = 'upcoming' | 'backtest';
+type PredictionTab = 'upcoming' | 'title' | 'backtest';
 const PREDICTION_TABS: { id: PredictionTab; label: string }[] = [
   { id: 'upcoming', label: 'Upcoming Predictions' },
+  { id: 'title', label: 'Title Race' },
   { id: 'backtest', label: 'Predicted vs Actual' },
 ];
+const PREDICTION_TAB_IDS = PREDICTION_TABS.map((t) => t.id);
+const CURRENT_YEAR = new Date().getFullYear();
 
 const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
@@ -337,7 +342,11 @@ const Predictions: React.FC = () => {
   const [sprintResult, setSprintResult] = useState<PredictionResult | null>(null);
   const [error, setError]             = useState<string | null>(null);
   const [status, setStatus]           = useState<any>(null);
-  const [tab, setTab]                 = useState<PredictionTab>('upcoming');
+  // The tab lives in the URL (?tab=title) so links and refreshes land on it.
+  const [params, setParams] = useSearchParams();
+  const rawTab = params.get('tab') as PredictionTab | null;
+  const tab: PredictionTab = rawTab && PREDICTION_TAB_IDS.includes(rawTab) ? rawTab : 'upcoming';
+  const setTab = (t: PredictionTab) => setParams(t === 'upcoming' ? {} : { tab: t });
   const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
@@ -405,6 +414,7 @@ const Predictions: React.FC = () => {
 
       <div className="pt-6">
         {tab === 'backtest' && <TabPanel id="backtest" idPrefix="pred"><BacktestTab /></TabPanel>}
+        {tab === 'title' && <TabPanel id="title" idPrefix="pred"><ChampionshipOutlook year={CURRENT_YEAR} /></TabPanel>}
 
         {tab === 'upcoming' && (
           <TabPanel id="upcoming" idPrefix="pred">

@@ -16,7 +16,7 @@
 - **Race results**: full classifications for races, sprints, qualifying and practice.
 - **Tracks**: circuit facts and lap records.
 
-### 🏆 Title Race
+### 🏆 Title Race (on the Predictions page)
 Who wins the championship?
 - **Who can still win**, worked out exactly from the points still available and the tie-break rules.
 - **The title-clinch picture**: whether it's already decided, and what margin the leader needs at the next race to seal it.

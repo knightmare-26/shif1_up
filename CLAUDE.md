@@ -136,7 +136,7 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 
 ### Championship outlook (`api/services/championship_service.py`)
 
-Dashboard tab **Title Race** (`?tab=title`, `&view=constructors`). Two parts:
+Predictions page tab **Title Race** (`/predictions?tab=title`, `&view=constructors`; current season; the old `/dashboard?tab=title` redirects there). Two parts:
 - **Exact maths**: standings from stored `race_results` (race + sprint points; countback on Grand Prix finishes only; a stale duplicate row keeps its best position). A contender is alive if scoring the max in every remaining round (25, 33 with a sprint; teams 43/58; +1 fastest lap 2019–2024) with the leader scoring nothing puts them ahead on points or countback; pure maths, so a driver who missed the latest race (injured or replaced — the data can't tell) is still alive, flagged `racing: false`, and projected to score nothing more. Clinched = no rival alive. `next_race_clinch` = the margin over P2 that clinches it at the next race
 - **Projection**: 10,000 simulated seasons. Each remaining race's order is Plackett-Luce over the race ranker's scores (`_build_prediction_rows` per circuit, qualifying rank as grid, no practice), strength `beta` fitted to races the models hadn't seen (a model per season trained on earlier seasons only), plus a season-long per-driver form shock `FORM_SHOCK_SD` (chosen by the backtest's log score across drivers + constructors; 0 made favourites ~100% pre-season). A driver who changed teams is scored with the new team's form. Constructors sum the same simulated races. Sprint rounds for the future come from the schedule (`is_sprint`); sprint orders reuse race scores
 - `GET /api/predictions/championship?year=` / `constructors-championship` (one shared computation, cached in memory per season + training run + results count). `POST /predict/championship/backtest/refresh` (admin, ~1 min) replays finished seasons round by round and caches to `prediction_cache` (`_championship`, kept by `clear_prediction_cache()`); `GET /predict/championship/backtest` serves it — the page shows it as the track record. Last run (after the practice backfill and P99 fixes, 25 Sep 2026): names the eventual champion 73% (drivers) / 76% (constructors) of checkpoints vs 74% / 73% for "the current leader wins" — level on drivers (51 vs 52 of 70, all in the close 2025 season), but better-calibrated probabilities (drivers Brier 0.33 vs 0.51 for treating the leader as certain). 2023–2025 only, so a rough guide
@@ -146,7 +146,7 @@ Dashboard tab **Title Race** (`?tab=title`, `&view=constructors`). Two parts:
 ```
 /             → MainPage
 /dashboard    → Dashboard (tabs: Overview | Drivers | Teams | Tracks | Race Results)
-/predictions  → Predictions (ML qualifying + race predictions)
+/predictions  → Predictions (tabs: Upcoming Predictions | Title Race | Predicted vs Actual; `?tab=title|backtest`)
 /live         → LiveAnalytics   (Live section, "Overview" tab)
 /live-monitor → LiveDataMonitor (Live section, "Live Monitor" tab)
 /lap-data     → LapData (not in the nav)
