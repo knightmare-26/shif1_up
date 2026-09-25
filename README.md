@@ -1,318 +1,150 @@
-# Shif1 UP - Advanced F1 Analytics Platform
+# Shif1 UP
 
-A production-ready Formula 1 analytics platform featuring real-time data streaming, historical analysis, and predictive modeling. Built with FastAPI, DuckDB, Redis, and WebSocket technology.
+**Formula 1 standings, results and predictions: all in one place, no account needed.**
 
-## 🏎️ Architecture Overview
+🔗 **Live site: [shif1-up-1.onrender.com](https://shif1-up-1.onrender.com)**
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Frontend      │    │   FastAPI       │    │   Live Poller   │
-│   (React)       │◄──►│   (Backend)     │◄──►│   (FastF1)      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   Redis         │
-                    │   (Live State)  │
-                    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   DuckDB        │
-                    │   (Historical)  │
-                    └─────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   Parquet       │
-                    │   (Telemetry)   │
-                    └─────────────────┘
-```
-
-## 🚀 Features
-
-### Core Features
-- **Real-time Live Data**: WebSocket streaming of live race data
-- **Historical Analysis**: Complete F1 history with DuckDB storage
-- **Predictive Modeling**: AI-powered race outcome predictions
-- **Telemetry Storage**: Efficient Parquet-based telemetry storage
-- **Multi-source Data**: FastF1 + Ergast API integration
-- **Production Ready**: Docker Compose deployment
-
-### API Endpoints
-- `GET /health` - Health check
-- `GET /drivers?year={year}` - Driver listings
-- `GET /races?year={year}` - Race schedules
-- `GET /race/{race_id}/results` - Race classifications
-- `GET /race/{race_id}/laps?driver={driver}` - Lap analysis
-- `GET /live/{race_id}/state` - Live race state
-- `WebSocket /ws/live/{race_id}` - Live data streaming
-
-## 🛠️ Technology Stack
-
-- **Backend**: FastAPI, Python 3.11+
-- **Database**: DuckDB (historical data)
-- **Cache**: Redis (live state + pub/sub)
-- **Data Sources**: FastF1, Ergast API
-- **Storage**: Parquet files (telemetry)
-- **Frontend**: React + TypeScript + TailwindCSS
-- **Deployment**: Docker Compose
-
-## 📦 Quick Start
-
-### Option 1: Docker Compose (Recommended)
-
-```bash
-# Clone and start all services
-git clone <repository-url>
-cd shif1_up
-docker-compose up --build
-
-# Services will be available at:
-# - API: http://localhost:8000
-# - Frontend: http://localhost:3000
-# - Redis: localhost:6379
-```
-
-### Option 2: Local Development
-
-```bash
-# 1. Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# 2. Install dependencies
-pip install -r requirements.txt
-
-# 3. Start Redis (required)
-docker run -d -p 6379:6379 redis:7-alpine
-
-# 4. Ingest historical data
-python ingest/historical_ingest.py --years 2024
-
-# 5. Start API server
-uvicorn api.main:app --reload --port 8000
-
-# 6. Start live poller (in another terminal)
-RACE_YEAR=2024 RACE_GP=Bahrain python live/poller.py
-
-# 7. Start prediction worker (optional)
-python predict/worker.py
-```
-
-## 📊 Data Ingestion
-
-### Historical Data
-```bash
-# Ingest specific years
-python ingest/historical_ingest.py --years 2023 2024
-
-# Ingest year range
-python ingest/historical_ingest.py --start-year 2020 --end-year 2024
-
-# Ingest with custom paths
-python ingest/historical_ingest.py --years 2024 \
-  --db-path data/f1_history.duckdb \
-  --telemetry-dir data/telemetry \
-  --cache-dir data/fastf1_cache
-```
-
-### Incremental Updates
-```bash
-# Check for new sessions
-python ingest/incremental_ingest.py --dry-run
-
-# Ingest new sessions
-python ingest/incremental_ingest.py --years 2024
-```
-
-## 🔴 Live Data
-
-### Starting Live Poller
-```bash
-# Poll specific race
-RACE_YEAR=2024 RACE_GP=Bahrain python live/poller.py
-
-# Custom poll interval (seconds)
-RACE_YEAR=2024 RACE_GP=Bahrain POLL_INTERVAL=10 python live/poller.py
-
-# With custom Redis URL
-RACE_YEAR=2024 RACE_GP=Bahrain REDIS_URL=redis://localhost:6379 python live/poller.py
-```
-
-### WebSocket Connection
-```javascript
-// Connect to live race updates
-const ws = new WebSocket('ws://localhost:8000/ws/live/2024_Bahrain');
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log('Live update:', data);
-};
-```
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest tests/ --cov=api
-
-# Run specific test file
-pytest tests/test_api.py -v
-```
-
-## 📁 Project Structure
-
-```
-shif1_up/
-├── api/                    # FastAPI backend
-│   ├── main.py            # Main API application
-│   ├── services/          # Service layer
-│   │   ├── duckdb_service.py
-│   │   ├── redis_service.py
-│   │   ├── fastf1_service.py
-│   │   └── ergast_service.py
-│   └── models/            # Pydantic models
-├── ingest/                # Data ingestion scripts
-│   ├── historical_ingest.py
-│   └── incremental_ingest.py
-├── live/                  # Live data components
-│   └── poller.py
-├── predict/               # Prediction system
-│   └── worker.py
-├── tests/                 # Test suite
-│   ├── test_api.py
-│   └── sample_data/
-├── data/                  # Data storage
-│   ├── f1_history.duckdb
-│   ├── telemetry/
-│   └── fastf1_cache/
-├── src/                   # React frontend
-├── docker-compose.yml
-├── Dockerfile
-└── requirements.txt
-```
-
-## 🔧 Configuration
-
-### Environment Variables
-```bash
-# Redis Configuration
-REDIS_URL=redis://localhost:6379
-
-# Database Configuration
-DUCKDB_PATH=data/f1_history.duckdb
-
-# FastF1 Configuration
-FASTF1_CACHE_DIR=data/fastf1_cache
-
-# Live Poller Configuration
-RACE_YEAR=2024
-RACE_GP=Bahrain
-POLL_INTERVAL=5
-```
-
-### Docker Compose Services
-- **api**: FastAPI backend server
-- **redis**: Redis cache and pub/sub
-- **poller**: Live data poller
-- **worker**: Prediction worker
-
-## 📈 Performance & Scaling
-
-### Current Limitations
-- Single poller process (by design)
-- DuckDB for historical data (can be replaced with PostgreSQL)
-- In-memory Redis (can be clustered)
-
-### Production Recommendations
-1. **Database**: Replace DuckDB with PostgreSQL for better concurrency
-2. **Caching**: Use Redis Cluster for high availability
-3. **Load Balancing**: Add nginx/HAProxy for API load balancing
-4. **Monitoring**: Add Prometheus + Grafana for metrics
-5. **Authentication**: Implement JWT-based authentication
-6. **Rate Limiting**: Add API rate limiting
-
-### Scaling Strategies
-```yaml
-# Example production docker-compose.yml
-version: '3.8'
-services:
-  api:
-    deploy:
-      replicas: 3
-    environment:
-      - REDIS_URL=redis://redis-cluster:6379
-      - DATABASE_URL=postgresql://user:pass@postgres:5432/f1db
-  
-  redis:
-    image: redis:7-alpine
-    command: redis-server --cluster-enabled yes
-  
-  postgres:
-    image: postgres:15
-    environment:
-      - POSTGRES_DB=f1db
-```
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**1. FastF1 Cache Issues**
-```bash
-# Clear FastF1 cache
-rm -rf data/fastf1_cache/*
-```
-
-**2. Redis Connection Issues**
-```bash
-# Check Redis status
-docker exec -it redis redis-cli ping
-```
-
-**3. DuckDB Lock Issues**
-```bash
-# Ensure only one process accesses DuckDB at a time
-# Consider using PostgreSQL for concurrent access
-```
-
-**4. Port Conflicts**
-```bash
-# Check port usage
-netstat -tulpn | grep :8000
-netstat -tulpn | grep :6379
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙏 Acknowledgments
-
-- [FastF1](https://github.com/theOehrly/Fast-F1) - F1 data access
-- [Ergast API](http://ergast.com/mrd/) - Historical F1 data
-- [DuckDB](https://duckdb.org/) - Analytical database
-- [FastAPI](https://fastapi.tiangolo.com/) - Web framework
-
-## 📞 Support
-
-For questions and support:
-- Create an issue on GitHub
-- Check the troubleshooting section
-- Review the API documentation at `/docs`
+> It runs on free hosting, so the first visit after a quiet spell can take up to a minute while the server and database wake up. A progress screen shows while that happens.
 
 ---
 
-**Built with ❤️ for F1 fans and data enthusiasts**
+## What you can do
+
+### 📊 Dashboard
+- **Standings**: the drivers' championship for every season since 1950, and the constructors' since it began in 1958.
+- **Wins and podiums**: turn on optional columns for race wins, race podiums, sprint wins and sprint podiums, per driver and per team.
+- **Race results**: full classifications for races, sprints, qualifying and practice.
+- **Tracks**: circuit facts and lap records.
+
+### 🏆 Title Race
+Who wins the championship?
+- **Who can still win**, worked out exactly from the points still available and the tie-break rules.
+- **The title-clinch picture**: whether it's already decided, and what margin the leader needs at the next race to seal it.
+- **Each contender's chance**, from 10,000 simulated finishes to the season driven by the race model: title probability, projected points and the likeliest final position.
+- **A track record**: the page shows how these projections would have done on past seasons.
+
+### 🔮 Predictions
+- **Qualifying and race order** for upcoming Grands Prix, from machine-learning models trained on results since 2022.
+- **Win, pole and podium chances** next to each prediction, and an average finishing position.
+- **Predicted vs Actual**: every prediction for past races, compared with what really happened.
+
+### 📡 Live timing (on hold)
+A live timing board is built: positions, gaps, sector times, tyres, pit stops and flags. It needs a paid live-data feed, so on the public site the Live pages show "coming soon". Admins can play back any finished session through the same board.
+
+---
+
+## How good are the predictions?
+
+These figures are measured honestly. Each season is predicted by a model that has only seen *earlier* seasons, and never the results it's being tested on.
+
+| | Result (2023 – 2026, 84 races) |
+|---|---|
+| Qualifying order | off by **~4 places** per driver on average |
+| Race order | off by **~3.5 places** per driver on average |
+| Title Race, drivers' champion named correctly | 73% of checkpoints (backing the current leader: 74%) |
+| Title Race, constructors' champion named correctly | 76% of checkpoints (backing the current leader: 73%) |
+
+F1 is unpredictable (crashes, strategy, weather), and the numbers reflect that. Some things were tried and **left out** because they didn't measurably help: weather, circuit type, and teammate comparisons.
+
+---
+
+## Built with
+
+| Layer | Technology |
+|---|---|
+| Frontend | React, TypeScript, Tailwind CSS, Chart.js, Framer Motion |
+| Backend | FastAPI (Python) |
+| Database | PostgreSQL on Supabase (DuckDB locally) |
+| Live state | Redis (Upstash) with WebSockets |
+| Machine learning | LightGBM ranking models, plus a calibrated race simulation for the odds |
+| Data sources | [FastF1](https://github.com/theOehrly/Fast-F1), [Jolpica-F1](https://github.com/jolpica/jolpica-f1) (the Ergast successor), [OpenF1](https://openf1.org) |
+| Hosting | [Render](https://render.com) (API + static site) |
+
+```
+Browser ──► React app (static site)
+               │
+               ▼
+           FastAPI ──► PostgreSQL (results, standings, predictions cache)
+               │   ──► Redis (live timing state + pub/sub → WebSocket)
+               │   ──► LightGBM models (trained on start-up)
+               ▼
+   FastF1 · Jolpica · OpenF1   (race data)
+```
+
+---
+
+## Running it locally
+
+**You'll need** Python 3.12 and Node.js 18 or newer.
+
+```bash
+git clone https://github.com/knightmare-26/shif1_up.git
+cd shif1_up
+
+# Backend dependencies
+python -m venv venv
+venv\Scripts\activate              # macOS/Linux: source venv/bin/activate
+pip install -r api/requirements.txt
+
+# Frontend dependencies
+npm install
+
+# Start both (API on :8000, site on :3000)
+npm run dev
+```
+
+With no configuration, it uses the bundled DuckDB database (`data/f1_history.duckdb`) and an in-memory stand-in for Redis. Sign-in is switched off in that mode. To use your own services, create a `.env` file:
+
+| Variable | What it's for |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string (e.g. Supabase) |
+| `REDIS_URL` | Redis connection string |
+| `JWT_SECRET` | Signs login tokens |
+| `REACT_APP_API_URL` | Where the frontend finds the API (default `http://localhost:8000`) |
+
+API docs are at `http://localhost:8000/docs` once it's running.
+
+**Tests**
+```bash
+venv\Scripts\python -m pytest tests --ignore=tests/test_api.py   # backend
+npx react-scripts test --watchAll=false src/components           # frontend
+```
+The test suite never touches real services: it runs on an in-memory Redis and a throwaway local database.
+
+**Loading data**
+```bash
+python ingest/simple_ingest.py --years 2025 2026                  # results and standings
+python scripts/backfill_practice.py --years 2026 --dry-run        # missing practice sessions
+```
+
+---
+
+## Project layout
+
+```
+api/            FastAPI app
+  main.py         endpoints
+  services/       database, predictions, title-race simulation, ingest, live timing
+ingest/         scripts to load historical seasons
+live/           standalone FastF1 poller (local use)
+scripts/        maintenance: practice backfill, driver names, static data, health poller
+src/            React frontend (components, UI kit, API client)
+public/data/    pre-built JSON for finished seasons (served straight from the CDN)
+tests/          backend tests
+render.yaml     Render deployment
+```
+
+Detailed developer notes, covering architecture decisions, data quirks and how each part works, are in [CLAUDE.md](CLAUDE.md).
+
+---
+
+## Acknowledgements
+
+Shif1 UP is built on community F1 data:
+- [FastF1](https://github.com/theOehrly/Fast-F1)
+- [Jolpica-F1](https://github.com/jolpica/jolpica-f1)
+- [OpenF1](https://openf1.org)
+
+Thank you to their maintainers.
+
+*Shif1 UP is an unofficial fan project. It isn't associated with Formula 1 or any of its companies. F1, Formula One, Grand Prix and related marks are trademarks of Formula One Licensing B.V.*
