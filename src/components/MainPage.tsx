@@ -5,18 +5,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { backendApi, ConstructorStanding, DriverStanding, RaceEvent } from '../services/backendApi';
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
-import { LIVE_TIMING_ENABLED } from '../config/features';
+import { useLiveTiming } from '../config/features';
 import { Button, Card, FadeIn, PageShell, Pill, StatCard } from './ui';
 
-const FEATURES = [
+const features = (liveOn: boolean) => [
   { to: '/dashboard',                 icon: Users,       title: 'Championship Standings', text: 'Driver and constructor points, season by season.' },
   { to: '/dashboard?tab=results',     icon: ListOrdered, title: 'Race Results',           text: 'Full classifications for races, qualifying, sprints and practice.' },
   { to: '/predictions',               icon: TrendingUp,  title: 'Predictions',            text: 'Qualifying and race forecasts, checked against what actually happened.' },
-  { to: '/live',                      icon: Activity,    title: 'Live Timing',            text: 'Positions and gaps as they change during a session.', soon: !LIVE_TIMING_ENABLED },
+  { to: '/live',                      icon: Activity,    title: 'Live Timing',            text: 'Positions and gaps as they change during a session.', soon: !liveOn },
 ];
 
 const MainPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
+  const { enabled: liveOn } = useLiveTiming();
   const year = new Date().getFullYear();
 
   const [drivers, setDrivers] = useState<DriverStanding[]>([]);
@@ -57,7 +58,7 @@ const MainPage: React.FC = () => {
           <h1 className="font-racing text-5xl leading-tight text-racing-red sm:text-6xl">Shif1 UP</h1>
           <p className="mt-3 text-xl text-white">Your F1 insights hub</p>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-gray-400">
-            Championship standings, race results, model-based predictions{LIVE_TIMING_ENABLED ? ' and live timing' : ''} for
+            Championship standings, race results, model-based predictions{liveOn ? ' and live timing' : ''} for
             Formula 1 — all in one place, no account needed.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
@@ -98,7 +99,7 @@ const MainPage: React.FC = () => {
       <section aria-label="What you can do here" className="pb-8">
         <h2 className="mb-3 text-xs font-medium uppercase tracking-wide text-gray-500">Explore</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map(({ to, icon: Icon, title, text, soon }) => (
+          {features(liveOn).map(({ to, icon: Icon, title, text, soon }) => (
             <Link
               key={to}
               to={to}

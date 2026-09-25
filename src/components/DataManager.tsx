@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getStoredToken } from '../services/authApi';
 import { triggerIngest, getIngestStatus, getDbStats, clearServerCache, triggerModelTraining, IngestStatus, DbStats } from '../services/adminApi';
 import { backendApi } from '../services/backendApi';
+import LiveReplayCard from './LiveReplayCard';
 import {
   Button, Card, CardBody, CardHeader, EmptyState, FadeIn, Notice, PageHeader, PageShell, Pill,
   StatCard, TextField,
@@ -203,6 +204,8 @@ const DataManager: React.FC = () => {
             )}
           </CardBody>
         </Card>
+
+        <LiveReplayCard />
 
         {dbStats.years.length > 0 && (
           <Card>

@@ -5,7 +5,7 @@ import { Card, EmptyState, FadeIn, PageHeader, PageShell, Pill } from './ui';
 
 const LINK = 'inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60';
 
-/** Shown on both Live pages while LIVE_TIMING_ENABLED is off. */
+/** Shown on both Live pages while the API has no live feed connected and no replay running. */
 const LiveComingSoon: React.FC = () => (
   <PageShell>
     <PageHeader title="Live" subtitle="Real-time timing during F1 sessions" actions={<Pill tone="warn">Coming soon</Pill>} />
@@ -14,7 +14,7 @@ const LiveComingSoon: React.FC = () => (
         <EmptyState
           icon={<Radio className="h-10 w-10" />}
           title="Live timing is coming soon"
-          message="We're working on real-time positions, best laps, sectors and tyres for practice, qualifying, sprint and race sessions. Check back soon."
+          message="Real-time positions, gaps, best laps, sectors and tyres for practice, qualifying, sprint and race sessions switch on here once the live data feed is connected. Check back soon."
           action={
             <span className="flex flex-wrap justify-center gap-3">
               <Link to="/dashboard" className={`${LINK} bg-racing-red text-white hover:bg-red-700`}>Standings &amp; results</Link>
