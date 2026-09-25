@@ -69,3 +69,36 @@ export async function triggerModelTraining(token: string): Promise<{ message: st
   const res = await authedFetch('/predict/train', token, { method: 'POST' });
   return res.json();
 }
+
+export interface LiveRelay {
+  race_id: string;
+  year: number;
+  gp: string;
+  session: string;
+  replay: boolean;
+  replay_speed: number | null;
+  status: string;
+  detail: string | null;
+  clock: string | null;
+  started_at: string;
+}
+
+/** Follow a session on OpenF1. With replaySpeed, replay a finished one that many times faster. */
+export async function startLiveRelay(
+  token: string, year: number, gp: string, session: string, replaySpeed: number | null,
+): Promise<LiveRelay> {
+  const res = await authedFetch('/admin/live/relay', token, {
+    method: 'POST',
+    body: JSON.stringify({ year, gp, session, replay_speed: replaySpeed }),
+  });
+  return res.json();
+}
+
+export async function listLiveRelays(token: string): Promise<LiveRelay[]> {
+  const res = await authedFetch('/admin/live/relays', token);
+  return res.json();
+}
+
+export async function stopLiveRelay(token: string, raceId: string): Promise<void> {
+  await authedFetch(`/admin/live/relay/${encodeURIComponent(raceId)}`, token, { method: 'DELETE' });
+}

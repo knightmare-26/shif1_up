@@ -223,6 +223,27 @@ export interface LiveRaceState {
   message?: string;
 }
 
+/** A session the API is following on OpenF1 (live, or a replay of a finished one). */
+export interface LiveRelayInfo {
+  race_id: string;
+  year: number;
+  gp: string;               // the schedule's race name, e.g. "Spanish Grand Prix"
+  session: string;          // FP1 FP2 FP3 SQ S Q R
+  replay: boolean;
+  replay_speed: number | null;
+  status: string;           // starting | running | finished | failed | stopped
+  detail: string | null;
+  clock: string | null;     // the moment of the session being shown
+  started_at: string;
+}
+
+export interface LiveFeedStatus {
+  live_available: boolean;  // the OpenF1 live feed is connected (credentials on the server)
+  enabled: boolean;         // the Live pages have something to show (live feed, or a replay running)
+  source: string;
+  relays: LiveRelayInfo[];
+}
+
 export interface LiveSessionInfo {
   session: string;        // FP1 FP2 FP3 SQ S Q R
   race_id: string;        // the id to fetch state / open a WebSocket with
@@ -480,6 +501,10 @@ class BackendApiService {
 
   async getLivePositions(): Promise<LivePosition[]> {
     return this.getCachedOrFetch('/api/live/positions', {}, 30); // 30 seconds cache for live data
+  }
+
+  async getLiveStatus(): Promise<LiveFeedStatus> {
+    return this.getCachedOrFetch('/live/status', {}, 20);
   }
 
   async getLiveSessions(raceId: string): Promise<{ race_id: string; sessions: LiveSessionInfo[] }> {

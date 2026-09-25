@@ -6,10 +6,10 @@ import { isPastDate } from '../utils/dates';
 import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveRaceId, sessionsForWeekend } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
 import LiveComingSoon from './LiveComingSoon';
-import { LIVE_TIMING_ENABLED } from '../config/features';
+import { useLiveTiming } from '../config/features';
 import LiveTimingBoard, { LiveState } from './LiveTimingBoard';
 import {
-  Button, Card, CheckboxField, EmptyState, FadeIn, FilterBar, PageHeader, PageShell, SelectField, TabPanel,
+  Button, Card, CheckboxField, EmptyState, FadeIn, FilterBar, LoadingState, PageHeader, PageShell, SelectField, TabPanel,
 } from './ui';
 
 const WS_BASE = (process.env.REACT_APP_API_URL || 'http://localhost:8000')
@@ -244,6 +244,10 @@ const LiveMonitor: React.FC = () => {
   );
 };
 
-const LiveDataMonitor: React.FC = () => (LIVE_TIMING_ENABLED ? <LiveMonitor /> : <LiveComingSoon />);
+const LiveDataMonitor: React.FC = () => {
+  const { enabled, loading } = useLiveTiming();
+  if (loading) return <PageShell><LoadingState label="Checking the live feed…" /></PageShell>;
+  return enabled ? <LiveMonitor /> : <LiveComingSoon />;
+};
 
 export default LiveDataMonitor;

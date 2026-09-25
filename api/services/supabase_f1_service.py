@@ -289,7 +289,10 @@ class SupabaseF1Service:
     # Write methods (UPSERT — safe to re-run ingest)
     # ------------------------------------------------------------------
 
-    async def store_drivers(self, drivers: List[Dict]) -> bool:
+    async def store_drivers(self, drivers: List[Dict], rename: bool = False) -> bool:
+        """Adds new drivers and updates numbers. A name already stored is kept unless `rename`
+        (the name sync, scripts/sync_driver_names.py): ingest names come from FastF1, which isn't
+        a reliable source for them — see services/driver_names.py."""
         if not drivers or not self.pool:
             return True
         try:
@@ -298,10 +301,12 @@ class SupabaseF1Service:
                     """INSERT INTO drivers (driver_id, full_name, nationality, number)
                        VALUES ($1, $2, $3, $4)
                        ON CONFLICT (driver_id) DO UPDATE SET
-                           full_name   = EXCLUDED.full_name,
-                           nationality = EXCLUDED.nationality,
-                           number      = EXCLUDED.number""",
-                    [(d["driver_id"], d["full_name"], d.get("nationality"), d.get("number"))
+                           full_name   = CASE WHEN $5 OR drivers.full_name IS NULL
+                                                   OR drivers.full_name IN ('', 'None None')
+                                              THEN EXCLUDED.full_name ELSE drivers.full_name END,
+                           nationality = COALESCE(NULLIF(EXCLUDED.nationality, ''), drivers.nationality),
+                           number      = COALESCE(NULLIF(EXCLUDED.number, 0), drivers.number)""",
+                    [(d["driver_id"], d["full_name"], d.get("nationality"), d.get("number"), rename)
                      for d in drivers],
                 )
             logger.info("✅ Stored %d drivers", len(drivers))

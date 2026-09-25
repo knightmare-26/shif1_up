@@ -43,6 +43,8 @@ from services.auth_service import (
 from services import ingest_service
 from services.prediction_service import PredictionService
 from services.championship_service import ChampionshipService
+from services.live_relay import LiveRelayManager
+from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
     DriverStanding, ConstructorStanding, RaceEvent,
     SessionData, LapData, TelemetryData, WeatherData, RaceResult,
@@ -101,6 +103,15 @@ database_guardian: Optional[DatabaseGuardian] = None
 MODEL_DIR = os.getenv("MODEL_DIR", "data/models")
 prediction_service = PredictionService(model_dir=MODEL_DIR)
 championship_service = ChampionshipService(prediction_service)
+
+
+async def _ingest_finished_session(year: int, gp: str, session: str) -> None:
+    """A live relay saw a session end: store its results (as the poller's /admin/ingest/race call did)."""
+    if duckdb_service is not None:
+        await _ingest_race_and_retrain(year, gp, False, session)
+
+
+live_relays = LiveRelayManager(lambda: redis_service, on_session_finished=_ingest_finished_session)
 
 
 async def _init_redis() -> Any:
@@ -214,6 +225,7 @@ async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
     warmup_task = None
     refresh_task = None
+    live_schedule_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
 
@@ -258,13 +270,18 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("ℹ️  No saved models found — will train on first /predict request")
 
+    if live_relays.live_available():
+        live_schedule_task = asyncio.create_task(live_relays.schedule_loop(), name="live-schedule")
+        logger.info("✅ OpenF1 credentials set — live timing follows sessions as they run")
+
     logger.info("✅ All services ready")
     yield
 
     logger.info("🛑 Shutting down...")
-    for task in (warmup_task, refresh_task):
+    for task in (warmup_task, refresh_task, live_schedule_task):
         if task:
             task.cancel()
+    await live_relays.stop_all()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
@@ -768,6 +785,61 @@ def _unwrap_live_state(envelope: Optional[Dict[str, Any]]) -> Optional[Dict[str,
     if isinstance(update, dict) and isinstance(update.get("state"), dict):
         return update["state"]
     return envelope
+
+
+@app.get("/live/status")
+async def live_status():
+    """Whether the Live pages have anything to show: live data needs OpenF1 credentials
+    (OPENF1_USERNAME / OPENF1_PASSWORD); without them, only admin-started replays run."""
+    running = [r.summary() for r in live_relays.running()]
+    return {
+        "live_available": live_relays.live_available(),
+        "enabled": live_relays.live_available() or bool(running),
+        "source": "openf1",
+        "relays": running,
+    }
+
+
+class LiveRelayRequest(BaseModel):
+    year: int
+    gp: str                           # the schedule's race name, e.g. "Spanish Grand Prix"
+    session: str = "R"
+    replay_speed: Optional[float] = None   # set: replay a finished session this many times faster
+
+    @field_validator("session")
+    @classmethod
+    def _known_session(cls, v: str) -> str:
+        if v not in LIVE_SESSION_CODES:
+            raise ValueError(f"session must be one of {', '.join(LIVE_SESSION_CODES)}")
+        return v
+
+    @field_validator("replay_speed")
+    @classmethod
+    def _sensible_speed(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and not (0.5 <= v <= 120):
+            raise ValueError("replay_speed must be between 0.5 and 120")
+        return v
+
+
+@app.post("/admin/live/relay")
+async def start_live_relay(body: LiveRelayRequest, _auth=Depends(require_admin_or_internal)):
+    """Follow a session on OpenF1: live (needs credentials) or, with replay_speed, a replay of a
+    finished one. The Live pages show it under the usual race id."""
+    if body.replay_speed is None and not live_relays.live_available():
+        raise HTTPException(status_code=400, detail="Live data needs OpenF1 credentials; pass replay_speed to replay a finished session")
+    return live_relays.start(body.year, body.gp, body.session, body.replay_speed).summary()
+
+
+@app.get("/admin/live/relays")
+async def list_live_relays(_auth=Depends(require_admin_or_internal)):
+    return [r.summary() for r in live_relays.relays.values()]
+
+
+@app.delete("/admin/live/relay/{race_id}")
+async def stop_live_relay(race_id: str, _auth=Depends(require_admin_or_internal)):
+    if not await live_relays.stop(race_id):
+        raise HTTPException(status_code=404, detail="No running relay with that id")
+    return {"stopped": race_id}
 
 
 @app.get("/live/{race_id}/state")

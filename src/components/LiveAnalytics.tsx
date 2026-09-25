@@ -6,10 +6,10 @@ import { daysUntil, describeDaysUntil, formatDate, isPastDate } from '../utils/d
 import { isRaceRound, LiveSession, LIVE_SESSION_LABELS, liveMonitorPath } from '../utils/races';
 import LiveSectionTabs from './LiveSectionTabs';
 import LiveComingSoon from './LiveComingSoon';
-import { LIVE_TIMING_ENABLED } from '../config/features';
+import { useLiveTiming } from '../config/features';
 import {
   Card, CardBody, CardHeader, DetailList, EmptyState, FadeIn, LoadingState, PageHeader, PageShell,
-  PositionBadge, TabPanel,
+  Pill, PositionBadge, TabPanel,
 } from './ui';
 
 const LIVE_POLL_MS = 15_000;
@@ -20,6 +20,7 @@ const LiveOverview: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [liveState, setLiveState] = useState<LiveRaceState | null>(null);
   const [activeSession, setActiveSession] = useState<LiveSessionInfo | null>(null);
+  const relays = useLiveTiming().status?.relays ?? [];
 
   useEffect(() => {
     backendApi.getRaceSchedule(year)
@@ -65,6 +66,27 @@ const LiveOverview: React.FC = () => {
       <LiveSectionTabs active="overview" />
 
       <TabPanel id="overview" idPrefix="live" className="space-y-6 pt-6">
+        {relays.length > 0 && (
+          <FadeIn>
+            <Card>
+              <CardHeader title="Running now" icon={<Radio className="h-4 w-4" />}
+                subtitle="Sessions the live feed is following. A replay plays a finished session back." />
+              <CardBody className="flex flex-wrap gap-3">
+                {relays.map((r) => (
+                  <Link
+                    key={r.race_id}
+                    to={liveMonitorPath(r.year, r.gp.replace(/ /g, '_').replace(/\//g, '-'), r.session as LiveSession)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-4 py-2 text-sm text-gray-200 transition-colors hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
+                  >
+                    <span className={`h-2 w-2 rounded-full ${r.replay ? 'bg-sky-400' : 'animate-pulse bg-red-500'}`} aria-hidden="true" />
+                    {r.year} {r.gp} — {LIVE_SESSION_LABELS[r.session as LiveSession] ?? r.session}
+                    {r.replay && <Pill>Replay</Pill>}
+                  </Link>
+                ))}
+              </CardBody>
+            </Card>
+          </FadeIn>
+        )}
         <FadeIn>
           <Card>
             <CardHeader
@@ -178,6 +200,10 @@ const LiveOverview: React.FC = () => {
   );
 };
 
-const LiveAnalytics: React.FC = () => (LIVE_TIMING_ENABLED ? <LiveOverview /> : <LiveComingSoon />);
+const LiveAnalytics: React.FC = () => {
+  const { enabled, loading } = useLiveTiming();
+  if (loading) return <PageShell><LoadingState label="Checking the live feed…" /></PageShell>;
+  return enabled ? <LiveOverview /> : <LiveComingSoon />;
+};
 
 export default LiveAnalytics;

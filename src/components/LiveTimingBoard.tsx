@@ -37,7 +37,21 @@ export interface LiveState {
   track_status?: string;
   session_status?: string;
   timestamp?: string;
+  /** OpenF1 relays: a replay of a finished session, shown as of `clock`. */
+  replay?: boolean;
+  clock?: string;
+  source?: string;
 }
+
+// OpenF1 relays send these; the FastF1 poller always sent "green".
+const TRACK: Record<string, { label: string; tone: 'good' | 'warn' | 'bad' | 'neutral' }> = {
+  green: { label: 'Green flag', tone: 'good' },
+  yellow: { label: 'Yellow flag', tone: 'warn' },
+  sc: { label: 'Safety car', tone: 'warn' },
+  vsc: { label: 'Virtual safety car', tone: 'warn' },
+  red: { label: 'Red flag', tone: 'bad' },
+  chequered: { label: 'Chequered flag', tone: 'neutral' },
+};
 
 type BoardTab = 'laps' | 'sectors' | 'tyres';
 const BOARD_TABS: { id: BoardTab; label: string }[] = [
@@ -103,6 +117,8 @@ const Driver: React.FC<{ p: LivePosition }> = ({ p }) => (
     <span className="w-6 text-right text-sm font-bold text-gray-300">{p.position}</span>
     <span className="h-5 w-1 rounded-full" style={{ backgroundColor: teamColor(p.team) }} aria-hidden="true" />
     <span className="font-semibold tracking-wide text-white">{surname(p)}</span>
+    {p.in_pit && <span className="rounded bg-gray-700 px-1.5 text-xs font-semibold text-gray-200">PIT</span>}
+    {p.status === 'Stopped' && <span className="rounded bg-red-500/15 px-1.5 text-xs font-semibold text-red-400">OUT</span>}
   </div>
 );
 
@@ -128,7 +144,8 @@ const zoneLabel = (zone: 'Q3' | 'Q2' | 'Q1', total: number): string => {
   return `Out in Q1 · positions ${11 + out}–${total}`;
 };
 
-const rowClass = (p: LivePosition) => `border-b border-gray-800/60 transition-colors ${p.in_pit ? 'opacity-50' : ''}`;
+const rowClass = (p: LivePosition) =>
+  `border-b border-gray-800/60 transition-colors ${p.in_pit || p.status === 'Stopped' ? 'opacity-50' : ''}`;
 
 const LiveTimingBoard: React.FC<{
   state: LiveState;
@@ -158,18 +175,31 @@ const LiveTimingBoard: React.FC<{
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 px-5 py-3">
         <div className="flex items-center gap-3">
-          <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-red-500">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
-            Live
-          </span>
+          {state.replay ? (
+            <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-sky-400"
+              title="A finished session played back — not happening now">
+              <span className="h-2 w-2 rounded-full bg-sky-400" aria-hidden="true" />
+              Replay
+            </span>
+          ) : (
+            <span className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-red-500">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-500" aria-hidden="true" />
+              Live
+            </span>
+          )}
           <span className="text-sm text-gray-300">{sessionLabel}</span>
           <span className="text-xs text-gray-500">
             {isTimed ? 'Best lap order' : state.lap ? `Lap ${state.lap}${state.total_laps ? ` / ${state.total_laps}` : ''}` : ''}
           </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {state.session_status && <Pill tone="good">{state.session_status}</Pill>}
-          {state.track_status && <Pill>Track {state.track_status}</Pill>}
+          {state.session_status && <Pill tone={state.session_status === 'live' ? 'good' : 'neutral'}>{state.session_status}</Pill>}
+          {state.track_status && (
+            <Pill tone={TRACK[state.track_status]?.tone ?? 'neutral'}>{TRACK[state.track_status]?.label ?? `Track ${state.track_status}`}</Pill>
+          )}
+          {state.replay && state.clock && (
+            <Pill>Session time {new Date(state.clock).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' })} UTC</Pill>
+          )}
           {lastUpdate && <Pill>Updated {lastUpdate.toLocaleTimeString()}</Pill>}
         </div>
       </div>

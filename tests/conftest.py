@@ -21,6 +21,9 @@ os.environ["DATABASE_URL"] = ""
 os.environ["DUCKDB_PATH"] = os.path.join(_scratch, "f1_test.duckdb")
 os.environ["MODEL_DIR"] = os.path.join(_scratch, "models")
 os.environ["CACHE_DIR"] = os.path.join(_scratch, "cache")
+# No live OpenF1 feed in tests (it would also start the live schedule at app start-up).
+os.environ["OPENF1_USERNAME"] = ""
+os.environ["OPENF1_PASSWORD"] = ""
 
 import pytest
 

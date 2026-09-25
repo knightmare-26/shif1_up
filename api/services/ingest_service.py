@@ -122,6 +122,26 @@ def _extract_practice_results(fastf1_session) -> List[dict]:
     return results
 
 
+async def _fix_borrowed_names(db, drivers_seen: dict) -> None:
+    """A stand-in who drives someone else's car (usually in FP1) comes through FastF1 with that
+    driver's name — Mari Boya as "Sergio Perez". For a driver we haven't stored before whose name
+    already belongs to another code, ask OpenF1 instead (or fall back to the code itself)."""
+    try:
+        known = {d["driver_id"]: d.get("full_name") for d in await db.get_all_drivers()}
+    except Exception:
+        return
+    from services.driver_names import openf1_name, same_name
+    for code, d in drivers_seen.items():
+        if code in known:
+            continue
+        owner = next((c for c, name in known.items() if c != code and same_name(name, d["full_name"])), None)
+        if owner is None:
+            continue
+        name = await asyncio.get_event_loop().run_in_executor(None, openf1_name, code)
+        logger.info("%s came with %s's name; using %s", code, owner, name or code.upper())
+        d["full_name"] = name or code.upper()
+
+
 async def ingest_single_race(db, year: int, event: Union[int, str], include_laps: bool = False,
                               session: str = "R") -> dict:
     """Fetch and persist one session's results (and optionally laps) into `db`.
@@ -188,6 +208,7 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
     else:
         results = _extract_classified_results(fastf1_session, session)
 
+    await _fix_borrowed_names(db, drivers_seen)
     await db.store_drivers(list(drivers_seen.values()))
     await db.store_constructors(list(constructors_seen.values()))
     await db.store_race_results(race_id, results, session_type=session_type)
