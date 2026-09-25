@@ -44,6 +44,8 @@ from services import ingest_service
 from services.prediction_service import PredictionService
 from services.championship_service import ChampionshipService
 from services.live_relay import LiveRelayManager
+from services.session_replay import ReplayUnavailable, SessionReplayService
+from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
     DriverStanding, ConstructorStanding, RaceEvent,
@@ -112,6 +114,7 @@ async def _ingest_finished_session(year: int, gp: str, session: str) -> None:
 
 
 live_relays = LiveRelayManager(lambda: redis_service, on_session_finished=_ingest_finished_session)
+session_replays = SessionReplayService(lambda: duckdb_service)
 
 
 async def _init_redis() -> Any:
@@ -282,6 +285,7 @@ async def lifespan(app: FastAPI):
         if task:
             task.cancel()
     await live_relays.stop_all()
+    await session_replays.close()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
@@ -785,6 +789,48 @@ def _unwrap_live_state(envelope: Optional[Dict[str, Any]]) -> Optional[Dict[str,
     if isinstance(update, dict) and isinstance(update.get("state"), dict):
         return update["state"]
     return envelope
+
+
+def _replay_session_code(session: str) -> str:
+    if session not in LIVE_SESSION_CODES:
+        raise HTTPException(status_code=422, detail=f"session must be one of {', '.join(LIVE_SESSION_CODES)}")
+    return session
+
+
+@app.get("/api/sessions/{year}/{session}/weather")
+async def session_weather(year: int, session: str, gp: str):
+    """A finished session's weather (from OpenF1, 2023+): at the start, and its range over the
+    session. `gp` is the schedule's race name, e.g. "Spanish Grand Prix"."""
+    try:
+        return await session_replays.weather(year, gp, _replay_session_code(session))
+    except ReplayUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OpenF1Locked:
+        raise HTTPException(status_code=503, headers={"Retry-After": "600"},
+                            detail="live_session_lock")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("session weather %s %s %s: %s", year, gp, session, exc)
+        raise HTTPException(status_code=502, detail="Session data source didn't answer")
+
+
+@app.get("/api/sessions/{year}/{session}/replay")
+async def session_replay_frame(year: int, session: str, gp: str, t: float = 0.0):
+    """The timing board (with weather) `t` seconds into a finished session — what the Race Results
+    replay plays. The first call for a session loads it from OpenF1 (a few seconds)."""
+    try:
+        return await session_replays.frame(year, gp, _replay_session_code(session), t)
+    except ReplayUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OpenF1Locked:
+        raise HTTPException(status_code=503, headers={"Retry-After": "600"},
+                            detail="live_session_lock")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("session replay %s %s %s: %s", year, gp, session, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Session data source didn't answer")
 
 
 @app.get("/live/status")

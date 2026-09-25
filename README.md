@@ -13,7 +13,7 @@
 ### 📊 Dashboard
 - **Standings**: the drivers' championship for every season since 1950, and the constructors' since it began in 1958.
 - **Wins and podiums**: turn on optional columns for race wins, race podiums, sprint wins and sprint podiums, per driver and per team.
-- **Race results**: full classifications for races, sprints, qualifying and practice.
+- **Race results**: full classifications for races, sprints, qualifying and practice, with each session's weather (air and track temperature, humidity, wind, rain) and a replay of the session on a live-timing board (2023 onwards).
 - **Tracks**: circuit facts and lap records.
 
 ### 🏆 Title Race (on the Predictions page)

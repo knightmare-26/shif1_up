@@ -3,6 +3,7 @@
  */
 
 import { Driver, Team, RaceResult } from '../types/f1';
+import type { LiveState } from '../components/LiveTimingBoard';
 
 export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -253,6 +254,49 @@ export interface LiveSessionInfo {
   live: boolean;          // the poller has refreshed it in the last couple of minutes
 }
 
+/** Track weather at one moment (OpenF1; wind converted to km/h). */
+export interface WeatherReading {
+  date: string;
+  air_temperature: number | null;
+  track_temperature: number | null;
+  humidity: number | null;
+  wind_speed_kmh: number | null;
+  wind_direction: number | null;   // degrees, where the wind blows from
+  pressure: number | null;
+  rain: boolean;
+}
+
+export interface SessionWeather {
+  year: number;
+  gp: string;
+  session: string;
+  session_name: string | null;
+  meeting_name: string | null;
+  start: string;
+  end: string;
+  duration_seconds: number;        // how long a replay of this session runs
+  weather: {
+    at_start: WeatherReading | null;
+    rain_during: boolean;
+    air_range: [number, number] | null;
+    track_range: [number, number] | null;
+    readings: number;
+  } | null;
+}
+
+export interface ReplayFrame {
+  seconds: number;
+  state: LiveState;
+}
+
+/** Why session weather / a replay couldn't be loaded: not available for this session, paused
+ *  while an F1 session is live (the data provider locks free access), or the request failed. */
+export class SessionDataError extends Error {
+  constructor(public kind: 'unavailable' | 'locked' | 'failed', message: string) {
+    super(message);
+  }
+}
+
 class BackendApiService {
   private baseUrl: string;
   private cache: Map<string, { data: any; timestamp: number; ttl: number }> = new Map();
@@ -501,6 +545,32 @@ class BackendApiService {
 
   async getLivePositions(): Promise<LivePosition[]> {
     return this.getCachedOrFetch('/api/live/positions', {}, 30); // 30 seconds cache for live data
+  }
+
+  private async sessionData<T>(path: string, params: Record<string, string>): Promise<T> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.baseUrl}${path}?${new URLSearchParams(params)}`);
+    } catch {
+      throw new SessionDataError('failed', "The server didn't answer.");
+    }
+    if (response.ok) return response.json();
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 404) throw new SessionDataError('unavailable', body.detail || 'Not available for this session');
+    if (response.status === 503 && body.detail === 'live_session_lock') {
+      throw new SessionDataError('locked', 'Paused while an F1 session is live');
+    }
+    throw new SessionDataError('failed', body.detail || `Request failed (${response.status})`);
+  }
+
+  /** A finished session's weather (2023 onwards). `raceName` is the schedule's, e.g. "Spanish Grand Prix". */
+  async getSessionConditions(year: number, raceName: string, session: string): Promise<SessionWeather> {
+    return this.sessionData(`/api/sessions/${year}/${session}/weather`, { gp: raceName });
+  }
+
+  /** The timing board and weather `seconds` into a finished session. */
+  async getReplayFrame(year: number, raceName: string, session: string, seconds: number): Promise<ReplayFrame> {
+    return this.sessionData(`/api/sessions/${year}/${session}/replay`, { gp: raceName, t: String(Math.round(seconds)) });
   }
 
   async getLiveStatus(): Promise<LiveFeedStatus> {

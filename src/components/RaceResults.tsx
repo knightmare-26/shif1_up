@@ -3,6 +3,7 @@ import { ListOrdered } from 'lucide-react';
 import { backendApi, RaceEvent } from '../services/backendApi';
 import { formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
+import SessionConditions from './SessionConditions';
 import {
   Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
   SelectField, TableWrap, TeamChip, Td, Th, Tr,
@@ -233,6 +234,12 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
           <EmptyState icon={<ListOrdered className="h-10 w-10" />} title="Pick a Grand Prix to see its results" />
         )}
       </Card>
+
+      {selectedGP && selectedScheduleEntry && !scheduleFailed && (
+        <div className="mt-6">
+          <SessionConditions year={year} raceName={raceName} session={selectedSession} sessionLabel={sessionLabel} />
+        </div>
+      )}
     </FadeIn>
   );
 };

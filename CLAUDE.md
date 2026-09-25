@@ -134,6 +134,10 @@ Config in `render.yaml`. Secrets (`REDIS_URL`, `DATABASE_URL`, `CORS_ORIGINS`, `
 - **Grid data availability**: `_grid_available = grid_coverage > 0.5`; shown as status on Predictions page
 - **Note**: bundled DuckDB has `grid = NULL` for existing rows — run `ingest/simple_ingest.py --years 2022 2023 2024` to populate
 
+### Session weather and replays (`api/services/session_replay.py`)
+
+The Race Results tab shows, under the classification, a finished session's **weather** (air/track temperature, humidity, wind speed + direction, rain — at the start, plus the ranges and whether rain fell) and a **replay**: the live timing board plus weather, played back with play/pause, speed and a scrubber (`SessionConditions.tsx`, `WeatherPanel.tsx`). Data is OpenF1's (free for finished sessions, 2023 onwards). **OpenF1 shuts all free access — past sessions included — while any F1 session is live** (401 "Live F1 session in progress" → `OpenF1Locked` → the endpoints answer `503 live_session_lock` and the page says it's paused). So weather is stored once fetched (`prediction_cache`, circuit_name `_weather`, kept by `clear_prediction_cache()`; `scripts/backfill_weather.py` preloads every session and waits out locks) and served from there; replays load the whole session on first play and are kept in memory only (a race's gap data is ~27k rows; 4 sessions max). `GET /api/sessions/{year}/{session}/weather?gp=` and `/replay?gp=&t=` (`gp` = the schedule's race name). The OpenF1 client bursts within the free tier's 3 requests/second and 30/minute.
+
 ### Championship outlook (`api/services/championship_service.py`)
 
 Predictions page tab **Title Race** (`/predictions?tab=title`, `&view=constructors`; current season; the old `/dashboard?tab=title` redirects there). Two parts:
@@ -204,6 +208,7 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 - `GET /api/constructor-stats?year=` — the same per team, keyed by `constructor_id` (identical in standings and results); wins once per race, podiums per car (a one-two is two)
 - `GET /live/status` — whether the Live pages are on (`live_available`: OpenF1 credentials set; `enabled`: that or a relay running) and the running relays
 - `POST /admin/live/relay` `{year, gp, session, replay_speed?}`, `GET /admin/live/relays`, `DELETE /admin/live/relay/{race_id}` — start/list/stop OpenF1 relays (admin JWT or internal key); without credentials only replays
+- `GET /api/sessions/{year}/{session}/weather?gp=`, `GET /api/sessions/{year}/{session}/replay?gp=&t=` — a finished session's weather and replay frames (see Session weather and replays)
 - `POST /simulate/live/{race_id}` — inject mock live state for testing
 - `GET /predict/status` — ML model readiness + grid data availability flag
 - `GET /predict/circuits` — circuits available for prediction
