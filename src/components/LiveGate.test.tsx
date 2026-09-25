@@ -36,7 +36,7 @@ test('with no live feed and nothing running, the page says live timing is coming
   api.getLiveStatus.mockResolvedValue(status({}));
   await renderLive();
 
-  expect(screen.getByText('Live timing is coming soon')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Coming soon' })).toBeInTheDocument();
 });
 
 test('a running replay turns the page on and links to it', async () => {
@@ -47,7 +47,7 @@ test('a running replay turns the page on and links to it', async () => {
   }));
   await renderLive();
 
-  expect(screen.queryByText('Live timing is coming soon')).not.toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'Coming soon' })).not.toBeInTheDocument();
   const link = screen.getByRole('link', { name: /2026 Spanish Grand Prix — Race/ });
   expect(link).toHaveAttribute('href', '/live-monitor?year=2026&gp=Spanish_Grand_Prix&session=R');
   expect(screen.getByText('Replay')).toBeInTheDocument();
@@ -57,5 +57,5 @@ test('if the status check fails, the page stays off rather than showing an empty
   api.getLiveStatus.mockRejectedValue(new Error('down'));
   await renderLive();
 
-  expect(screen.getByText('Live timing is coming soon')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Coming soon' })).toBeInTheDocument();
 });

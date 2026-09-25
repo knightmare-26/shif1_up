@@ -1,4 +1,5 @@
 import React from 'react';
+import { Info } from 'lucide-react';
 
 export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
@@ -27,6 +28,18 @@ export const CardBody: React.FC<{ children: React.ReactNode; className?: string 
   children,
   className = '',
 }) => <div className={`p-5 ${className}`}>{children}</div>;
+
+/** The "How this works" card at the foot of a data view: method, caveats and track record, in
+ *  the same place and style on every tab. Children are paragraphs. */
+export const HowItWorksCard: React.FC<{ children: React.ReactNode; title?: string }> = ({
+  children,
+  title = 'How this works',
+}) => (
+  <Card>
+    <CardHeader title={title} icon={<Info className="h-4 w-4" />} />
+    <CardBody className="space-y-3 text-sm leading-relaxed text-gray-400">{children}</CardBody>
+  </Card>
+);
 
 /** Label / value rows inside a card (race details, session info, ...). */
 export const DetailList: React.FC<{ rows: (string | number)[][] }> = ({ rows }) => (

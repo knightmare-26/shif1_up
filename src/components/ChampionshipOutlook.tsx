@@ -1,19 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Flag, Info, Trophy, Users } from 'lucide-react';
+import { Trophy } from 'lucide-react';
 import {
   backendApi, ChampionshipBacktest, ChampionshipBacktestSummary, ChampionshipOutlook as Outlook, ChampionshipRow,
 } from '../services/backendApi';
 import {
-  Card, CardBody, CardHeader, EmptyState, ErrorState, FadeIn, LoadingState, Notice, Pill, PositionBadge,
-  TabPanel, Tabs, TableWrap, TeamChip, Td, Th, Tr, teamColor,
+  Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice, Pill,
+  PositionBadge, SelectField, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
 import { formatChance } from '../utils/probability';
 
 type View = 'drivers' | 'constructors';
-const VIEWS: { id: View; label: string; icon: React.ReactNode }[] = [
-  { id: 'drivers', label: 'Drivers', icon: <Users className="h-4 w-4" /> },
-  { id: 'constructors', label: 'Constructors', icon: <Flag className="h-4 w-4" /> },
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'drivers', label: "Drivers' championship" },
+  { id: 'constructors', label: "Constructors' championship" },
 ];
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -33,22 +33,22 @@ const StatusBanner: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kin
   const left = outlook.remaining.length;
 
   if (outlook.status === 'finished') {
-    return <Notice tone="info">{title}: <strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship.</Notice>;
+    return <Notice tone="info" className="">{title}: <strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship.</Notice>;
   }
   if (outlook.clinched) {
     return (
-      <Notice tone="info">
+      <Notice tone="info" className="">
         <strong className="text-white">{outlook.champion}</strong> {kind === 'drivers' ? 'is' : 'are'} the {outlook.year} champion
         {kind === 'constructors' ? 's' : ''} — clinched with {plural(left, 'round')} to go.
       </Notice>
     );
   }
   if (outlook.status === 'pre_season' || !leader) {
-    return <Notice tone="info">The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</Notice>;
+    return <Notice tone="info" className="">The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</Notice>;
   }
   const hint = outlook.next_race_clinch;
   return (
-    <Notice tone="info">
+    <Notice tone="info" className="">
       {leader.name} lead{kind === 'drivers' ? 's' : ''} after {plural(outlook.rounds_completed, 'round')}. {plural(left, 'round')} left,
       with up to {outlook.max_points_remaining} points still available to {kind === 'drivers' ? 'a driver' : 'a team'}.
       {hint && (
@@ -138,9 +138,7 @@ const HowItWorks: React.FC<{ outlook: Outlook; kind: View; backtest: Championshi
   const years = backtest?.seasons.map((s) => s.year) ?? [];
   const pct = (x: number) => `${Math.round(x * 100)}%`;
   return (
-    <Card>
-      <CardHeader title="How this is worked out" icon={<Info className="h-4 w-4" />} />
-      <CardBody className="space-y-3 text-sm leading-relaxed text-gray-400">
+    <HowItWorksCard>
         <p>
           <strong className="text-gray-200">Who can still win</strong> is exact: a {kind === 'drivers' ? 'driver' : 'team'} is out of
           contention once, even scoring the maximum in every remaining round
@@ -166,8 +164,7 @@ const HowItWorks: React.FC<{ outlook: Outlook; kind: View; backtest: Championshi
             average {pct(summary.mean_p_actual_champion)} chance. That's {plural(years.length, 'season')}, so treat it as a rough guide.
           </p>
         ) : null}
-      </CardBody>
-    </Card>
+    </HowItWorksCard>
   );
 };
 
@@ -212,36 +209,40 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
   const empty = outlook && outlook.standings.length === 0;
 
   return (
-    <FadeIn className="space-y-6">
-      <Tabs tabs={VIEWS} active={view} onChange={setView} label="Championship" idPrefix="title" />
-      <TabPanel id={view} idPrefix="title">
-        <div className="space-y-6">
-          {loading ? <LoadingState label="Playing out the rest of the season…" /> : error ? (
-            <ErrorState title="Couldn't load the championship outlook" message={error} onRetry={load} />
-          ) : !outlook || empty ? (
+    <FadeIn>
+      <FilterBar>
+        <SelectField label="Championship" value={view} onChange={(v) => setView(v as View)} className="min-w-[240px]">
+          {VIEWS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+        </SelectField>
+      </FilterBar>
+      <div className="space-y-6">
+        {loading ? <Card><LoadingState label="Playing out the rest of the season…" /></Card> : error ? (
+          <Card><ErrorState title="Couldn't load the championship outlook" message={error} onRetry={load} /></Card>
+        ) : !outlook || empty ? (
+          <Card>
             <EmptyState
               icon={<Trophy className="h-10 w-10" />}
               title={`No title race to show for ${year}`}
               message="The outlook is worked out from stored race results, which start in 2022."
             />
-          ) : (
-            <>
-              <StatusBanner outlook={outlook} kind={view} />
-              <Card>
-                <CardHeader
-                  title={`${view === 'drivers' ? "Drivers'" : "Constructors'"} Championship — ${year}`}
-                  icon={<Trophy className="h-4 w-4" />}
-                  subtitle={outlook.status === 'finished'
-                    ? 'Final standings'
-                    : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · sorted by the current table`}
-                />
-                <OutlookTable outlook={outlook} kind={view} />
-              </Card>
-              {outlook.status !== 'finished' && <HowItWorks outlook={outlook} kind={view} backtest={backtest} />}
-            </>
-          )}
-        </div>
-      </TabPanel>
+          </Card>
+        ) : (
+          <>
+            <StatusBanner outlook={outlook} kind={view} />
+            <Card>
+              <CardHeader
+                title={`${view === 'drivers' ? "Drivers'" : "Constructors'"} Championship — ${year}`}
+                icon={<Trophy className="h-4 w-4" />}
+                subtitle={outlook.status === 'finished'
+                  ? 'Final standings'
+                  : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · sorted by the current table`}
+              />
+              <OutlookTable outlook={outlook} kind={view} />
+            </Card>
+            {outlook.status !== 'finished' && <HowItWorks outlook={outlook} kind={view} backtest={backtest} />}
+          </>
+        )}
+      </div>
     </FadeIn>
   );
 };

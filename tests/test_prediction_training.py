@@ -374,3 +374,13 @@ async def test_a_weekend_without_practice_data_is_still_scored_and_flagged(tmp_p
     assert "2024_4" in races, "the weekend without practice dropped out"
     assert races["2024_4"]["practice_data"] is False and races["2024_4"]["race_mae"] is not None
     assert races["2024_2"]["practice_data"] is True
+
+
+async def test_walk_forward_results_carry_driver_names_even_before_training(tmp_path):
+    svc = PredictionService(model_dir=str(tmp_path))        # fresh: no name map yet
+    raw = synthetic_raw(years=[2023, 2024], rounds_per_year=6).assign(driver_name=lambda d: "Name " + d["driver_id"])
+
+    out = svc._walk_forward_fit(raw, FakeLgb(), years_back=5)
+
+    names = {d["driver_name"] for r in out["races"] for d in r["drivers"]}
+    assert names and all(n.startswith("Name ") for n in names)

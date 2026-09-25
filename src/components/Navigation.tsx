@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { LogoMark, Wordmark } from './ui';
+import { useLiveTiming } from '../config/features';
 
 type NavItem = { path: string; label: string; icon: LucideIcon };
 
@@ -21,6 +22,8 @@ const NAV_ITEMS: NavItem[] = [
 const Navigation: React.FC = () => {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  // Live timing is on hold unless the API has a feed (or a replay) running: say so in the menu.
+  const { enabled: liveOn, loading: liveLoading } = useLiveTiming();
 
   const renderItem = (item: NavItem, compact = false) => {
     const Icon = item.icon;
@@ -42,6 +45,12 @@ const Navigation: React.FC = () => {
       >
         <Icon className="w-4 h-4 flex-shrink-0" />
         <span>{item.label}</span>
+        {item.path === '/live' && !liveOn && !liveLoading && (
+          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wide ${
+            isActive ? 'bg-pure-white/20 text-pure-white' : 'bg-yellow-500/15 text-yellow-400'}`}>
+            Soon
+          </span>
+        )}
       </NavLink>
     );
   };

@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
 import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
 import {
-  Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
+  Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
 } from './ui';
 import { formatChance } from '../utils/probability';
@@ -120,11 +120,12 @@ const UnavailableCard: React.FC<{ what: string; reason?: string; severe?: boolea
   </Card>
 );
 
-const errorColor = (err: number | null | undefined): string => {
-  if (err == null) return 'text-gray-500';
-  if (err <= 1.5) return 'text-green-400';
-  if (err <= 3) return 'text-yellow-400';
-  return 'text-red-400';
+/** Rank error: average places a prediction was off by. Lower is better. */
+const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'neutral' => {
+  if (err == null) return 'neutral';
+  if (err <= 1.5) return 'good';
+  if (err <= 3) return 'warn';
+  return 'bad';
 };
 
 type SortKey = 'driver_name' | 'predicted_grid' | 'actual_grid' | 'predicted_position' | 'actual_position';
@@ -196,12 +197,8 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
           : `${race.circuit_name} · ${race.year}`}
         action={
           <div className="flex items-center gap-2">
-            <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.quali_mae)}`}>
-              Quali err {race.quali_mae != null ? race.quali_mae.toFixed(2) : '—'}
-            </span>
-            <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.race_mae)}`}>
-              Race err {race.race_mae != null ? race.race_mae.toFixed(2) : '—'}
-            </span>
+            <Pill tone={errorTone(race.quali_mae)}>Qualifying off by {race.quali_mae != null ? race.quali_mae.toFixed(1) : '—'}</Pill>
+            <Pill tone={errorTone(race.race_mae)}>Race off by {race.race_mae != null ? race.race_mae.toFixed(1) : '—'}</Pill>
           </div>
         }
       />
@@ -219,10 +216,10 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
           {sortedDrivers.map((d) => (
             <Tr key={d.driver_id}>
               <Td className="font-medium text-white">{d.driver_name}</Td>
-              <Td align="right" className="text-xs text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid}` : '—'}</Td>
-              <Td align="right" className="text-xs text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
-              <Td align="right" className="text-xs text-gray-400">{d.predicted_position != null ? `P${d.predicted_position}` : '—'}</Td>
-              <Td align="right" className="text-xs text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>
+              <Td align="right" className="tabular-nums text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid}` : '—'}</Td>
+              <Td align="right" className="tabular-nums text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
+              <Td align="right" className="tabular-nums text-gray-400">{d.predicted_position != null ? `P${d.predicted_position}` : '—'}</Td>
+              <Td align="right" className="tabular-nums text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>
             </Tr>
           ))}
         </tbody>
@@ -293,13 +290,16 @@ const BacktestTab: React.FC = () => {
     );
   }
 
+  const mean = (xs: (number | null)[]) => {
+    const v = xs.filter((x): x is number => x != null);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  };
+  const quali = mean(races.map((r) => r.quali_mae));
+  const race = mean(races.map((r) => r.race_mae));
+  const seasons = years.slice().sort((a, b) => a - b);
+
   return (
     <FadeIn>
-      <p className="mb-4 max-w-3xl text-sm text-gray-500">
-        Each race's predictions use only data available before it was run — the current model
-        scored retrospectively against real results. Lower error is better.
-      </p>
-
       <FilterBar>
         <SelectField label="Year" value={yearFilter ?? ''} onChange={(v) => setYearFilter(Number(v))}>
           {years.map((y) => <option key={y} value={y}>{y}</option>)}
@@ -319,6 +319,24 @@ const BacktestTab: React.FC = () => {
       ) : (
         <Card><EmptyState title="No race matches the selected filters" /></Card>
       )}
+
+      <div className="mt-6">
+        <HowItWorksCard>
+          <p>
+            <strong className="text-gray-200">Honest by design:</strong> each season is predicted by a model trained only on
+            earlier seasons, so it never sees the results it's judged against. "Off by" is how many places a prediction
+            missed by, averaged over the drivers in that session: lower is better.
+          </p>
+          {quali != null && race != null && (
+            <p>
+              <strong className="text-gray-200">Overall:</strong> across {races.length} races
+              ({seasons[0]}–{seasons[seasons.length - 1]}), qualifying was off by {quali.toFixed(1)} places on average and
+              the race by {race.toFixed(1)}. F1 is unpredictable (retirements, strategy, weather), so a few places is
+              normal for any model.
+            </p>
+          )}
+        </HowItWorksCard>
+      </div>
     </FadeIn>
   );
 };
@@ -408,7 +426,7 @@ const Predictions: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="Race Predictions" subtitle="ML-powered qualifying and race predictions" />
+      <PageHeader title="Predictions" subtitle="Qualifying and race predictions, the title race, and how past predictions held up" />
 
       <Tabs tabs={PREDICTION_TABS} active={tab} onChange={setTab} label="Prediction views" idPrefix="pred" />
 
@@ -471,7 +489,7 @@ const Predictions: React.FC = () => {
             ) : loading && !hasResults ? (
               <Card><LoadingState label={warmingUp ? "Training the models — the first run after a restart takes a little longer…" : "Generating predictions…"} /></Card>
             ) : hasResults ? (
-              <FadeIn className="flex flex-col gap-6 lg:flex-row">
+              <FadeIn className="flex flex-col gap-6 xl:flex-row">
                 {qualiResult?.predictions.length ? (
                   <PredictionTable title="Qualifying Prediction" subtitle={qualiResult.circuit} data={qualiResult.predictions}
                     valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
@@ -488,12 +506,25 @@ const Predictions: React.FC = () => {
                 ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
               </FadeIn>
             ) : null}
-            {!error && hasResults && (raceResult?.odds_available || qualiResult?.odds_available) && (
-              <p className="mt-4 text-xs leading-relaxed text-gray-500">
-                The order is the model's prediction. <strong className="text-gray-400">avg</strong> and the win / pole and
-                podium chances come from playing the session out 20,000 times with the same model, tuned on real races it
-                hadn't seen, so a favourite's chance reflects how often favourites really do win. Sprints show the order only.
-              </p>
+            {!error && hasResults && (
+              <div className="mt-6">
+                <HowItWorksCard>
+                  <p>
+                    <strong className="text-gray-200">The order</strong> comes from ranking models trained on every race
+                    since 2022: recent form, form at this circuit, the team's pace, reliability and the predicted grid.
+                  </p>
+                  {(raceResult?.odds_available || qualiResult?.odds_available) && (
+                    <p>
+                      <strong className="text-gray-200">avg and the win / pole and podium chances</strong> come from
+                      playing the session out 20,000 times with the same model, tuned on real races it hadn't seen, so a
+                      favourite's chance reflects how often favourites really do win. Sprints show the order only.
+                    </p>
+                  )}
+                  <p>
+                    See how past predictions held up in <strong className="text-gray-200">Predicted vs Actual</strong>.
+                  </p>
+                </HowItWorksCard>
+              </div>
             )}
             {!error && !hasResults && !loading && (
               <Card>
