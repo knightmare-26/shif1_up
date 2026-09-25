@@ -5,8 +5,10 @@ DuckDB connection and avoids file-locking conflicts with the API.
 
 import asyncio
 import logging
+from datetime import date, timedelta
+from typing import List, Optional, Union
+
 import pandas as pd
-from typing import List, Union
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +57,7 @@ def _extract_classified_results(fastf1_session, session: str) -> List[dict]:
         laps_val = row.get("Laps")
 
         results.append({
-            "position": int(pos) if pd.notna(pos) else 99,
+            "position": int(pos) if pd.notna(pos) else None,
             "driver_id": str(row.get("Abbreviation", "")).lower(),
             "constructor_id": str(row.get("TeamId", row.get("TeamName", ""))).lower().replace(" ", "_"),
             "grid": grid_val,
@@ -66,6 +68,22 @@ def _extract_classified_results(fastf1_session, session: str) -> List[dict]:
             "status": str(row.get("Status", "")) if pd.notna(row.get("Status")) else "",
             "laps_completed": int(laps_val) if pd.notna(laps_val) else None,
         })
+    return _number_unclassified(results)
+
+
+def _number_unclassified(results: List[dict]) -> List[dict]:
+    """Drivers without a position (not classified, disqualified, didn't start, no time set) go
+    after the classified ones, in the order FastF1 lists them. They used to all be stored as
+    P99 — and since a session's rows are keyed by position, a second such driver overwrote the
+    first, losing a result."""
+    taken = {r["position"] for r in results if r["position"] is not None}
+    nxt = max(taken, default=0) + 1
+    for r in results:
+        if r["position"] is None:
+            while nxt in taken:
+                nxt += 1
+            r["position"] = nxt
+            taken.add(nxt)
     return results
 
 
@@ -252,3 +270,41 @@ async def run_ingest(duckdb_service, years: List[int], include_laps: bool = Fals
 
     status.update({"running": False, "message": "Done", "error": None})
     logger.info("Ingest complete for years %s", years)
+
+
+def _results_signature(rows: List[dict]) -> list:
+    return sorted((r.get("position"), r.get("driver_id"), r.get("points")) for r in rows)
+
+
+async def refresh_recent_results(db, days: int, today: Optional[date] = None) -> List[dict]:
+    """Re-fetch the race, sprint and qualifying results of rounds held in the last `days` days.
+
+    Results can change after they were first stored — a post-race penalty (2026 Monaco: Gasly
+    P3 to P7) or a disqualification — and nothing else re-reads them. Returns the sessions whose
+    stored results changed. A sprint is only re-fetched on a weekend that already has one."""
+    today = today or date.today()
+    since = today - timedelta(days=days)
+    changed: List[dict] = []
+    for year in sorted({since.year, today.year}):
+        for race in await db.get_races_by_year(year):
+            try:
+                held = date.fromisoformat(str(race.get("date") or "")[:10])
+            except ValueError:
+                continue
+            if not (since <= held < today):
+                continue
+            for session in ("R", "S", "Q"):
+                session_type = SESSION_TYPE_MAP[session]
+                before = await db.get_race_results(race["race_id"], session_type)
+                if session == "S" and not before:
+                    continue
+                try:
+                    await ingest_single_race(db, year, int(race["round"]), False, session=session)
+                except Exception as exc:
+                    logger.warning("results refresh: %s %s failed: %s", race["race_id"], session, exc)
+                    continue
+                after = await db.get_race_results(race["race_id"], session_type)
+                if _results_signature(before) != _results_signature(after):
+                    logger.info("results refresh: %s %s changed", race["race_id"], session_type)
+                    changed.append({"race_id": race["race_id"], "session_type": session_type})
+    return changed

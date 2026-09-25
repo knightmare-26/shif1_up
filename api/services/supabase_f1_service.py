@@ -15,6 +15,57 @@ logger = logging.getLogger(__name__)
 BACKEND = "postgres"
 
 
+
+# Race and sprint wins/podiums per driver for one season, from the stored results. Positions are
+# the classified ones as stored, so a post-race penalty shows once the race is re-ingested. Counting
+# distinct races keeps a stale duplicate row (same driver twice in one session) from counting twice.
+DRIVER_RESULT_COUNTS_SQL = """
+    SELECT rr.driver_id,
+           MAX(d.full_name) AS driver_name,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   THEN rr.race_id END)                      AS races,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position = 1 THEN rr.race_id END)  AS race_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id END) AS race_podiums,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                      AS sprints,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)  AS sprint_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id END) AS sprint_podiums
+    FROM race_results rr
+    JOIN races r ON rr.race_id = r.race_id
+    LEFT JOIN drivers d ON rr.driver_id = d.driver_id
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint') AND rr.driver_id IS NOT NULL
+    GROUP BY rr.driver_id
+"""
+
+# The same per team. Wins count once per race; podiums count every car on the podium (a one-two is
+# two podiums), the usual way team podiums are counted.
+CONSTRUCTOR_RESULT_COUNTS_SQL = """
+    SELECT rr.constructor_id,
+           MAX(c.constructor_name) AS constructor_name,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   THEN rr.race_id END)                                        AS races,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position = 1 THEN rr.race_id END)                    AS race_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END)   AS race_podiums,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                                        AS sprints,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)                    AS sprint_wins,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END) AS sprint_podiums
+    FROM race_results rr
+    JOIN races r ON rr.race_id = r.race_id
+    LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint')
+      AND rr.constructor_id IS NOT NULL AND rr.constructor_id <> ''
+    GROUP BY rr.constructor_id
+"""
+
+# Every race and sprint result of one season, for the championship outlook.
+SEASON_RESULTS_SQL = """
+    SELECT r.round, rr.session_type, rr.driver_id, rr.constructor_id, rr.position, rr.points,
+           d.full_name AS driver_name, c.constructor_name
+    FROM race_results rr
+    JOIN races r ON rr.race_id = r.race_id
+    LEFT JOIN drivers d ON rr.driver_id = d.driver_id
+    LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint')
+    ORDER BY r.round, rr.session_type, rr.position
+"""
+
 class SupabaseF1Service:
     backend = BACKEND
 
@@ -184,6 +235,15 @@ class SupabaseF1Service:
         """, (year, driver_id))
         return rows[0] if rows else None
 
+    async def get_driver_result_counts(self, year: int) -> List[Dict]:
+        return await self._run_query(DRIVER_RESULT_COUNTS_SQL.format(year="$1"), (year,))
+
+    async def get_constructor_result_counts(self, year: int) -> List[Dict]:
+        return await self._run_query(CONSTRUCTOR_RESULT_COUNTS_SQL.format(year="$1"), (year,))
+
+    async def get_season_results(self, year: int) -> List[Dict]:
+        return await self._run_query(SEASON_RESULTS_SQL.format(year="$1"), (year,))
+
     async def get_races_by_year(self, year: int) -> List[Dict]:
         return await self._run_query("""
             SELECT race_id, year, round, gp, date, circuit_name, country
@@ -298,11 +358,18 @@ class SupabaseF1Service:
     async def store_race_results(self, race_id: str, results: List[Dict], session_type: str = "race") -> bool:
         """`session_type` is 'race' or 'sprint' — a sprint's results share the
         race_id but never collide with the main race's since the primary key
-        includes session_type."""
+        includes session_type.
+
+        Replaces the session's rows (in one transaction) rather than upserting them: an upsert
+        keyed by position leaves a row behind at any position the new results no longer use —
+        e.g. a driver stored twice after a re-ingest re-numbered the unclassified cars."""
         if not results or not self.pool:
             return True
         try:
-            async with self.pool.acquire() as conn:
+            async with self.pool.acquire() as conn, conn.transaction():
+                await conn.execute(
+                    "DELETE FROM race_results WHERE race_id = $1 AND session_type = $2", race_id, session_type
+                )
                 await conn.executemany(
                     """INSERT INTO race_results
                            (race_id, session_type, position, driver_id, constructor_id, grid, points,
@@ -366,13 +433,13 @@ class SupabaseF1Service:
     async def clear_prediction_cache(self) -> bool:
         """Drop cached per-circuit predictions — called after a retrain since old
         cached output no longer reflects the current model. The walk-forward
-        backtest row is kept: it's expensive, evaluates held-out seasons rather
-        than the live model, and is keyed to the training data, not the model."""
+        and championship backtest rows are kept: they are expensive, evaluate held-out seasons rather
+        than the live model, and are keyed to the training data, not the model."""
         if not self.pool:
             return True
         try:
             async with self.pool.acquire() as conn:
-                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name <> '_walkforward'")
+                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship')")
             return True
         except Exception as exc:
             logger.error("❌ Error clearing prediction cache: %s", exc)

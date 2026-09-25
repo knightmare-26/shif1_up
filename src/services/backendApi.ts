@@ -28,6 +28,97 @@ export interface DriverStanding {
   podiums?: number;
   nationality: string;
   number?: number;
+  /** Three-letter code (VER). Only in live API responses; the committed snapshots don't have it. */
+  code?: string | null;
+}
+
+/** Race and sprint wins/podiums per driver, counted from the stored results. */
+export interface DriverResultStats {
+  code: string;
+  driver_name: string | null;
+  race_wins: number;
+  race_podiums: number;
+  sprint_wins: number;
+  sprint_podiums: number;
+}
+
+export interface DriverStatsResponse {
+  year: number;
+  races_counted: number;
+  sprints_counted: number;
+  drivers: DriverResultStats[];
+}
+
+/** Race and sprint wins/podiums per team (podiums count every car on the podium). */
+export interface ConstructorResultStats {
+  constructor_id: string;
+  constructor_name: string | null;
+  race_wins: number;
+  race_podiums: number;
+  sprint_wins: number;
+  sprint_podiums: number;
+}
+
+export interface ConstructorStatsResponse {
+  year: number;
+  races_counted: number;
+  sprints_counted: number;
+  constructors: ConstructorResultStats[];
+}
+
+/** One driver's or team's row in the championship outlook (GET /api/predictions/championship). */
+export interface ChampionshipRow {
+  id: string;
+  code: string | null;
+  name: string;
+  team: string | null;
+  position: number;
+  points: number;
+  wins: number;
+  /** Can still mathematically win the title. */
+  alive: boolean;
+  /** Drivers: in the latest race's line-up. False when injured or out of the seat. */
+  racing?: boolean | null;
+  projected_points: number;
+  points_p10: number;
+  points_p90: number;
+  projected_position: number;
+  title_probability: number;
+  /** Chance of each final position (index 0 = champion); null once the season is decided. */
+  position_probabilities: number[] | null;
+}
+
+export interface ChampionshipOutlook {
+  year: number;
+  status: 'pre_season' | 'in_progress' | 'finished';
+  rounds_completed: number;
+  rounds_total: number;
+  remaining: { round: number; name: string; sprint: boolean }[];
+  sprint_calendar_known: boolean;
+  clinched: boolean;
+  champion: string | null;
+  max_points_remaining: number;
+  next_race_clinch: { round: number; race_name: string; rival: string; rival_name: string; margin_needed: number } | null;
+  standings: ChampionshipRow[];
+  method: { simulations: number; beta: number; calibration_races: number; model_trained_at: string | null };
+  computed_at: string;
+}
+
+export interface ChampionshipBacktestSummary {
+  checkpoints: number;
+  champion_accuracy: number;
+  leader_accuracy: number;
+  mean_p_actual_champion: number;
+  brier: number;
+  log_score: number;
+  final_order_mae: number;
+}
+
+export interface ChampionshipBacktest {
+  seasons: { year: number; champion: string; constructors_champion: string; rounds: number }[];
+  drivers: ChampionshipBacktestSummary | Record<string, never>;
+  constructors: ChampionshipBacktestSummary | Record<string, never>;
+  computed_at: string | null;
 }
 
 export interface ConstructorStanding {
@@ -76,6 +167,9 @@ export interface BacktestRace {
   circuit_name: string;
   quali_mae: number | null;
   race_mae: number | null;
+  /** false: no practice stored for this weekend, so it was predicted without practice pace
+   *  (like an upcoming race). Absent/null when practice pace isn't a model input. */
+  practice_data?: boolean | null;
   drivers: BacktestDriverRow[];
 }
 
@@ -288,6 +382,23 @@ class BackendApiService {
     if (!useCache) params.use_cache = false;
 
     return this.getCachedOrFetch('/api/drivers', params, 3600); // 1 hour cache
+  }
+
+  async getDriverStats(year: number): Promise<DriverStatsResponse> {
+    return this.getCachedOrFetch('/api/driver-stats', { year }, 600);
+  }
+
+  async getConstructorStats(year: number): Promise<ConstructorStatsResponse> {
+    return this.getCachedOrFetch('/api/constructor-stats', { year }, 600);
+  }
+
+  async getChampionshipOutlook(kind: 'drivers' | 'constructors', year: number): Promise<ChampionshipOutlook> {
+    const endpoint = kind === 'drivers' ? '/api/predictions/championship' : '/api/predictions/constructors-championship';
+    return this.getCachedOrFetch(endpoint, { year }, 600);
+  }
+
+  async getChampionshipBacktest(): Promise<ChampionshipBacktest> {
+    return this.getCachedOrFetch('/predict/championship/backtest', {}, 3600);
   }
 
   async getDriverDetails(driverId: string, year?: number): Promise<any> {

@@ -8,6 +8,8 @@ Usage:
     python scripts/generate_static_data.py
     python scripts/generate_static_data.py --results-from 2018   # race results from a year
     python scripts/generate_static_data.py --year 2024           # refresh one year only
+
+Only finished seasons are written (see the note at the bottom).
 """
 
 import argparse
@@ -230,6 +232,11 @@ if __name__ == "__main__":
 
     import datetime
     current_year = datetime.datetime.now().year
-    years = [args.year] if args.year else list(range(args.standings_from, current_year + 1))
+    # Finished seasons only: the frontend ignores snapshots of the current season (it changes every
+    # race weekend), and one left in the repo would be served — stale — once that season is over.
+    # Run this again after the final race to add the season just finished.
+    if args.year and args.year >= current_year:
+        parser.error(f"{args.year} isn't finished; snapshots are only for past seasons")
+    years = [args.year] if args.year else list(range(args.standings_from, current_year))
 
     asyncio.run(run(years, results_from=args.results_from))

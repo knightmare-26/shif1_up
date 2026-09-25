@@ -42,6 +42,7 @@ from services.auth_service import (
 )
 from services import ingest_service
 from services.prediction_service import PredictionService
+from services.championship_service import ChampionshipService
 from models.f1_models import (
     DriverStanding, ConstructorStanding, RaceEvent,
     SessionData, LapData, TelemetryData, WeatherData, RaceResult,
@@ -99,6 +100,7 @@ cache_service = None
 database_guardian: Optional[DatabaseGuardian] = None
 MODEL_DIR = os.getenv("MODEL_DIR", "data/models")
 prediction_service = PredictionService(model_dir=MODEL_DIR)
+championship_service = ChampionshipService(prediction_service)
 
 
 async def _init_redis() -> Any:
@@ -162,6 +164,35 @@ async def _warm_prediction_models() -> None:
         return
     logger.info("Training prediction models in the background…")
     await prediction_service._ensure_trained(duckdb_service)
+    await championship_service.warm()  # the odds on the Predictions page and the title outlook
+
+
+# Results change after they're first stored (post-race penalties, disqualifications), so once a
+# day the API re-fetches the race, sprint and qualifying results of the last N days' rounds and
+# retrains if anything moved. RESULTS_REFRESH_DAYS=0 turns it off.
+RESULTS_REFRESH_DAYS = int(os.getenv("RESULTS_REFRESH_DAYS", "14"))
+RESULTS_REFRESH_FIRST_DELAY = 600       # let a cold start settle (and the models train) first
+RESULTS_REFRESH_INTERVAL = 24 * 3600
+
+
+async def _results_refresh_loop() -> None:
+    await asyncio.sleep(RESULTS_REFRESH_FIRST_DELAY)
+    while True:
+        busy = (duckdb_service is None or (database_guardian is not None and not database_guardian.ready)
+                or ingest_service.status.get("running"))
+        if busy:
+            await asyncio.sleep(900)
+            continue
+        try:
+            changed = await ingest_service.refresh_recent_results(duckdb_service, RESULTS_REFRESH_DAYS)
+            if changed:
+                logger.info("Results refresh changed %d session(s); retraining", len(changed))
+                await prediction_service.train(duckdb_service)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Results refresh failed: %s", exc)
+        await asyncio.sleep(RESULTS_REFRESH_INTERVAL)
 
 
 async def _ping_database() -> bool:
@@ -182,6 +213,7 @@ async def _ping_database() -> bool:
 async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
     warmup_task = None
+    refresh_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
 
@@ -203,6 +235,8 @@ async def lifespan(app: FastAPI):
             api_url=os.getenv("SUPABASE_API_URL", "https://api.supabase.com"),
         )
         await database_guardian.start()
+        if RESULTS_REFRESH_DAYS > 0:
+            refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
     else:
         logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
@@ -210,7 +244,7 @@ async def lifespan(app: FastAPI):
 
     fastf1_service = FastF1Service()
     ergast_service = ErgastService()
-    cache_service = CacheService()
+    cache_service = CacheService(os.getenv("CACHE_DIR", "./cache"))
     await cache_service.initialize()
 
     if not DATABASE_URL:
@@ -228,8 +262,9 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
-    if warmup_task:
-        warmup_task.cancel()
+    for task in (warmup_task, refresh_task):
+        if task:
+            task.cancel()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
@@ -265,7 +300,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # (re)connecting they answer 503 "database_waking" — quickly, and with a message
 # the frontend can show — instead of failing with an opaque 500.
 DB_BACKED_PREFIXES = (
-    "/race/", "/admin/", "/auth/",
+    "/race/", "/admin/", "/auth/", "/api/driver-stats", "/api/constructor-stats", "/api/predictions/", "/predict/championship",
     "/predict/qualifying", "/predict/race", "/predict/sprint", "/predict/backtest", "/predict/train",
 )
 
@@ -796,17 +831,32 @@ async def websocket_live_updates(websocket: WebSocket, race_id: str):
         if initial_state:
             await websocket.send_text(json.dumps({"type": "initial_state", "data": initial_state}))
 
-        async for message in redis_service.subscribe_to_race(race_id):
-            flat = _unwrap_live_state(message)
-            if flat is None:
-                continue
-            try:
-                await websocket.send_text(json.dumps({"type": "update", "data": flat}))
-            except WebSocketDisconnect:
-                break
-            except Exception as exc:
-                logger.error("❌ WS send error: %s", exc)
-                break
+        async def forward_updates() -> None:
+            async for message in redis_service.subscribe_to_race(race_id):
+                flat = _unwrap_live_state(message)
+                if flat is None:
+                    continue
+                try:
+                    await websocket.send_text(json.dumps({"type": "update", "data": flat}))
+                except WebSocketDisconnect:
+                    return
+                except Exception as exc:
+                    logger.error("❌ WS send error: %s", exc)
+                    return
+
+        async def until_client_leaves() -> None:
+            # The client never sends anything, but reading is how a disconnect is noticed.
+            # Without this the subscription outlives the viewer until the next update is sent.
+            while (await websocket.receive())["type"] != "websocket.disconnect":
+                pass
+
+        tasks = [asyncio.create_task(forward_updates()), asyncio.create_task(until_client_leaves())]
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
     except WebSocketDisconnect:
         logger.info("WS disconnected for race %s", race_id)
     except Exception as exc:
@@ -888,6 +938,63 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
     except Exception as exc:
         logger.error("❌ legacy_driver_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/api/driver-stats")
+async def driver_result_stats(year: int = None):
+    """Race and sprint wins/podiums per driver for a season, counted from the stored results (the
+    standings feed only has total wins). Keyed by the three-letter code the standings now carry;
+    a season that isn't in the database returns no drivers."""
+    year = year or datetime.now().year
+    try:
+        rows = await duckdb_service.get_driver_result_counts(year)
+    except Exception as exc:
+        logger.error("❌ driver_result_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    drivers = [
+        {
+            "code": str(r["driver_id"]).upper(),
+            "driver_name": r.get("driver_name"),
+            **{k: int(r.get(k) or 0) for k in counts},
+        }
+        for r in rows
+    ]
+    drivers.sort(key=lambda d: tuple(-d[k] for k in counts))
+    return {
+        "year": year,
+        # Most races any one driver took part in — the rounds covered so far.
+        "races_counted": max((int(r.get("races") or 0) for r in rows), default=0),
+        "sprints_counted": max((int(r.get("sprints") or 0) for r in rows), default=0),
+        "drivers": drivers,
+    }
+
+
+@app.get("/api/constructor-stats")
+async def constructor_result_stats(year: int = None):
+    """Race and sprint wins/podiums per team for a season, from the stored results. Keyed by
+    constructor_id, which matches the standings' ids. Podiums count every car on the podium."""
+    year = year or datetime.now().year
+    try:
+        rows = await duckdb_service.get_constructor_result_counts(year)
+    except Exception as exc:
+        logger.error("❌ constructor_result_stats: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    teams = [
+        {"constructor_id": r["constructor_id"], "constructor_name": r.get("constructor_name"),
+         **{k: int(r.get(k) or 0) for k in counts}}
+        for r in rows
+    ]
+    teams.sort(key=lambda t: tuple(-t[k] for k in counts))
+    return {
+        "year": year,
+        "races_counted": max((int(r.get("races") or 0) for r in rows), default=0),
+        "sprints_counted": max((int(r.get("sprints") or 0) for r in rows), default=0),
+        "constructors": teams,
+    }
 
 
 @app.get("/api/constructors", response_model=List[ConstructorStanding])
@@ -1196,6 +1303,14 @@ async def predict_train(background_tasks: BackgroundTasks, user=Depends(get_curr
     return {"message": "Model training started in background. Check /predict/status for progress."}
 
 
+def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
+    """Expected position and win/podium chances, once the calibration is ready (built in the
+    background after training; until then the prediction goes out without them)."""
+    if not championship_service.odds_ready():
+        asyncio.create_task(championship_service.warm())
+    return championship_service.with_finish_odds(result, kind)
+
+
 @app.get("/predict/qualifying")
 async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
@@ -1203,7 +1318,7 @@ async def predict_qualifying(circuit: str):
         result = await prediction_service.predict_qualifying(circuit, duckdb_service)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "qualifying")
     except HTTPException:
         raise
     except Exception as exc:
@@ -1218,7 +1333,7 @@ async def predict_race(circuit: str):
         result = await prediction_service.predict_race(circuit, duckdb_service)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "race")
     except HTTPException:
         raise
     except Exception as exc:
@@ -1284,6 +1399,82 @@ async def predict_backtest_refresh(background_tasks: BackgroundTasks, user=Depen
 
     background_tasks.add_task(_do_refresh)
     return {"message": "Walk-forward backtest started in background. GET /predict/backtest will use it once ready."}
+
+
+# ---------------------------------------------------------------------------
+# Championship outlook (drivers' and constructors' titles)
+# ---------------------------------------------------------------------------
+
+async def _sprint_rounds(year: int) -> Optional[set]:
+    """Rounds with a sprint, from the schedule — the database only knows sprints already run.
+    None when the schedule can't be fetched (the outlook then counts no future sprints and says so)."""
+    try:
+        schedule = await legacy_race_schedule(year)
+    except Exception:
+        return None
+    rounds = set()
+    for event in schedule or []:
+        e = event if isinstance(event, dict) else event.model_dump()
+        if e.get("is_sprint") and e.get("round"):
+            rounds.add(int(e["round"]))
+    return rounds
+
+
+async def _championship(year: Optional[int]) -> Dict[str, Any]:
+    year = year or datetime.now().year
+    try:
+        return await championship_service.outlook(year, duckdb_service, await _sprint_rounds(year))
+    except Exception as exc:
+        logger.error("championship outlook %s: %s", year, exc, exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+def _championship_view(outlook: Dict[str, Any], kind: str) -> Dict[str, Any]:
+    shared = {k: v for k, v in outlook.items() if k not in ("drivers", "constructors")}
+    return {**shared, **outlook[kind]}
+
+
+@app.get("/api/predictions/championship")
+async def drivers_championship_outlook(year: int = None):
+    """Drivers' title: exact status (clinched / still in contention / what the leader needs next
+    race) plus a Monte Carlo projection of the final table from the race model."""
+    return _championship_view(await _championship(year), "drivers")
+
+
+@app.get("/api/predictions/constructors-championship")
+async def constructors_championship_outlook(year: int = None):
+    """Constructors' title, from the same simulated races as the drivers' outlook."""
+    return _championship_view(await _championship(year), "constructors")
+
+
+@app.get("/predict/championship/backtest")
+async def championship_backtest():
+    """How the championship projection would have done on finished seasons (cached; compute it
+    with POST /predict/championship/backtest/refresh)."""
+    cached = await duckdb_service.get_prediction_cache("_championship", "backtest")
+    if cached and cached.get("result", {}).get("seasons"):
+        return cached["result"]
+    return {"seasons": [], "drivers": {}, "constructors": {}, "computed_at": None}
+
+
+@app.post("/predict/championship/backtest/refresh")
+async def championship_backtest_refresh(background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    async def _do_refresh():
+        try:
+            result = await championship_service.backtest(duckdb_service)
+            if result.get("seasons"):
+                await duckdb_service.set_prediction_cache("_championship", "backtest", result["computed_at"], result)
+                logger.info("Championship backtest cached: seasons %s", [s["year"] for s in result["seasons"]])
+            else:
+                logger.warning("Championship backtest produced no seasons")
+        except Exception as exc:
+            logger.error("championship backtest failed: %s", exc, exc_info=True)
+
+    background_tasks.add_task(_do_refresh)
+    return {"message": "Championship backtest started in background (about a minute)."}
 
 
 if __name__ == "__main__":

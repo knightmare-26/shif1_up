@@ -5,6 +5,7 @@ import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
 } from './ui';
+import { formatChance } from '../utils/probability';
 
 interface PredictionRow {
   predicted_rank: number;
@@ -18,6 +19,10 @@ interface PredictionRow {
   circuit_avg_grid?: number | null;
   rolling_avg_finish?: number | null;
   rolling_avg_grid?: number | null;
+  /** From simulating the session with the calibrated model (race and qualifying only). */
+  expected_position?: number;
+  win_probability?: number;
+  podium_probability?: number;
 }
 
 interface PredictionResult {
@@ -26,6 +31,7 @@ interface PredictionResult {
   model: string;
   grid_data_available: boolean;
   predictions: PredictionRow[];
+  odds_available?: boolean;
   error?: string;
 }
 
@@ -43,7 +49,11 @@ const PredictionTable: React.FC<{
   avgKey: 'circuit_avg_grid' | 'circuit_avg_finish';
   rollingKey: 'rolling_avg_grid' | 'rolling_avg_finish';
   gridMissing: boolean;
-}> = ({ title, subtitle, data, valueKey, avgKey, rollingKey, gridMissing }) => (
+  /** Qualifying calls a win "pole" and a podium "top 3". */
+  qualifying?: boolean;
+}> = ({ title, subtitle, data, valueKey, avgKey, rollingKey, gridMissing, qualifying }) => {
+  const odds = data.some((r) => r.win_probability != null);
+  return (
   <Card className="min-w-0 flex-1">
     <CardHeader
       title={title}
@@ -57,6 +67,7 @@ const PredictionTable: React.FC<{
           <Th>Driver</Th>
           <Th className="hidden sm:table-cell">Team</Th>
           <Th align="right">Predicted</Th>
+          {odds && <Th align="right">{qualifying ? 'Pole' : 'Win'}</Th>}
           <Th align="right" className="hidden md:table-cell">Circuit Avg</Th>
           <Th align="right" className="hidden md:table-cell">Form (5R)</Th>
         </tr>
@@ -69,7 +80,20 @@ const PredictionTable: React.FC<{
             <Td className="hidden text-xs text-gray-400 sm:table-cell">{row.constructor_name}</Td>
             <Td align="right" className={`font-semibold ${positionColor(row.predicted_rank)}`}>
               P{Math.round(row[valueKey] ?? row.predicted_rank)}
+              {row.expected_position != null && (
+                <span className="block text-xs font-normal text-gray-500" title="Average finishing position over the simulated sessions">
+                  avg P{row.expected_position.toFixed(1)}
+                </span>
+              )}
             </Td>
+            {odds && (
+              <Td align="right" className="tabular-nums text-gray-200">
+                {row.win_probability != null ? formatChance(row.win_probability) : '—'}
+                {row.podium_probability != null && (
+                  <span className="block text-xs text-gray-500">{qualifying ? 'top 3' : 'podium'} {formatChance(row.podium_probability)}</span>
+                )}
+              </Td>
+            )}
             <Td align="right" className="hidden text-xs text-gray-400 md:table-cell">
               {row[avgKey] != null ? `P${row[avgKey]!.toFixed(1)}` : '—'}
             </Td>
@@ -81,7 +105,8 @@ const PredictionTable: React.FC<{
       </tbody>
     </TableWrap>
   </Card>
-);
+  );
+};
 
 const UnavailableCard: React.FC<{ what: string; reason?: string; severe?: boolean }> = ({ what, reason, severe }) => (
   <Card className="flex-1">
@@ -164,7 +189,9 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
     <Card>
       <CardHeader
         title={`Round ${race.round} — ${race.race_name}`}
-        subtitle={`${race.circuit_name} · ${race.year}`}
+        subtitle={race.practice_data === false
+          ? `${race.circuit_name} · ${race.year} · no practice data stored, so predicted without practice pace`
+          : `${race.circuit_name} · ${race.year}`}
         action={
           <div className="flex items-center gap-2">
             <span className={`rounded bg-gray-800 px-2 py-1 text-xs tabular-nums ${errorColor(race.quali_mae)}`}>
@@ -437,7 +464,7 @@ const Predictions: React.FC = () => {
               <FadeIn className="flex flex-col gap-6 lg:flex-row">
                 {qualiResult?.predictions.length ? (
                   <PredictionTable title="Qualifying Prediction" subtitle={qualiResult.circuit} data={qualiResult.predictions}
-                    valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} />
+                    valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
                 ) : qualiResult && <UnavailableCard what="Qualifying prediction" reason={qualiResult.error} />}
 
                 {sprintResult?.predictions.length ? (
@@ -450,7 +477,15 @@ const Predictions: React.FC = () => {
                     valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
                 ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
               </FadeIn>
-            ) : (
+            ) : null}
+            {!error && hasResults && (raceResult?.odds_available || qualiResult?.odds_available) && (
+              <p className="mt-4 text-xs leading-relaxed text-gray-500">
+                The order is the model's prediction. <strong className="text-gray-400">avg</strong> and the win / pole and
+                podium chances come from playing the session out 20,000 times with the same model, tuned on real races it
+                hadn't seen, so a favourite's chance reflects how often favourites really do win. Sprints show the order only.
+              </p>
+            )}
+            {!error && !hasResults && !loading && (
               <Card>
                 <EmptyState
                   icon={<TrendingUp className="h-10 w-10" />}

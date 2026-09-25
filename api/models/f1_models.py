@@ -28,6 +28,7 @@ class DriverStanding(BaseModel):
     podiums: int = Field(default=0, description="Number of podiums")
     nationality: str = Field(..., description="Driver nationality")
     number: Optional[int] = Field(None, description="Driver number")
+    code: Optional[str] = Field(None, description="Three-letter driver code (VER), as stored with results")
 
 class ConstructorStanding(BaseModel):
     """Constructor championship standing"""

@@ -339,3 +339,38 @@ async def test_clearing_the_prediction_cache_keeps_the_walk_forward_result(tmp_p
 
     assert await db.get_prediction_cache("Monza", "race") is None
     assert (await db.get_prediction_cache("_walkforward", "v1"))["result"] == {"races": [1]}
+
+
+async def test_clearing_the_prediction_cache_keeps_the_championship_backtest(tmp_path):
+    from services.simple_duckdb_service import SimpleDuckDBService
+    db = SimpleDuckDBService(str(tmp_path / "t.duckdb"))
+    await db.initialize()
+    await db.set_prediction_cache("_championship", "backtest", "t", {"seasons": [2025]})
+
+    await db.clear_prediction_cache()
+
+    assert (await db.get_prediction_cache("_championship", "backtest"))["result"] == {"seasons": [2025]}
+
+
+async def test_a_weekend_without_practice_data_is_still_scored_and_flagged(tmp_path):
+    """Once practice pace is a model input, a weekend with no practice stored used to drop out of
+    the accuracy tab entirely (its rows failed the complete-features filter)."""
+    svc = PredictionService(model_dir=str(tmp_path))
+    drivers = tuple(f"d{i}" for i in range(1, 13))  # enough complete rows (>= 20) to train on
+    raw = synthetic_raw(years=[2024], rounds_per_year=4, drivers=drivers)
+    practice = [
+        {"race_id": f"2024_{rnd}", "driver_id": d, "constructor_id": f"c{i % 2}", "position": i + 1,
+         "grid": None, "points": 0.0, "status": "", "session_type": "fp1", "circuit_name": f"circuit{rnd}",
+         "year": 2024, "round": rnd, "race_name": f"GP{rnd}", "driver_name": d, "constructor_name": f"Team {i % 2}"}
+        for rnd in (1, 2, 3) for i, d in enumerate(drivers)
+    ]
+    svc._fit(pd.concat([raw, pd.DataFrame(practice)], ignore_index=True), FakeLgb())
+    assert svc._practice_available and svc._race_model is not None
+
+    races = {r["race_id"]: r for r in svc._score_races(svc._df, svc._quali_model, svc._race_model,
+                                                       svc._race_features, svc._quali_features)}
+
+    # (Round 1 has no form history yet, so it isn't scored either way.)
+    assert "2024_4" in races, "the weekend without practice dropped out"
+    assert races["2024_4"]["practice_data"] is False and races["2024_4"]["race_mae"] is not None
+    assert races["2024_2"]["practice_data"] is True

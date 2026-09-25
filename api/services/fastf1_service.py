@@ -108,7 +108,8 @@ class FastF1Service:
                         constructor=row.get('TeamName', 'Unknown Team'),
                         points=float(row.get('Points', 0)),
                         wins=int(row.get('Wins', 0)),
-                        nationality=row.get('CountryCode', 'Unknown')
+                        nationality=row.get('CountryCode', 'Unknown'),
+                        code=row.get('Abbreviation') or None,
                     )
                     standings.append(standing)
                 

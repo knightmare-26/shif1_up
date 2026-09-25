@@ -19,7 +19,6 @@ class RedisService:
     def __init__(self, redis_url: str):
         self.redis_url = redis_url
         self.redis_client = None
-        self.pubsub = None
         
     async def initialize(self):
         """Initialize Redis connection"""
@@ -38,19 +37,16 @@ class RedisService:
     async def cleanup(self):
         """Cleanup Redis connection"""
         try:
-            if self.pubsub:
-                await self.pubsub.close()
             if self.redis_client:
                 await self.redis_client.close()
             logger.info("✅ Redis cleanup completed")
         except Exception as e:
             logger.error(f"❌ Error during Redis cleanup: {str(e)}")
-    
+
     def get_pubsub(self):
-        """Get Redis pub/sub client"""
-        if not self.pubsub:
-            self.pubsub = self.redis_client.pubsub()
-        return self.pubsub
+        """A new pub/sub client. Each subscriber needs its own: a shared one mixes every
+        subscriber's channels together and has several readers on one connection."""
+        return self.redis_client.pubsub()
     
     async def set_live_state(self, race_id: str, state: Dict[str, Any], ttl: int = 3600) -> bool:
         """Set live state for a race"""
@@ -112,13 +108,13 @@ class RedisService:
             return False
     
     async def subscribe_to_race(self, race_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Subscribe to live updates for a race"""
+        """Subscribe to live updates for a race, on a connection of its own that is released
+        when the subscriber stops (closes the generator or is cancelled)."""
+        channel = f"race:{race_id}:updates"
+        pubsub = self.get_pubsub()
         try:
-            channel = f"race:{race_id}:updates"
-            pubsub = self.get_pubsub()
-            
             await pubsub.subscribe(channel)
-            
+
             async for message in pubsub.listen():
                 if message["type"] == "message":
                     try:
@@ -126,9 +122,14 @@ class RedisService:
                         yield data
                     except json.JSONDecodeError:
                         continue
-                        
+
         except Exception as e:
             logger.error(f"❌ Error subscribing to race {race_id}: {str(e)}")
+        finally:
+            try:
+                await pubsub.reset()  # unsubscribes and returns the connection to the pool
+            except Exception as e:
+                logger.debug(f"pub/sub reset for race {race_id} failed: {e}")
     
     async def set_prediction(self, race_id: str, prediction: Dict[str, Any], ttl: int = 3600) -> bool:
         """Set prediction for a race"""

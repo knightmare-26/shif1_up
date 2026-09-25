@@ -479,11 +479,16 @@ class PredictionService:
     # Feature rows for a future race at a given circuit
     # ------------------------------------------------------------------
 
-    def _build_prediction_rows(self, circuit_name: str) -> pd.DataFrame:
-        df = self._df
-        # Only predict for drivers who raced in the most recent season
+    def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+        """`df` is the history to build from — the full training frame by default; the
+        championship backtest passes history cut off at an earlier round."""
+        df = self._df if df is None else df
+        # Predict for the current field: the drivers in the latest race. (Everyone who raced this
+        # season used to be included, so a driver who wasn't racing — injured, or out of the
+        # seat — was still predicted. They're back in once they've raced again.)
         most_recent_year = int(df["year"].max())
-        recent_drivers = df[df["year"] == most_recent_year]["driver_id"].unique()
+        latest_round = int(df.loc[df["year"] == most_recent_year, "round"].max())
+        recent_drivers = df[(df["year"] == most_recent_year) & (df["round"] == latest_round)]["driver_id"].unique()
         df_recent = df[df["driver_id"].isin(recent_drivers)]
         latest = df_recent.sort_values(["year", "round"]).groupby("driver_id").last().reset_index()
 
@@ -521,6 +526,15 @@ class PredictionService:
     # Public predict API
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _cache_usable(cached: Optional[Dict[str, Any]], trained_at: Optional[str]) -> bool:
+        """A cached prediction from the current model, in the current shape (with scores —
+        rows cached before scores were kept are recomputed once)."""
+        if not cached or cached.get("model_trained_at") != trained_at:
+            return False
+        preds = cached.get("result", {}).get("predictions") or []
+        return bool(preds) and "score" in preds[0]
+
     async def _ensure_trained(self, duckdb_service):
         # Also retrain if df is missing (e.g. loaded from disk but df not persisted)
         if self._trained and self._df is not None:
@@ -545,12 +559,13 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "qualifying")
-        if cached and cached.get("model_trained_at") == trained_at:
+        if self._cache_usable(cached, trained_at):
             return cached["result"]
 
         feat  = self._build_prediction_rows(circuit_name)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[self._quali_features].fillna(10))
+        feat["score"] = preds
         feat["predicted_grid"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_grid").reset_index(drop=True)
 
@@ -563,6 +578,7 @@ class PredictionService:
                 "constructor_id":   row["constructor_id"],
                 "constructor_name": self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
                 "predicted_grid":   int(row["predicted_grid"]),
+                "score":            round(float(row["score"]), 6),
                 "circuit_avg_grid": round(float(row["driver_circuit_grid_avg"]), 2) if pd.notna(row.get("driver_circuit_grid_avg")) else None,
                 "rolling_avg_grid": round(float(row["driver_rolling_grid"]), 2)     if pd.notna(row.get("driver_rolling_grid"))      else None,
             })
@@ -585,7 +601,7 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "race")
-        if cached and cached.get("model_trained_at") == trained_at:
+        if self._cache_usable(cached, trained_at):
             return cached["result"]
 
         feat = self._build_prediction_rows(circuit_name)
@@ -600,6 +616,7 @@ class PredictionService:
 
         feat  = self._encode(feat)
         preds = self._race_model.predict(feat[self._race_features].fillna(10))
+        feat["score"] = preds
         feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
@@ -612,6 +629,7 @@ class PredictionService:
                 "constructor_id":     row["constructor_id"],
                 "constructor_name":   self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
                 "predicted_position": int(row["predicted_position"]),
+                "score":              round(float(row["score"]), 6),
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
                 "predicted_grid":     int(row["grid"]),
@@ -696,8 +714,14 @@ class PredictionService:
         so the two callers can pass different ones."""
         drivers: Dict[str, Dict[str, Any]] = {}
 
+        # Practice pace is optional here: a weekend without stored practice is scored with it
+        # missing (filled like any missing input, the way an upcoming race is predicted) rather
+        # than dropped, and flagged, so recent races don't vanish from the accuracy tab.
+        def required(features: List[str]) -> List[str]:
+            return [f for f in features if f != "driver_practice_best_rank"]
+
         if quali_model is not None:
-            qdf = group.dropna(subset=quali_features + ["grid"])
+            qdf = group.dropna(subset=required(quali_features) + ["grid"])
             if not qdf.empty:
                 ranks = self._ranks_from_scores(quali_model.predict(qdf[quali_features].fillna(10)))
                 for (_, row), rank in zip(qdf.iterrows(), ranks):
@@ -709,7 +733,7 @@ class PredictionService:
                     d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
 
         if race_model is not None:
-            rdf = group.dropna(subset=race_features + ["position"])
+            rdf = group.dropna(subset=required(race_features) + ["position"])
             if not rdf.empty:
                 ranks = self._ranks_from_scores(race_model.predict(rdf[race_features].fillna(10)))
                 for (_, row), rank in zip(rdf.iterrows(), ranks):
@@ -738,6 +762,9 @@ class PredictionService:
             "circuit_name": group["circuit_name"].iloc[0],
             "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
             "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+            # Whether the practice-pace input was known for this weekend (None: not a model input).
+            "practice_data": (bool(group["driver_practice_best_rank"].notna().mean() > 0.5)
+                              if "driver_practice_best_rank" in set(race_features) | set(quali_features) else None),
             "drivers": driver_rows,
         }
 
