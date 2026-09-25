@@ -8,9 +8,46 @@ import logging
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import asyncio
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
+
+
+class _Result:
+    """Rows and column names of one statement, read while the lock was held."""
+
+    def __init__(self, rows, description):
+        self._rows = rows
+        self.description = description
+
+    def fetchall(self):
+        return self._rows
+
+
+class _LockedConnection:
+    """One DuckDB connection shared by the event loop and the executor threads. A DuckDB
+    connection isn't thread-safe — overlapping use crashed the interpreter (Windows heap
+    corruption) — so each statement runs, and its result is read, under a lock."""
+
+    def __init__(self, connection):
+        self._con = connection
+        self._lock = threading.RLock()
+
+    def execute(self, *args):
+        with self._lock:
+            self._con.execute(*args)
+            description = self._con.description
+            rows = self._con.fetchall() if description else []
+            return _Result(rows, description)
+
+    def executemany(self, *args):
+        with self._lock:
+            self._con.executemany(*args)
+
+    def close(self):
+        with self._lock:
+            self._con.close()
 
 class SimpleDuckDBService:
     """Simplified DuckDB service with in-memory fallback"""
@@ -39,7 +76,7 @@ class SimpleDuckDBService:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             
             # Initialize connection
-            self.connection = duckdb.connect(self.db_path)
+            self.connection = _LockedConnection(duckdb.connect(self.db_path))
             
             # Create tables
             await self._create_tables()
@@ -225,13 +262,11 @@ class SimpleDuckDBService:
             return []
             
         def _execute():
-            if params:
-                result = self.connection.execute(query, params).fetchall()
-            else:
-                result = self.connection.execute(query).fetchall()
-            
+            cursor = self.connection.execute(query, params) if params else self.connection.execute(query)
+            result = cursor.fetchall()
+
             # Get column names
-            columns = [desc[0] for desc in self.connection.description]
+            columns = [desc[0] for desc in cursor.description or []]
             
             # Convert to list of dictionaries
             return [dict(zip(columns, row)) for row in result]
@@ -412,16 +447,25 @@ class SimpleDuckDBService:
             logger.error(f"❌ Error fetching race laps: {str(e)}")
             return []
     
-    async def store_drivers(self, drivers: List[Dict]) -> bool:
-        """Store drivers data in DuckDB or memory"""
+    async def store_drivers(self, drivers: List[Dict], rename: bool = False) -> bool:
+        """Adds new drivers and updates numbers; a name already stored is kept unless `rename`
+        (see SupabaseF1Service.store_drivers)."""
         try:
             if not drivers:
                 return True
 
             if self.connection:
+                # One statement (no separate read of the stored names): the connection is also
+                # used from the executor threads, and a DuckDB connection isn't thread-safe.
                 self.connection.executemany(
-                    "INSERT OR REPLACE INTO drivers (driver_id, full_name, nationality, number) VALUES (?, ?, ?, ?)",
-                    [(d["driver_id"], d["full_name"], d.get("nationality"), d.get("number")) for d in drivers],
+                    """INSERT INTO drivers (driver_id, full_name, nationality, number) VALUES (?, ?, ?, ?)
+                       ON CONFLICT (driver_id) DO UPDATE SET
+                           full_name   = CASE WHEN ? OR drivers.full_name IS NULL
+                                                   OR drivers.full_name IN ('', 'None None')
+                                              THEN excluded.full_name ELSE drivers.full_name END,
+                           nationality = COALESCE(NULLIF(excluded.nationality, ''), drivers.nationality),
+                           number      = COALESCE(NULLIF(excluded.number, 0), drivers.number)""",
+                    [(d["driver_id"], d["full_name"], d.get("nationality"), d.get("number"), rename) for d in drivers],
                 )
             else:
                 self.in_memory_data["drivers"] = drivers

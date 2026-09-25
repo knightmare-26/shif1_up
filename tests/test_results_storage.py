@@ -84,3 +84,48 @@ async def test_recent_rounds_are_re_fetched_and_changes_reported(monkeypatch):
 
     assert fetched == [(5, "R"), (5, "S"), (5, "Q")]          # only the round within 14 days
     assert changed == [{"race_id": "2026_A", "session_type": "race"}]
+
+
+# --- driver names -----------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_stored_name_survives_ingests_but_the_number_updates(tmp_path):
+    db = SimpleDuckDBService(str(tmp_path / "t.duckdb"))
+    await db.initialize()
+    await db.store_drivers([{"driver_id": "ant", "full_name": "Andrea Kimi Antonelli", "number": 12}], rename=True)
+
+    await db.store_drivers([{"driver_id": "ant", "full_name": "Kimi Antonelli", "number": 7}])        # an ingest
+    row = (await db.get_all_drivers())[0]
+    assert (row["full_name"], row["number"]) == ("Andrea Kimi Antonelli", 7)
+
+    await db.store_drivers([{"driver_id": "ant", "full_name": "A K Antonelli", "number": 7}], rename=True)
+    assert (await db.get_all_drivers())[0]["full_name"] == "A K Antonelli"
+    await db.cleanup()
+
+
+class NamesDb:
+    async def get_all_drivers(self):
+        return [{"driver_id": "per", "full_name": "Sergio Pérez"}, {"driver_id": "boy", "full_name": ""}]
+
+
+@pytest.mark.asyncio
+async def test_a_stand_in_does_not_get_the_car_owners_name(monkeypatch):
+    from services import ingest_service, driver_names
+    monkeypatch.setattr(driver_names, "openf1_name", lambda code, client=None: {"new": "Mari Boya"}.get(code))
+    seen = {
+        "new": {"driver_id": "new", "full_name": "Sergio Perez"},       # FastF1: the car owner's name, unaccented
+        "odd": {"driver_id": "odd", "full_name": "Sergio Perez"},       # ...and OpenF1 doesn't know this one
+        "per": {"driver_id": "per", "full_name": "Sergio Perez"},       # the real one keeps going through
+        "fre": {"driver_id": "fre", "full_name": "Fresh Face"},         # a genuinely new name is fine
+    }
+
+    await ingest_service._fix_borrowed_names(NamesDb(), seen)
+
+    assert {k: v["full_name"] for k, v in seen.items()} == {
+        "new": "Mari Boya", "odd": "ODD", "per": "Sergio Perez", "fre": "Fresh Face"}
+
+
+def test_name_helpers():
+    from services.driver_names import same_name, tidy_full_name
+    assert same_name("Nico Hulkenberg", "nico hülkenberg") and not same_name("", "")
+    assert tidy_full_name("Mari BOYA") == "Mari Boya" and tidy_full_name("Nyck de Vries") == "Nyck de Vries"

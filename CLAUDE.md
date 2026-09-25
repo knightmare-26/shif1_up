@@ -37,7 +37,7 @@ pytest tests/ --cov=api          # With coverage
 Use the project venv (`venv/Scripts/python.exe -m pytest tests --ignore=tests/test_api.py`; `test_api.py` imports a module that no longer exists). `tests/conftest.py` isolates the suite from every production service before the app is imported — in-memory Redis mock, no `DATABASE_URL` (local DuckDB in a temp dir), temp `MODEL_DIR`/`CACHE_DIR`, no background model warm-up — so it never writes to the real Upstash Redis or Supabase. Keep new tests inside that isolation.
 
 ### Data ingestion
-A session is stored by replacing its rows (not upserting), so a re-ingest can't leave stale rows behind. Drivers without a classified position are numbered after the classified ones (they used to share P99 and overwrite each other).
+A session is stored by replacing its rows (not upserting), so a re-ingest can't leave stale rows behind. Drivers without a classified position are numbered after the classified ones (they used to share P99 and overwrite each other). **Driver names** don't come from FastF1 (it shortens some — "Kimi Antonelli" — and gives an FP1 stand-in the car owner's name): `scripts/sync_driver_names.py` sets Jolpica's name for anyone who raced (matching the standings) and OpenF1's for FP1-only stand-ins, or the three-letter code if neither knows them (`services/driver_names.py`). Ingests keep a stored name and only update the number; a new code arriving with another driver's name is looked up on OpenF1. `SimpleDuckDBService` wraps its connection in a lock (`_LockedConnection`) — it's shared by the event loop and executor threads, and overlapping use crashed the interpreter.
 ```bash
 # Fast ingest (race results + standings, no telemetry — runs in minutes)
 python ingest/simple_ingest.py --years 2024
