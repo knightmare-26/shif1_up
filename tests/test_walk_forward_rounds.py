@@ -83,7 +83,7 @@ def races_for_odds(n=16, seed=1):
         finish = np.argsort(np.argsort(-(scores + rng.normal(0, 1.0, 10)))) + 1
         races.append({"year": 2025, "round": i + 1, "drivers": [
             {"driver_id": f"d{k}", "race_score": float(scores[k]), "actual_position": int(finish[k]),
-             "quali_score": float(scores[k]), "actual_grid": int(k + 1)} for k in range(10)]})
+             "quali_score": float(scores[k]), "actual_quali": int(k + 1), "actual_grid": int(k + 1)} for k in range(10)]})
     return races
 
 
@@ -126,7 +126,7 @@ async def test_brier_and_log_loss():
 def race_rows(model, grid, standings, actual):
     return {"year": 2025, "round": 1, "drivers": [
         {"driver_id": f"d{i}", "predicted_position": m, "actual_grid": g, "standings_rank": s, "actual_position": a,
-         "predicted_grid": m}
+         "predicted_grid": m, "actual_quali": a}
         for i, (m, g, s, a) in enumerate(zip(model, grid, standings, actual))]}
 
 

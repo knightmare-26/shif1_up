@@ -29,7 +29,7 @@ MARKETS = {
     "race": [("win", 1, "win_probability"), ("podium", 3, "podium_probability"), ("points", 10, "points_probability")],
     "qualifying": [("pole", 1, "pole_probability"), ("top3", 3, "quali_top3_probability"), ("q3", 10, "q3_probability")],
 }
-FIELDS = {"race": ("race_score", "actual_position"), "qualifying": ("quali_score", "actual_grid")}
+FIELDS = {"race": ("race_score", "actual_position"), "qualifying": ("quali_score", "actual_quali")}
 BANDS = [0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0]
 EPS = 1e-4
 
@@ -178,7 +178,7 @@ HIT_TOPS = (1, 3, 5, 10)
 # (session, actual key, {method: predicted-order key})
 ORDERS = {
     "race": ("actual_position", {"model": "predicted_position", "grid": "actual_grid", "standings": "standings_rank"}),
-    "qualifying": ("actual_grid", {"model": "predicted_grid", "standings": "standings_rank"}),
+    "qualifying": ("actual_quali", {"model": "predicted_grid", "standings": "standings_rank"}),
 }
 
 

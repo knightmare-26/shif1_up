@@ -335,7 +335,8 @@ class ChampionshipService:
             for _, rows in season.groupby("race_id"):
                 rows = rows.sort_values("position")
                 races[year].append(np.asarray(self._score_rows(rows, quali_model, race_model)))
-                graded = rows.dropna(subset=["grid"]).sort_values("grid")
+                target = "quali_target" if "quali_target" in rows else "grid"   # the qualifying result
+                graded = rows.dropna(subset=[target]).sort_values(target)
                 if quali_model is not None and len(graded) >= 2:
                     graded = p._fill_practice(graded.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
                     qualifyings.append(np.asarray(quali_model.predict(graded[p._quali_features].astype(float).fillna(10))))

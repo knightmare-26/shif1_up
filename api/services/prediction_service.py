@@ -32,6 +32,11 @@ TIME_DECAY = 1.5
 # practice. Phase 1 (#30) measured which of them earn their place — see CLAUDE.md. Where a weekend
 # has no practice (an upcoming race, the title simulation) they're filled with the training
 # medians: filling them with 10 like other inputs made predictions worse than not using practice.
+# The qualifying model learns the qualifying result (Phase 2, #31), falling back to the starting grid
+# where no qualifying is stored. The grid isn't the qualifying order: grid penalties, and on 2022
+# sprint weekends the sprint set it. Walk-forward: 0.19 places better (t = -2.7), even judged on the grid.
+QUALI_TARGET = "quali_target"
+
 PRACTICE_INPUTS = ["driver_practice_best_rank", "driver_practice_gap_pct",
                    "team_practice_gap_pct", "driver_practice_teammate_gap_pct"]
 
@@ -122,6 +127,15 @@ class PredictionService:
         (or removed), not when the same data is retrained."""
         races = raw[raw["session_type"] == "race"] if "session_type" in raw else raw
         return f"{len(races)}:{int(races['year'].max())}" if not races.empty else "0:0"
+
+    @staticmethod
+    def _with_qualifying(df: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame:
+        """Each race row's qualifying result (QUALI_TARGET), else its starting grid."""
+        quali = (raw[raw["session_type"] == "qualifying"][["race_id", "driver_id", "position"]]
+                 .drop_duplicates(["race_id", "driver_id"]).rename(columns={"position": "quali_position"}))
+        df = df.drop(columns=["quali_position", QUALI_TARGET], errors="ignore").merge(quali, on=["race_id", "driver_id"], how="left")
+        df[QUALI_TARGET] = df["quali_position"].fillna(df["grid"])
+        return df
 
     @staticmethod
     def _practice_inputs(df: pd.DataFrame) -> List[str]:
@@ -451,6 +465,7 @@ class PredictionService:
             df["sprint_grid"] = np.nan
 
         df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
+        df = self._with_qualifying(df, raw)
         self._df = df
         self._practice_medians = self._medians(df)
         weekends = (raw[~raw["race_id"].isin(raw_race["race_id"])]
@@ -485,9 +500,10 @@ class PredictionService:
 
         # ---- Qualifying model ----
         self._quali_features = QUALI_FEATURES + practice_feat
-        self._quali_model = self._fit_ranker(lgb, df, self._quali_features, "grid")
+        self._quali_model = self._fit_ranker(lgb, df, self._quali_features, QUALI_TARGET)
+        result["quali_target_coverage"] = f"{df['quali_position'].notna().mean():.0%}"   # the rest use the grid
         if self._quali_model is not None:
-            result["quali_training_rows"] = len(df.dropna(subset=self._quali_features + ["grid"]))
+            result["quali_training_rows"] = len(df.dropna(subset=self._quali_features + [QUALI_TARGET]))
         else:
             result["quali_model"] = "skipped — grid column is NULL. Re-ingest data to populate grid positions."
 
@@ -866,7 +882,7 @@ class PredictionService:
             return [f for f in features if f not in PRACTICE_COLUMNS]
 
         if quali_model is not None:
-            qdf = group.dropna(subset=required(quali_features) + ["grid"])
+            qdf = group.dropna(subset=required(quali_features) + [QUALI_TARGET])
             if not qdf.empty:
                 scores = quali_model.predict(qdf[quali_features].fillna(10))
                 ranks = self._ranks_from_scores(scores)
@@ -877,6 +893,7 @@ class PredictionService:
                     })
                     d["predicted_grid"] = int(rank)
                     d["quali_score"] = round(float(score), 5)   # for the odds (services/backtest_scores.py)
+                    d["actual_quali"] = int(row[QUALI_TARGET])
                     d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
 
         if race_model is not None:
@@ -892,6 +909,7 @@ class PredictionService:
                     d["predicted_position"] = int(rank)
                     d["race_score"] = round(float(score), 5)
                     d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
+                    d.setdefault("actual_grid", int(row["grid"]) if pd.notna(row["grid"]) else None)
 
         if not drivers:
             return None
@@ -906,8 +924,8 @@ class PredictionService:
 
         driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
 
-        quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
-                      if d.get("predicted_grid") is not None and d.get("actual_grid") is not None]
+        quali_errs = [abs(d["predicted_grid"] - d["actual_quali"]) for d in driver_rows
+                      if d.get("predicted_grid") is not None and d.get("actual_quali") is not None]
         race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
                      if d.get("predicted_position") is not None and d.get("actual_position") is not None]
 
@@ -972,7 +990,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "5"
+    WALK_FORWARD_VERSION = "6"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -996,7 +1014,7 @@ class PredictionService:
     def _unit_fingerprint(rows: pd.DataFrame, features: List[str], extra: str) -> str:
         """What a scoring unit's result depends on: its training and test rows' model inputs and
         targets, the feature list and the method version."""
-        cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid"]
+        cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid", QUALI_TARGET]
         cols = list(dict.fromkeys(c for c in cols if c in rows.columns))
         ordered = rows.sort_values(["year", "round", "driver_id"])[cols]
         digest = hashlib.sha1(pd.util.hash_pandas_object(ordered, index=False).values.tobytes())
@@ -1029,6 +1047,7 @@ class PredictionService:
         df["circuit_enc"]     = self._label_encode(df["circuit_name"].fillna("unknown"), le_circuit)
 
         df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
+        df = self._with_qualifying(df, raw)
 
         all_years = sorted(df["year"].unique().tolist())
         if len(all_years) < 2:
@@ -1074,7 +1093,7 @@ class PredictionService:
                 scored = cached_races[unit_id]
             else:
                 race_model  = self._fit_ranker(lgb, train_df, race_features, "position")
-                quali_model = self._fit_ranker(lgb, train_df, quali_features, "grid")
+                quali_model = self._fit_ranker(lgb, train_df, quali_features, QUALI_TARGET)
                 refits += 1
                 if race_model is None and quali_model is None:
                     continue

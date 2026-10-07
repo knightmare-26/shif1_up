@@ -73,3 +73,17 @@ def test_the_models_use_the_season_form():
     svc = trained([2025, 2026])
     assert "driver_season_avg_grid" in svc._quali_features
     assert {"driver_season_points", "team_season_points"} <= set(svc._race_features)
+
+
+def test_the_qualifying_model_learns_the_qualifying_result_not_the_grid():
+    raw = synthetic_raw(years=[2025, 2026], rounds_per_year=6, drivers=DRIVERS).assign(points=0.0)
+    quali = raw.copy().assign(session_type="qualifying", position=lambda d: d["grid"].rsub(5))   # differs from the grid
+    quali = quali[quali["round"] != 6]                                                           # one weekend without qualifying
+    svc = PredictionService(model_dir="unused")
+    svc._fit(pd.concat([raw, quali], ignore_index=True), FakeLgb())
+
+    df = svc._df.set_index(["year", "round", "driver_id"])
+    row = df.loc[(2026, 1, "d1")]
+    assert row["quali_target"] == row["quali_position"] != row["grid"]
+    no_quali = df.loc[(2026, 6, "d1")]
+    assert no_quali["quali_target"] == no_quali["grid"]                                          # falls back to the grid
