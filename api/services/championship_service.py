@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS
+from services.season_form import team_points_after
 
 logger = logging.getLogger(__name__)
 
@@ -410,15 +411,18 @@ class ChampionshipService:
     # ---- scores for the rounds still to run ----------------------------------------------
 
     def _round_scores(self, remaining: List[Round], entrants: List[str], team_of: Dict[str, str],
-                      history: pd.DataFrame, quali_model, race_model) -> List[Tuple[np.ndarray, bool]]:
+                      history: pd.DataFrame, quali_model, race_model,
+                      year: Optional[int] = None) -> List[Tuple[np.ndarray, bool]]:
         p = self.pred
         out = []
         cache: Dict[str, np.ndarray] = {}
+        # Season form going into the remaining rounds (none yet if the season hasn't started).
+        team_points = team_points_after(history, year if year is not None else int(history["year"].max())).to_dict()
         for rnd in remaining:
             if rnd.circuit not in cache:
-                rows = p._build_prediction_rows(rnd.circuit, history)
+                rows = p._build_prediction_rows(rnd.circuit, history, season=year)
                 # A driver who changed teams races the new car (Sainz at Williams in 2025, not Ferrari).
-                rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit)
+                rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit, team_points)
                 rows = p._encode(rows)
                 rows = rows.set_index("driver_id").reindex(entrants)
                 # A driver with no history (a debut) gets the field's median inputs.
@@ -454,7 +458,7 @@ class ChampionshipService:
 
         sims = None
         if remaining and entrants and race_model is not None:
-            scores = self._round_scores(remaining, entrants, team_of, history, quali_model, race_model)
+            scores = self._round_scores(remaining, entrants, team_of, history, quali_model, race_model, year)
             sims = simulate_season(driver_table, team_table, entrants, team_of, scores, beta, n_sims, rng,
                                    self.form_sd if form_sd is None else form_sd)
 

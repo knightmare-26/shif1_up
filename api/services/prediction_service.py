@@ -21,6 +21,7 @@ import pandas as pd
 
 from services.backtest_scores import add_probabilities, hit_rates
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS, practice_features
+from services.season_form import QUALI_INPUTS as SEASON_QUALI, RACE_INPUTS as SEASON_RACE, add_season_form, team_points_after
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ RACE_FEATURES_FULL = [
     "constructor_rolling_finish", "constructor_circuit_avg",
     "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
-]
+] + SEASON_RACE   # season-to-date form (services/season_form.py)
 
 # Fallback when grid is NULL (before re-ingest)
 RACE_FEATURES_NO_GRID = [
@@ -48,13 +49,13 @@ RACE_FEATURES_NO_GRID = [
     "constructor_rolling_finish", "constructor_circuit_avg",
     "driver_dnf_rate",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
-]
+] + SEASON_RACE
 
 QUALI_FEATURES = [
     "driver_rolling_grid", "driver_circuit_grid_avg",
     "constructor_rolling_finish", "constructor_circuit_avg",
     "driver_enc", "constructor_enc", "circuit_enc", "round",
-]
+] + SEASON_QUALI
 
 # Sprint race features mirror the race model's, but use the sprint grid
 # (from sprint qualifying) instead of the main race grid as the input —
@@ -299,7 +300,7 @@ class PredictionService:
         df["constructor_circuit_avg"] = df["constructor_circuit_avg"].fillna(df["constructor_rolling_finish"])
         df["driver_dnf_rate"]         = df["driver_dnf_rate"].fillna(0.1)
 
-        return df
+        return add_season_form(df)
 
     def _encode(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
@@ -529,17 +530,19 @@ class PredictionService:
 
     # Driver inputs a debutant gets: the field's median (the team's form still comes from the team).
     _DRIVER_INPUTS = ("grid", "driver_rolling_finish", "driver_circuit_avg", "driver_dnf_rate",
-                      "driver_rolling_grid", "driver_circuit_grid_avg")
+                      "driver_rolling_grid", "driver_circuit_grid_avg", "driver_season_avg_grid")
 
     def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None,
-                               field: Optional[Dict[str, Optional[str]]] = None) -> pd.DataFrame:
+                               field: Optional[Dict[str, Optional[str]]] = None,
+                               season: Optional[int] = None) -> pd.DataFrame:
         """One feature row per driver for a race at `circuit_name`.
 
         `field` is who's actually entered, driver_id -> constructor_id (None: their last team) —
         see services/entry_list.py. Without it the field is the latest race's line-up, which
         misses a driver returning (e.g. from injury) and keeps one who's out. `df` is the history
         to build from — the full training frame by default; the championship backtest passes
-        history cut off at an earlier round."""
+        history cut off at an earlier round. `season` is the race's season (default: this year for
+        the live frame), which says whether season-to-date form starts from nothing."""
         df = self._df if df is None else df
         if field is None:
             most_recent_year = int(df["year"].max())
@@ -552,6 +555,12 @@ class PredictionService:
 
         circuit_round_series = df[df["circuit_name"] == circuit_name]["round"]
         circuit_round = int(circuit_round_series.mode().iloc[0]) if not circuit_round_series.empty else 1
+
+        # Season form going into the race: after the latest race, or nothing yet in a new season.
+        latest_year = int(df["year"].max())
+        season = season or (datetime.utcnow().year if df is self._df else latest_year)
+        new_season = season > latest_year
+        team_points = {} if new_season else team_points_after(df, latest_year).to_dict()
 
         rows = []
         for _, r in latest.iterrows():
@@ -570,6 +579,10 @@ class PredictionService:
                 "driver_dnf_rate":         float(r.get("driver_dnf_rate") or 0.1),
                 "driver_rolling_grid":     float(r.get("driver_rolling_grid")      or 10),
                 "driver_circuit_grid_avg": float(cir_d["grid"].mean()) if not cir_d.empty and cir_d["grid"].notna().any() else float(r.get("driver_rolling_grid") or 10),
+                "driver_season_points":    0.0 if new_season or int(r["year"]) != latest_year
+                                           else float(r.get("driver_season_points_after") or 0),
+                "driver_season_avg_grid":  float(r.get("driver_season_avg_grid_after") or r.get("driver_rolling_grid") or 10),
+                "team_season_points":      float(team_points.get(r.get("constructor_id"), 0.0)),
                 # Practice is filled in below: this weekend's, if it's been stored, else neutral.
                 "round": circuit_round,
             })
@@ -585,9 +598,9 @@ class PredictionService:
             typical = out[list(self._DRIVER_INPUTS)].median() if not out.empty else pd.Series(10.0, index=self._DRIVER_INPUTS)
             out = pd.concat([out, pd.DataFrame([{
                 "driver_id": d, "constructor_id": field.get(d) or "unknown", "circuit_name": circuit_name,
-                **typical.to_dict(), "round": circuit_round,
+                **typical.to_dict(), "driver_season_points": 0.0, "round": circuit_round,
             } for d in debutants])], ignore_index=True)
-        out = self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name)
+        out = self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name, team_points)
         return self._with_practice(out, circuit_name, live=df is self._df)
 
     def weekend_practice(self, circuit_name: str) -> Optional[pd.DataFrame]:
@@ -610,7 +623,7 @@ class PredictionService:
         return self._fill_practice(rows, self._practice_medians)
 
     def _with_teams(self, rows: pd.DataFrame, teams: Dict[str, str], history: pd.DataFrame,
-                    circuit_name: str) -> pd.DataFrame:
+                    circuit_name: str, team_points: Optional[Dict[str, float]] = None) -> pd.DataFrame:
         """A driver in a different car from their last history row races the new car: give them
         that team's form (Sainz at Williams in 2025, not Ferrari; a debutant's team)."""
         if rows.empty or not teams:
@@ -626,6 +639,8 @@ class PredictionService:
             rows.at[i, "constructor_id"] = team
             rows.at[i, "constructor_rolling_finish"] = form
             rows.at[i, "constructor_circuit_avg"] = at_circuit.mean() if not at_circuit.empty else form
+            if team_points is not None:
+                rows.at[i, "team_season_points"] = float(team_points.get(team, 0.0))
         return rows
 
     # ------------------------------------------------------------------
@@ -883,8 +898,8 @@ class PredictionService:
 
         # The championship order going into the weekend (a baseline for services/backtest_scores.py):
         # Grand Prix points so far this season, recent form breaking ties (round 1: all on 0).
-        if "season_points_before" in group:
-            standing = group.sort_values(["season_points_before", "driver_rolling_finish"], ascending=[False, True])
+        if "driver_season_points" in group:
+            standing = group.sort_values(["driver_season_points", "driver_rolling_finish"], ascending=[False, True])
             for rank, driver_id in enumerate(standing["driver_id"], start=1):
                 if driver_id in drivers:
                     drivers[driver_id]["standings_rank"] = rank
@@ -957,7 +972,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "4"
+    WALK_FORWARD_VERSION = "5"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1014,8 +1029,6 @@ class PredictionService:
         df["circuit_enc"]     = self._label_encode(df["circuit_name"].fillna("unknown"), le_circuit)
 
         df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
-        points = df["points"].fillna(0) if "points" in df else pd.Series(0.0, index=df.index)
-        df["season_points_before"] = (points.groupby([df["year"], df["driver_id"]]).cumsum() - points)
 
         all_years = sorted(df["year"].unique().tolist())
         if len(all_years) < 2:
