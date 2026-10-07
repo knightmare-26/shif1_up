@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { WeatherReading } from '../services/backendApi';
 import { qualifyingZone } from '../utils/races';
 import { Card, Pill, TabPanel, Tabs, TableWrap, Th } from './ui';
 import { teamColor } from './ui/teamColors';
@@ -41,6 +42,7 @@ export interface LiveState {
   replay?: boolean;
   clock?: string;
   source?: string;
+  weather?: WeatherReading | null;
 }
 
 // OpenF1 relays send these; the FastF1 poller always sent "green".

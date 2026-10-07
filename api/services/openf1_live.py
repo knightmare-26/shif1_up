@@ -16,6 +16,7 @@ import logging
 import os
 import time
 import unicodedata
+from collections import deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
@@ -39,6 +40,10 @@ SESSION_NAMES = {
     "SQ": ("Sprint Qualifying", "Sprint Shootout"), "S": ("Sprint",), "Q": ("Qualifying",), "R": ("Race",),
 }
 CODE_FOR_NAME = {name: code for code, names in SESSION_NAMES.items() for name in names}
+
+
+class OpenF1Locked(Exception):
+    """OpenF1 shuts free access — past sessions included — while an F1 session is live."""
 
 
 def credentials() -> Optional[Dict[str, str]]:
@@ -67,8 +72,9 @@ class OpenF1Client:
         self.creds = creds if creds is not None else credentials()
         self.per_minute = per_minute or (SPONSOR_PER_MINUTE if self.creds else FREE_PER_MINUTE)
         self._http = httpx.AsyncClient(base_url=BASE_URL, timeout=30, transport=transport)
+        self.per_second = max(1, self.per_minute // 10)   # 3 free, 6 paid
         self._lock = asyncio.Lock()
-        self._last = 0.0
+        self._sent: deque = deque()   # request times in the last minute
         self._token: Optional[str] = None
         self._token_expires = 0.0
 
@@ -90,6 +96,19 @@ class OpenF1Client:
             self._token_expires = time.monotonic() + float(body.get("expires_in", 3600)) - 60
         return {"Authorization": f"Bearer {self._token}"}
 
+    async def _wait_for_slot(self) -> None:
+        """Wait until another request fits both limits (per second and per minute)."""
+        while True:
+            now = time.monotonic()
+            while self._sent and now - self._sent[0] >= 60:
+                self._sent.popleft()
+            last_second = [t for t in self._sent if now - t < 1]
+            if len(self._sent) < self.per_minute and len(last_second) < self.per_second:
+                self._sent.append(now)
+                return
+            wait = (self._sent[0] + 60 if len(self._sent) >= self.per_minute else last_second[0] + 1) - now
+            await asyncio.sleep(max(0.05, wait))
+
     async def get(self, endpoint: str, **filters: Any) -> List[Dict[str, Any]]:
         """GET /v1/{endpoint}. Filter names may carry OpenF1's comparison operators:
         get("position", session_key=1, **{"date>": "2026-..."}) -> ?session_key=1&date>2026-..."""
@@ -99,17 +118,16 @@ class OpenF1Client:
         )
         url = f"/v1/{endpoint}" + (f"?{query}" if query else "")
         for attempt in range(5):
-            async with self._lock:   # space requests out to stay inside the tier's limit
-                wait = self._last + 60.0 / self.per_minute - time.monotonic()
-                if wait > 0:
-                    await asyncio.sleep(wait)
-                self._last = time.monotonic()
+            async with self._lock:   # stay inside the tier's per-second and per-minute limits
+                await self._wait_for_slot()
             r = await self._http.get(url, headers=await self._auth_header())
             if r.status_code == 429:
                 await asyncio.sleep(2 ** attempt)
                 continue
             if r.status_code == 404:   # OpenF1 answers "No results found." with a 404
                 return []
+            if r.status_code == 401 and "session in progress" in r.text.lower():
+                raise OpenF1Locked(r.json().get("detail", "Live F1 session in progress"))
             r.raise_for_status()
             data = r.json()
             return data if isinstance(data, list) else []
@@ -140,8 +158,8 @@ async def find_session(client: OpenF1Client, year: int, gp: str, code: str) -> O
 class SessionFeed:
     """Everything OpenF1 has for a session, refreshed incrementally while it's live."""
 
-    ENDPOINTS = ("drivers", "laps", "stints", "pit", "position", "intervals", "race_control")
-    INCREMENTAL = {"position": "date", "intervals": "date", "race_control": "date"}
+    ENDPOINTS = ("drivers", "laps", "stints", "pit", "position", "intervals", "race_control", "weather")
+    INCREMENTAL = {"position": "date", "intervals": "date", "race_control": "date", "weather": "date"}
 
     def __init__(self, client: OpenF1Client, session: Dict[str, Any]):
         self.client = client
@@ -253,6 +271,48 @@ def laps_frame(data: Dict[str, List[Dict[str, Any]]], clock: Optional[datetime] 
     return frame
 
 
+def weather_at(records: List[Dict[str, Any]], clock: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    """The track's weather at `clock` (the latest reading up to then; the first one before the
+    session's first reading): air/track temperature (°C), humidity (%), wind speed (km/h — OpenF1
+    gives m/s) and direction (degrees, where it blows from), pressure (mbar) and whether it's raining."""
+    readings = sorted((r for r in records if r.get("date")), key=lambda r: r["date"])
+    if not readings:
+        return None
+    upto = _before(readings, clock) if clock is not None else readings
+    r = upto[-1] if upto else readings[0]
+    wind = r.get("wind_speed")
+    return {
+        "date": r["date"],
+        "air_temperature": r.get("air_temperature"),
+        "track_temperature": r.get("track_temperature"),
+        "humidity": r.get("humidity"),
+        "wind_speed_kmh": round(float(wind) * 3.6, 1) if wind is not None else None,
+        "wind_direction": r.get("wind_direction"),
+        "pressure": r.get("pressure"),
+        "rain": bool(r.get("rainfall")),
+    }
+
+
+def weather_summary(records: List[Dict[str, Any]], start: Optional[datetime], end: Optional[datetime]) -> Optional[Dict[str, Any]]:
+    """Conditions at the start of a session and how they ranged over it."""
+    during = [r for r in records if r.get("date") and (start is None or parse_time(r["date"]) >= start)
+              and (end is None or parse_time(r["date"]) <= end)] or records
+    if not during:
+        return None
+
+    def span(field):
+        values = [r[field] for r in during if r.get(field) is not None]
+        return [min(values), max(values)] if values else None
+
+    return {
+        "at_start": weather_at(records, start),
+        "rain_during": any(r.get("rainfall") for r in during),
+        "air_range": span("air_temperature"),
+        "track_range": span("track_temperature"),
+        "readings": len(during),
+    }
+
+
 def _format_gap(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -299,6 +359,7 @@ def build_state(data: Dict[str, List[Dict[str, Any]]], session: Dict[str, Any], 
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "session_status": "finished" if finished else "live",
         "track_status": status,
+        "weather": weather_at(data.get("weather", []), clock),
     }
     if is_timed_session(code):
         positions = build_timed_positions(frame, teams)

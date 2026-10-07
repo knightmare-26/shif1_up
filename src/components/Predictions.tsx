@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
-import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
+import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestResult } from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
@@ -34,6 +34,9 @@ interface PredictionResult {
   grid_data_available: boolean;
   predictions: PredictionRow[];
   odds_available?: boolean;
+  /** Where the driver list came from: "this weekend's qualifying", "the practice 2 entry list",
+   *  or "the last race's line-up" when nothing says who's entered yet. */
+  field_source?: string;
   error?: string;
 }
 
@@ -237,22 +240,43 @@ const BacktestTab: React.FC = () => {
   // lets the user switch the dropdown to circuit names to tell them apart.
   const [showCircuitName, setShowCircuitName] = useState(false);
 
+  // The server rebuilds this list by itself after a race weekend's results come in; while it
+  // works (`updating`) the current list is shown and checked again every 30s.
+  const [updating, setUpdating]             = useState(false);
+  const latestId = useRef<string | null>(null);
+  const selectedRef = useRef(selectedRaceId);
+  selectedRef.current = selectedRaceId;
+
+  const apply = useCallback((r: BacktestResult) => {
+    setRaces(r.races);
+    setUpdating(Boolean(r.updating));
+    if (r.races.length === 0) return;
+    const newest = r.races[0];   // most recent first
+    // Default to the latest race — and move along to a newly added one unless the user picked another.
+    if (!selectedRef.current || selectedRef.current === latestId.current) {
+      setYearFilter(newest.year);
+      setSelectedRaceId(newest.race_id);
+    }
+    latestId.current = newest.race_id;
+  }, []);
+
   const load = useCallback(() => {
     setError(null);
     setRaces(null);
     backendApi.getPredictionBacktest()
-      .then((r) => {
-        setRaces(r.races);
-        // Backend returns most-recent-first — default to the latest race.
-        if (r.races.length > 0) {
-          setYearFilter(r.races[0].year);
-          setSelectedRaceId(r.races[0].race_id);
-        }
-      })
+      .then(apply)
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
-  }, []);
+  }, [apply]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!updating) return undefined;
+    const id = setInterval(() => {
+      backendApi.getPredictionBacktest().then(apply).catch(() => { /* keep showing what we have */ });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [updating, apply]);
 
   const years = useMemo(
     () => Array.from(new Set((races ?? []).map((r) => r.year))).sort((a, b) => b - a),
@@ -313,6 +337,13 @@ const BacktestTab: React.FC = () => {
         </SelectField>
         <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
+
+      {updating && (
+        <Notice tone="info" className="mb-6">
+          Adding the latest races: the models are being re-scored against them. This takes a few minutes and the list
+          updates by itself.
+        </Notice>
+      )}
 
       {selectedRace ? (
         <BacktestRaceDetail race={selectedRace} />
@@ -491,17 +522,17 @@ const Predictions: React.FC = () => {
             ) : hasResults ? (
               <FadeIn className="flex flex-col gap-6 xl:flex-row">
                 {qualiResult?.predictions.length ? (
-                  <PredictionTable title="Qualifying Prediction" subtitle={qualiResult.circuit} data={qualiResult.predictions}
+                  <PredictionTable title="Qualifying Prediction" subtitle={`${qualiResult.circuit}${qualiResult.field_source ? ` · drivers: ${qualiResult.field_source}` : ""}`} data={qualiResult.predictions}
                     valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
                 ) : qualiResult && <UnavailableCard what="Qualifying prediction" reason={qualiResult.error} />}
 
                 {sprintResult?.predictions.length ? (
-                  <PredictionTable title="Sprint Prediction" subtitle={sprintResult.circuit} data={sprintResult.predictions}
+                  <PredictionTable title="Sprint Prediction" subtitle={`${sprintResult.circuit}${sprintResult.field_source ? ` · drivers: ${sprintResult.field_source}` : ""}`} data={sprintResult.predictions}
                     valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
                 ) : sprintResult && <UnavailableCard what="Sprint prediction" reason={sprintResult.error} />}
 
                 {raceResult?.predictions.length ? (
-                  <PredictionTable title="Race Prediction" subtitle={raceResult.circuit} data={raceResult.predictions}
+                  <PredictionTable title="Race Prediction" subtitle={`${raceResult.circuit}${raceResult.field_source ? ` · drivers: ${raceResult.field_source}` : ""}`} data={raceResult.predictions}
                     valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
                 ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
               </FadeIn>
@@ -520,6 +551,12 @@ const Predictions: React.FC = () => {
                       favourite's chance reflects how often favourites really do win. Sprints show the order only.
                     </p>
                   )}
+                  <p>
+                    <strong className="text-gray-200">The drivers</strong> are the ones entered for this weekend, taken
+                    from its latest session so far (qualifying first; first practice only as a last resort, since
+                    rookies often stand in there). Before a weekend starts, the last race's line-up is used, so a
+                    driver returning from injury appears once practice begins.
+                  </p>
                   <p>
                     See how past predictions held up in <strong className="text-gray-200">Predicted vs Actual</strong>.
                   </p>

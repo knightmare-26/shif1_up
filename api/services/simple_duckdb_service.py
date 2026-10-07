@@ -591,11 +591,11 @@ class SimpleDuckDBService:
     async def clear_prediction_cache(self) -> bool:
         """Drop cached per-circuit predictions — called after a retrain since old
         cached output no longer reflects the current model. The walk-forward
-        and championship backtest rows are kept: they are expensive, evaluate held-out seasons rather
+        and championship backtest rows are kept (and stored session weather): they are expensive, evaluate held-out seasons rather
         than the live model, and are keyed to the training data, not the model."""
         try:
             if self.connection:
-                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship')")
+                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather')")
             return True
         except Exception as e:
             logger.error(f"❌ Error clearing prediction cache: {str(e)}")

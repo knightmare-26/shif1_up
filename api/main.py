@@ -44,6 +44,9 @@ from services import ingest_service
 from services.prediction_service import PredictionService
 from services.championship_service import ChampionshipService
 from services.live_relay import LiveRelayManager
+from services.session_replay import ReplayUnavailable, SessionReplayService
+from services.entry_list import EntryListService
+from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
     DriverStanding, ConstructorStanding, RaceEvent,
@@ -112,6 +115,8 @@ async def _ingest_finished_session(year: int, gp: str, session: str) -> None:
 
 
 live_relays = LiveRelayManager(lambda: redis_service, on_session_finished=_ingest_finished_session)
+session_replays = SessionReplayService(lambda: duckdb_service)
+entry_lists = EntryListService()
 
 
 async def _init_redis() -> Any:
@@ -175,6 +180,7 @@ async def _warm_prediction_models() -> None:
         return
     logger.info("Training prediction models in the background…")
     await prediction_service._ensure_trained(duckdb_service)
+    await _keep_backtest_current()     # no-op unless it's missing races (models loaded from disk)
     await championship_service.warm()  # the odds on the Predictions page and the title outlook
 
 
@@ -282,6 +288,8 @@ async def lifespan(app: FastAPI):
         if task:
             task.cancel()
     await live_relays.stop_all()
+    await session_replays.close()
+    await entry_lists.close()
     if database_guardian:
         await database_guardian.stop()
     if redis_service:
@@ -785,6 +793,48 @@ def _unwrap_live_state(envelope: Optional[Dict[str, Any]]) -> Optional[Dict[str,
     if isinstance(update, dict) and isinstance(update.get("state"), dict):
         return update["state"]
     return envelope
+
+
+def _replay_session_code(session: str) -> str:
+    if session not in LIVE_SESSION_CODES:
+        raise HTTPException(status_code=422, detail=f"session must be one of {', '.join(LIVE_SESSION_CODES)}")
+    return session
+
+
+@app.get("/api/sessions/{year}/{session}/weather")
+async def session_weather(year: int, session: str, gp: str):
+    """A finished session's weather (from OpenF1, 2023+): at the start, and its range over the
+    session. `gp` is the schedule's race name, e.g. "Spanish Grand Prix"."""
+    try:
+        return await session_replays.weather(year, gp, _replay_session_code(session))
+    except ReplayUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OpenF1Locked:
+        raise HTTPException(status_code=503, headers={"Retry-After": "600"},
+                            detail="live_session_lock")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("session weather %s %s %s: %s", year, gp, session, exc)
+        raise HTTPException(status_code=502, detail="Session data source didn't answer")
+
+
+@app.get("/api/sessions/{year}/{session}/replay")
+async def session_replay_frame(year: int, session: str, gp: str, t: float = 0.0):
+    """The timing board (with weather) `t` seconds into a finished session — what the Race Results
+    replay plays. The first call for a session loads it from OpenF1 (a few seconds)."""
+    try:
+        return await session_replays.frame(year, gp, _replay_session_code(session), t)
+    except ReplayUnavailable as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except OpenF1Locked:
+        raise HTTPException(status_code=503, headers={"Retry-After": "600"},
+                            detail="live_session_lock")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("session replay %s %s %s: %s", year, gp, session, exc, exc_info=True)
+        raise HTTPException(status_code=502, detail="Session data source didn't answer")
 
 
 @app.get("/live/status")
@@ -1383,11 +1433,23 @@ def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
     return championship_service.with_finish_odds(result, kind)
 
 
+async def _weekend_field(circuit: str):
+    """Who's entered for the weekend at `circuit` (None: not known yet — the last race's line-up
+    is used). See services/entry_list.py."""
+    await prediction_service._ensure_trained(duckdb_service)
+    field = await entry_lists.field(duckdb_service, circuit, datetime.now().year, prediction_service._constructor_map)
+    if field:
+        for driver_id, name in field.names.items():
+            prediction_service._driver_map.setdefault(driver_id, name)   # a debutant's name
+    return (field.teams, field.source) if field else (None, None)
+
+
 @app.get("/predict/qualifying")
 async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_qualifying(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "qualifying")
@@ -1402,7 +1464,8 @@ async def predict_qualifying(circuit: str):
 async def predict_race(circuit: str):
     """Predict race finishing positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_race(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_race(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "race")
@@ -1417,7 +1480,8 @@ async def predict_race(circuit: str):
 async def predict_sprint(circuit: str):
     """Predict sprint race finishing positions for all drivers at a given circuit."""
     try:
-        result = await prediction_service.predict_sprint(circuit, duckdb_service)
+        field, source = await _weekend_field(circuit)
+        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return result
@@ -1428,48 +1492,88 @@ async def predict_sprint(circuit: str):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+# The walk-forward backtest (Predicted vs Actual) is rebuilt in the background whenever the models
+# have been trained on race results it doesn't cover yet — a race weekend's results, a re-ingest —
+# so new rounds appear without an admin having to ask. One run at a time.
+_walkforward_job: Optional[asyncio.Task] = None
+
+
+def _walkforward_running() -> bool:
+    return _walkforward_job is not None and not _walkforward_job.done()
+
+
+async def _refresh_walkforward() -> None:
+    try:
+        result = await prediction_service.walk_forward_backtest(duckdb_service, years_back=3)
+        if result.get("races"):
+            await duckdb_service.set_prediction_cache(
+                "_walkforward", "v1", result.get("data_fingerprint", ""), result
+            )
+            logger.info("Walk-forward backtest cached: %d races across seasons %s",
+                        len(result["races"]), result.get("seasons_tested"))
+        else:
+            logger.warning("Walk-forward backtest produced no races: %s", result.get("error"))
+    except Exception as exc:
+        logger.error("walk_forward_backtest failed: %s", exc, exc_info=True)
+
+
+def _start_walkforward_refresh() -> None:
+    global _walkforward_job
+    if not _walkforward_running():
+        _walkforward_job = asyncio.create_task(_refresh_walkforward())
+
+
+def _walkforward_stale(cached: Optional[Dict[str, Any]]) -> bool:
+    """The cached backtest misses race results the current models were trained on. Unknown
+    (models not trained yet, or loaded from an older save) counts as current."""
+    current = prediction_service._meta.get("data_fingerprint")
+    if not current:
+        return False
+    return (cached or {}).get("result", {}).get("data_fingerprint") != current
+
+
+async def _keep_backtest_current() -> None:
+    """After training: rebuild the backtest if it's missing races the models now know about."""
+    try:
+        if duckdb_service is not None and not _walkforward_running():
+            if _walkforward_stale(await duckdb_service.get_prediction_cache("_walkforward", "v1")):
+                logger.info("Walk-forward backtest is missing new results; rebuilding in the background")
+                _start_walkforward_refresh()
+    except Exception as exc:
+        logger.warning("Backtest freshness check failed: %s", exc)
+
+
+prediction_service.on_trained = _keep_backtest_current
+
+
 @app.get("/predict/backtest")
 async def predict_backtest():
     """Score models against real past results — powers the Predictions page's
     Predicted vs Actual tab. Prefers a cached walk-forward result (an honest,
-    season-held-out evaluation — see POST /predict/backtest/refresh) and falls
-    back to scoring the live model against its own training history when no
-    walk-forward result has been computed yet."""
+    season-held-out evaluation, rebuilt automatically when new results are trained
+    on — `updating` says one is running) and falls back to scoring the live model
+    against its own training history when no walk-forward result has been computed yet."""
     try:
         cached = await duckdb_service.get_prediction_cache("_walkforward", "v1")
         if cached and cached.get("result", {}).get("races"):
-            return cached["result"]
+            if _walkforward_stale(cached):
+                _start_walkforward_refresh()
+            return {**cached["result"], "updating": _walkforward_running()}
         await prediction_service._ensure_trained(duckdb_service)
-        return prediction_service.backtest(years_back=3)
+        _start_walkforward_refresh()
+        return {**prediction_service.backtest(years_back=3), "updating": True}
     except Exception as exc:
         logger.error("predict_backtest: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/predict/backtest/refresh")
-async def predict_backtest_refresh(background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    """Kick off a walk-forward backtest in the background and cache the result for
-    GET /predict/backtest. Expensive (retrains the models 3-4x, once per held-out
-    season), so this is explicit and admin-only rather than running automatically
-    on every cold start."""
+async def predict_backtest_refresh(user=Depends(get_current_user)):
+    """Rebuild the walk-forward backtest in the background now (it also rebuilds by itself after
+    new results are trained on). Expensive — retrains the models 3-4x, once per held-out season."""
     if not user.get("is_admin"):
         raise HTTPException(status_code=403, detail="Admin access required")
-
-    async def _do_refresh():
-        try:
-            result = await prediction_service.walk_forward_backtest(duckdb_service, years_back=3)
-            if result.get("races"):
-                await duckdb_service.set_prediction_cache(
-                    "_walkforward", "v1", result.get("data_fingerprint", ""), result
-                )
-                logger.info("Walk-forward backtest cached: %d races across seasons %s",
-                            len(result["races"]), result.get("seasons_tested"))
-            else:
-                logger.warning("Walk-forward backtest produced no races: %s", result.get("error"))
-        except Exception as exc:
-            logger.error("walk_forward_backtest failed: %s", exc, exc_info=True)
-
-    background_tasks.add_task(_do_refresh)
+    _start_walkforward_refresh()
     return {"message": "Walk-forward backtest started in background. GET /predict/backtest will use it once ready."}
 
 
