@@ -1,5 +1,6 @@
 """
-Load each race weekend's practice sessions (FP1-3) as they finish, from OpenF1 (Phase 1, #30).
+Load each race weekend's practice (FP1-3) and qualifying (sprint qualifying, qualifying) as they
+finish, from OpenF1 (Phase 1 #30, Phase 2 #31).
 
 Predictions use the weekend's practice pace once it's stored (services/practice_features.py), but
 practice was only ever stored by hand (`POST /admin/ingest` with practice, or
@@ -7,8 +8,10 @@ scripts/backfill_practice.py) — so a live prediction almost never had it. Open
 sessions for free, and a practice session's laps and drivers are two small requests, far lighter
 than FastF1's full session load on the free server.
 
-Rows are stored the way ingest_service._extract_practice_results stores FastF1's: ranked by best
-lap, the lap as a timedelta string, driver ids from the three-letter code. OpenF1 shuts free access
+Practice rows are stored the way ingest_service._extract_practice_results stores FastF1's: ranked by
+best lap, the lap as a timedelta string, driver ids from the three-letter code. Qualifying comes from
+OpenF1's classification (services/openf1_results.py), so a race predicted after qualifying starts from
+the real qualifying order (the results refresh only fetches qualifying after the race). OpenF1 shuts free access
 while any session is live (OpenF1Locked) — the loader stops and tries again later.
 """
 import logging
@@ -24,6 +27,7 @@ from services.openf1_live import OpenF1Client, OpenF1Locked, find_session, parse
 logger = logging.getLogger(__name__)
 
 PRACTICE = {"FP1": "fp1", "FP2": "fp2", "FP3": "fp3"}
+QUALIFYING = {"SQ": "sprint_qualifying", "Q": "qualifying"}
 DAYS_BEFORE_RACE = 4          # FP1 is two days before the race; a little slack for odd calendars
 DAYS_AFTER_RACE = 14          # and fill in a recent weekend that was missed
 SETTLE_MINUTES = 15           # let OpenF1 finish publishing a session's laps
@@ -95,8 +99,9 @@ async def session_rows(client: OpenF1Client, session_key: int, constructor_names
 
 async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dict[str, str],
                                 last_teams: Dict[str, str], now: Optional[datetime] = None) -> List[Dict[str, str]]:
-    """Store every finished, not-yet-stored practice session of the weekends around now.
-    Returns the sessions stored (the caller retrains when there are any)."""
+    """Store every finished, not-yet-stored practice and qualifying session of the weekends around
+    now. Returns the sessions stored (the caller retrains when there are any)."""
+    from services.openf1_results import classified_rows, weekend_teams
     now = now or datetime.now(timezone.utc)
     today = now.date()
     stored: List[Dict[str, str]] = []
@@ -106,7 +111,7 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
 
     try:
         for race in weekends_to_check(races, today):
-            for code, session_type in PRACTICE.items():
+            for code, session_type in {**PRACTICE, **QUALIFYING}.items():
                 if await db.get_race_results(race["race_id"], session_type):
                     continue
                 session = await find_session(client, int(race["year"]), race.get("gp") or race["race_id"], code)
@@ -115,13 +120,17 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
                 ended = parse_time(session.get("date_end"))
                 if ended is None or now < ended + timedelta(minutes=SETTLE_MINUTES):
                     continue
-                rows, people = await session_rows(client, session["session_key"], constructor_names, last_teams)
+                if code in QUALIFYING:
+                    teams = {**last_teams, **await weekend_teams(db, race["race_id"])}
+                    rows, people = await classified_rows(client, session["session_key"], teams, constructor_names)
+                else:
+                    rows, people = await session_rows(client, session["session_key"], constructor_names, last_teams)
                 if len(rows) < MIN_DRIVERS:
                     logger.info("weekend practice: %s %s has %d timed drivers so far", race["race_id"], code, len(rows))
                     continue
                 await db.store_drivers(people, rename=False)        # adds a stand-in; keeps known names
                 await db.store_race_results(race["race_id"], rows, session_type)
-                logger.info("weekend practice: stored %s %s (%d drivers)", race["race_id"], code, len(rows))
+                logger.info("weekend sessions: stored %s %s (%d drivers)", race["race_id"], code, len(rows))
                 stored.append({"race_id": race["race_id"], "session_type": session_type})
     except OpenF1Locked:
         logger.info("weekend practice: OpenF1 is locked while a session is live — trying again later")

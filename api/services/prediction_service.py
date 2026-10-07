@@ -89,7 +89,7 @@ class PredictionService:
         "_race_features", "_quali_features", "_sprint_features",
         "_df", "_driver_map", "_constructor_map", "_le_driver", "_le_constructor", "_le_circuit",
         "_trained", "_grid_available", "_practice_available", "_meta",
-        "_practice_medians", "_weekend_practice",
+        "_practice_medians", "_weekend_practice", "_weekend_grids",
     )
 
     def __init__(self, model_dir: str = "data/models"):
@@ -117,6 +117,9 @@ class PredictionService:
         # Practice already stored for weekends whose race hasn't been run (race_id, year,
         # circuit_name, driver_id + practice columns): used when that race is predicted.
         self._weekend_practice: Optional[pd.DataFrame] = None
+        # Qualifying / sprint qualifying already stored for those weekends: a race (sprint) predicted
+        # after it starts from the real order, as the backtest's race model does.
+        self._weekend_grids: Optional[pd.DataFrame] = None
         # Called (as a task) after every successful training run — main.py uses it to bring the
         # walk-forward backtest up to date once new results have been trained on.
         self.on_trained: Optional[Callable[[], Awaitable[None]]] = None
@@ -471,6 +474,9 @@ class PredictionService:
         weekends = (raw[~raw["race_id"].isin(raw_race["race_id"])]
                     .drop_duplicates("race_id")[["race_id", "year", "circuit_name"]])
         self._weekend_practice = raw_practice.merge(weekends, on="race_id")
+        self._weekend_grids = (raw[raw["session_type"].isin(["qualifying", "sprint_qualifying"])
+                                   & ~raw["race_id"].isin(raw_race["race_id"])]
+                               [["race_id", "year", "circuit_name", "session_type", "driver_id", "position"]])
 
         result: Dict[str, Any] = {
             "rows": len(df),
@@ -627,6 +633,30 @@ class PredictionService:
         rows = wp[(wp["circuit_name"] == circuit_name) & (wp["year"] == wp["year"].max())]
         return rows if not rows.empty else None
 
+    def weekend_grid(self, circuit_name: str, session_type: str) -> Optional[Dict[str, int]]:
+        """driver_id -> position in the coming race's stored qualifying (or sprint qualifying)."""
+        g = self._weekend_grids
+        if g is None or g.empty or self._df is None:
+            return None
+        rows = g[(g["circuit_name"] == circuit_name) & (g["session_type"] == session_type) & (g["year"] == g["year"].max())]
+        return {d: int(p) for d, p in zip(rows["driver_id"], rows["position"])} if len(rows) else None
+
+    def _starting_order(self, feat: pd.DataFrame, circuit_name: str, session_type: str) -> tuple:
+        """The grid a race (sprint) prediction starts from: the stored qualifying order where there
+        is one (drivers it doesn't cover go after, in predicted order), else the predicted one.
+        Returns (ranks, where they came from)."""
+        feat_q = self._encode(feat.copy())
+        predicted = self._ranks_from_scores(self._quali_model.predict(feat_q[self._quali_features].fillna(10)))
+        actual = self.weekend_grid(circuit_name, session_type)
+        if not actual:
+            return predicted, None
+        known = feat["driver_id"].map(actual)
+        order = sorted(range(len(feat)), key=lambda i: (pd.isna(known.iloc[i]), known.iloc[i] if pd.notna(known.iloc[i]) else 0, predicted[i]))
+        ranks = np.empty(len(feat), dtype=int)
+        ranks[order] = np.arange(1, len(feat) + 1)
+        label = "sprint qualifying" if session_type == "sprint_qualifying" else "qualifying"
+        return ranks, f"this weekend's {label}"
+
     def _with_practice(self, rows: pd.DataFrame, circuit_name: str, live: bool) -> pd.DataFrame:
         if rows.empty:
             return rows
@@ -759,10 +789,9 @@ class PredictionService:
         # Pipe qualifying predictions in as the grid input — as a rank (1..N), the same
         # scale the race model's own "grid" training column is on, not the ranker's raw
         # relevance score (an arbitrary scale the race model was never trained on).
+        grid_source = None
         if self._quali_model is not None:
-            feat_q      = self._encode(feat.copy())
-            quali_preds = self._quali_model.predict(feat_q[self._quali_features].fillna(10))
-            feat["grid"] = self._ranks_from_scores(quali_preds)
+            feat["grid"], grid_source = self._starting_order(feat, circuit_name, "qualifying")
 
         feat  = self._encode(feat)
         preds = self._race_model.predict(feat[self._race_features].fillna(10))
@@ -792,6 +821,7 @@ class PredictionService:
             "grid_data_available": self._grid_available,
             "field_source": field_source or "the last race's line-up",
             "practice_used": self.weekend_practice(circuit_name) is not None,
+            "grid_source": grid_source or "predicted qualifying",   # where the starting order came from
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "race", trained_at, result)
@@ -819,10 +849,9 @@ class PredictionService:
         # reliably) — the main qualifying model's prediction is used as a
         # proxy for sprint grid, since both measure one-lap pace. As a rank
         # (1..N), same scale the sprint model's own "sprint_grid" column is on.
+        grid_source = None
         if self._quali_model is not None:
-            feat_q      = self._encode(feat.copy())
-            quali_preds = self._quali_model.predict(feat_q[self._quali_features].fillna(10))
-            feat["sprint_grid"] = self._ranks_from_scores(quali_preds)
+            feat["sprint_grid"], grid_source = self._starting_order(feat, circuit_name, "sprint_qualifying")
         else:
             feat["sprint_grid"] = feat.get("grid", 10)
 
@@ -852,6 +881,7 @@ class PredictionService:
             "grid_data_available": self._grid_available,
             "field_source": field_source or "the last race's line-up",
             "practice_used": self.weekend_practice(circuit_name) is not None,
+            "grid_source": grid_source or "predicted qualifying",   # where the starting order came from
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "sprint", trained_at, result)

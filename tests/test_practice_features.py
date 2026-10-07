@@ -108,3 +108,26 @@ async def test_a_prediction_says_whether_it_used_this_weekends_practice():
 
     assert (await svc.predict_qualifying("circuit5", Db()))["practice_used"] is True
     assert (await svc.predict_qualifying("circuit2", Db()))["practice_used"] is False
+
+
+@pytest.mark.asyncio
+async def test_a_race_predicted_after_qualifying_starts_from_the_real_qualifying_order():
+    class Db:
+        async def get_prediction_cache(self, *a):
+            return None
+
+        async def set_prediction_cache(self, *a):
+            pass
+
+    raw = history_with_practice()
+    quali = [{"race_id": "2024_5", "driver_id": d, "constructor_id": f"c{i % 2}", "position": len(DRIVERS) - i,
+              "grid": None, "points": 0.0, "status": "", "session_type": "qualifying", "time": "",
+              "circuit_name": "circuit5", "year": 2024, "round": 5, "race_name": "GP5", "driver_name": d,
+              "constructor_name": f"Team {i % 2}"} for i, d in enumerate(DRIVERS)]          # d12 on pole
+    svc = PredictionService(model_dir="unused")
+    svc._fit(pd.concat([raw, pd.DataFrame(quali)], ignore_index=True), FakeLgb())
+
+    race = await svc.predict_race("circuit5", Db())
+    assert race["grid_source"] == "this weekend's qualifying"
+    assert {p["driver_id"]: p["predicted_grid"] for p in race["predictions"]}["d12"] == 1
+    assert (await svc.predict_race("circuit2", Db()))["grid_source"] == "predicted qualifying"

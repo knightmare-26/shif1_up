@@ -42,6 +42,8 @@ interface PredictionResult {
   field_source?: string;
   /** This weekend's stored practice pace went in (else it was left neutral). */
   practice_used?: boolean;
+  /** Race/sprint: the grid it starts from — "this weekend's qualifying" once stored, else "predicted qualifying". */
+  grid_source?: string;
   error?: string;
 }
 
@@ -134,6 +136,7 @@ const predictionSubtitle = (r: PredictionResult) => [
   r.circuit,
   r.field_source && `drivers: ${r.field_source}`,
   r.practice_used != null && (r.practice_used ? "with this weekend's practice pace" : 'before practice: no pace data yet'),
+  r.grid_source && r.grid_source !== 'predicted qualifying' && `grid: ${r.grid_source}`,
 ].filter(Boolean).join(' · ');
 
 const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'neutral' => {

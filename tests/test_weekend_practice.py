@@ -37,7 +37,13 @@ SESSIONS = [
 ]
 
 
-def openf1(calls, locked=False):
+RESULT = [{"position": 2, "driver_number": 1, "duration": [91.0, 90.6, 90.2]},
+          {"position": 1, "driver_number": 12, "duration": [91.1, 90.5, 90.1]},
+          {"position": None, "driver_number": 87, "duration": [None, None, None], "dns": True}] + [
+          {"position": 3 + i, "driver_number": 100 + i, "duration": [92.0 + i / 10, None, None]} for i in range(10)]
+
+
+def openf1(calls, locked=False, sessions=None):
     def handler(request: httpx.Request) -> httpx.Response:
         name = request.url.path.rsplit("/", 1)[-1]
         calls.append(name)
@@ -49,7 +55,9 @@ def openf1(calls, locked=False):
                 {"meeting_key": 10, "meeting_name": "Singapore Grand Prix", "is_cancelled": False}])
         if name == "sessions":
             assert request.url.params["meeting_key"] == "10"
-            return httpx.Response(200, json=SESSIONS)
+            return httpx.Response(200, json=sessions or SESSIONS)
+        if name == "session_result":
+            return httpx.Response(200, json=RESULT)
         if name == "laps":
             return httpx.Response(200, json=laps())
         if name == "drivers":
@@ -98,7 +106,7 @@ async def test_finished_practice_is_stored_like_fastf1s():
 
 
 async def test_sessions_already_stored_are_left_alone():
-    db, calls = FakeDb(stored=[("2026_Singapore", "fp1"), ("2026_Singapore", "fp2"), ("2026_Singapore", "fp3")]), []
+    db, calls = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3", "sprint_qualifying", "qualifying")]), []
     assert await load_weekend_practice(db, client(calls), TEAMS, {}, now=NOW) == []
     assert calls == []
 
@@ -119,3 +127,16 @@ async def test_team_names_match_despite_suffixes_but_not_ambiguously():
     assert team_id_for("Haas", TEAMS) == "haas"
     assert team_id_for("Racing Bulls", TEAMS) is None
     assert team_id_for("Red Bull", {"a": "Red Bull Racing", "b": "Red Bull Junior"}) is None
+
+
+async def test_qualifying_is_stored_in_its_classified_order_for_the_race_prediction():
+    sessions = SESSIONS + [{"session_key": 5, "session_name": "Qualifying", "date_end": "2026-10-10T10:00:00+00:00"}]
+    db = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3")])
+    stored = await load_weekend_practice(db, OpenF1Client(creds={}, per_minute=60000, transport=openf1([], sessions=sessions)),
+                                         TEAMS, {"ant": "mercedes"}, now=NOW)
+
+    assert stored == [{"race_id": "2026_Singapore", "session_type": "qualifying"}]
+    rows = sorted(db.results[("2026_Singapore", "qualifying")], key=lambda r: r["position"])
+    assert [r["driver_id"] for r in rows[:2]] == ["ant", "ver"]                     # the classification, not lap order
+    assert rows[0]["time"] == str(pd.Timedelta(seconds=90.1)) and rows[0]["constructor_id"] == "mercedes"
+    assert rows[-1]["driver_id"] == "bea" and rows[-1]["status"] == "DNS"             # unclassified go last
