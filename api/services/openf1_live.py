@@ -138,6 +138,9 @@ async def find_session(client: OpenF1Client, year: int, gp: str, code: str) -> O
     """The OpenF1 session for one of our sessions. `gp` is the schedule's race name ("Spanish
     Grand Prix", or the id form "Spanish_Grand_Prix"); OpenF1 uses the same meeting names."""
     meetings = await client.get("meetings", year=year)
+    # A cancelled meeting stays listed: 2026's Bahrain GP was called off in April and a "Bahrain
+    # Grand Prix" held at Kuala Lumpur in October — the name alone found the cancelled one.
+    meetings = [m for m in meetings if not m.get("is_cancelled")] or meetings
     wanted = _norm(gp)
     meeting = next((m for m in meetings if _norm(m.get("meeting_name", "")) == wanted), None)
     if meeting is None:

@@ -10,7 +10,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 import uvicorn
@@ -46,6 +46,7 @@ from services.championship_service import ChampionshipService
 from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
 from services.entry_list import EntryListService
+from services.weekend_practice import check_again_in, load_weekend_practice
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
@@ -212,6 +213,44 @@ async def _results_refresh_loop() -> None:
         await asyncio.sleep(RESULTS_REFRESH_INTERVAL)
 
 
+# Each race weekend's practice (FP1-3), loaded from OpenF1 as the sessions finish, so live
+# predictions get the weekend's practice pace (services/weekend_practice.py). With Supabase only,
+# like the results refresh; WEEKEND_PRACTICE=0 turns it off.
+WEEKEND_PRACTICE = os.getenv("WEEKEND_PRACTICE", "1") != "0"
+WEEKEND_PRACTICE_FIRST_DELAY = 120
+
+
+def _last_teams() -> Dict[str, str]:
+    """Each driver's team in their latest race — for a practice row whose team name doesn't match."""
+    df = prediction_service._df
+    if df is None or df.empty:
+        return {}
+    latest = df.dropna(subset=["constructor_id"]).sort_values(["year", "round"]).groupby("driver_id")["constructor_id"].last()
+    return latest.to_dict()
+
+
+async def _weekend_practice_loop() -> None:
+    await asyncio.sleep(WEEKEND_PRACTICE_FIRST_DELAY)
+    while True:
+        delay = 3600
+        try:
+            ready = duckdb_service is not None and (database_guardian is None or database_guardian.ready)
+            if ready and not ingest_service.status.get("running"):
+                await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
+                stored = await load_weekend_practice(duckdb_service, entry_lists.client,
+                                                     prediction_service._constructor_map, _last_teams())
+                if stored:
+                    logger.info("Weekend practice stored (%s); retraining", ", ".join(
+                        f"{s['race_id']} {s['session_type']}" for s in stored))
+                    await prediction_service.train(duckdb_service)
+                delay = check_again_in(await duckdb_service.get_races_by_year(datetime.now().year), date.today())
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Weekend practice check failed: %s", exc)
+        await asyncio.sleep(delay)
+
+
 async def _ping_database() -> bool:
     pool = getattr(duckdb_service, "pool", None)
     if pool is None:
@@ -231,6 +270,7 @@ async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
     warmup_task = None
     refresh_task = None
+    practice_task = None
     live_schedule_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
@@ -255,6 +295,8 @@ async def lifespan(app: FastAPI):
         await database_guardian.start()
         if RESULTS_REFRESH_DAYS > 0:
             refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
+        if WEEKEND_PRACTICE:
+            practice_task = asyncio.create_task(_weekend_practice_loop(), name="weekend-practice")
     else:
         logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
@@ -284,7 +326,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
-    for task in (warmup_task, refresh_task, live_schedule_task):
+    for task in (warmup_task, refresh_task, practice_task, live_schedule_task):
         if task:
             task.cancel()
     await live_relays.stop_all()
