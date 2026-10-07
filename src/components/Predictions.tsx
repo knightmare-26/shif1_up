@@ -143,7 +143,7 @@ const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'n
   return 'bad';
 };
 
-type SortKey = 'driver_name' | 'predicted_grid' | 'actual_grid' | 'predicted_position' | 'actual_position'
+type SortKey = 'driver_name' | 'predicted_grid' | 'actual_quali' | 'actual_grid' | 'predicted_position' | 'actual_position'
   | 'pole_probability' | 'win_probability' | 'podium_probability';
 const CHANCE_KEYS: SortKey[] = ['pole_probability', 'win_probability', 'podium_probability'];
 type SortDir = 'asc' | 'desc';
@@ -226,8 +226,8 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
         <thead>
           <tr className="border-b border-gray-800">
             <SortableHeader label="Driver"       col="driver_name"        align="left" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <SortableHeader label="Pred. Grid"   col="predicted_grid"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <SortableHeader label="Actual Grid"  col="actual_grid"        sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Pred. Quali"  col="predicted_grid"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <SortableHeader label="Actual Quali" col="actual_quali"       sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             {hasChances && <SortableHeader label="Pole chance" col="pole_probability" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
             <SortableHeader label="Pred. Finish" col="predicted_position" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <SortableHeader label="Actual Finish" col="actual_position"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
@@ -240,7 +240,7 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
             <Tr key={d.driver_id}>
               <Td className="font-medium text-white">{d.driver_name}</Td>
               <Td align="right" className="tabular-nums text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid}` : '—'}</Td>
-              <Td align="right" className="tabular-nums text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
+              <Td align="right" className="tabular-nums text-white">{(d.actual_quali ?? d.actual_grid) != null ? `P${d.actual_quali ?? d.actual_grid}` : '—'}</Td>
               {hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.pole_probability)}</Td>}
               <Td align="right" className="tabular-nums text-gray-400">{d.predicted_position != null ? `P${d.predicted_position}` : '—'}</Td>
               <Td align="right" className="tabular-nums text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>

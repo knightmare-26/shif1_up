@@ -155,6 +155,8 @@ export interface BacktestDriverRow {
   driver_id: string;
   driver_name: string;
   predicted_grid?: number | null;
+  /** The qualifying result (the starting grid where no qualifying is stored). */
+  actual_quali?: number | null;
   actual_grid?: number | null;
   predicted_position?: number | null;
   actual_position?: number | null;
