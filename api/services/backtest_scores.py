@@ -9,9 +9,14 @@ race or anything later. The chances are then scored against what happened:
 - Brier score (mean squared error of the probability; lower is better) and log loss;
 - the same for two baselines: *uniform* (everyone equal) and, for the race, *starting slot* — how
   often a car from that grid slot has won / podiumed / scored in earlier races;
-- a reliability table: in each band of predicted chance, how often it actually happened.
+- a reliability table: in each band of predicted chance, how often it actually happened;
+- ROC-AUC: how well the chances separate the drivers who did it from those who didn't.
+
+`hit_rates` scores the predicted *order* the plain way — did it pick the winner, how many of the
+podium / top 5 / top 10 it named, position error (MAE, RMSE) — against two baselines: the starting
+grid (the pole-sitter wins; race only) and the championship order before the weekend.
 """
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -42,6 +47,25 @@ def _metrics(p: np.ndarray, y: np.ndarray) -> Dict[str, float]:
     q = np.clip(p, EPS, 1 - EPS)
     return {"brier": round(float(np.mean((p - y) ** 2)), 4),
             "log_loss": round(float(-np.mean(y * np.log(q) + (1 - y) * np.log(1 - q))), 4)}
+
+
+def _auc(p: np.ndarray, y: np.ndarray) -> Optional[float]:
+    """Probability that a random driver who did it got a higher chance than one who didn't."""
+    pos, neg = p[y == 1], p[y == 0]
+    if not len(pos) or not len(neg):
+        return None
+    order = np.argsort(np.concatenate([pos, neg]), kind="mergesort")
+    ranks = np.empty(len(order))
+    values = np.concatenate([pos, neg])[order]
+    # average ranks for ties
+    i = 0
+    while i < len(values):
+        j = i
+        while j + 1 < len(values) and values[j + 1] == values[i]:
+            j += 1
+        ranks[order[i:j + 1]] = (i + j) / 2 + 1
+        i = j + 1
+    return round(float((ranks[:len(pos)].sum() - len(pos) * (len(pos) + 1) / 2) / (len(pos) * len(neg))), 4)
 
 
 def _reliability(p: np.ndarray, y: np.ndarray) -> List[Dict[str, Any]]:
@@ -136,7 +160,7 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                 continue
             y, p = np.array(b["y"]), np.array(b["model"])
             entry = {"top": top, "n": int(len(y)), "observed_rate": round(float(y.mean()), 4),
-                     **_metrics(p, y), "uniform": _metrics(np.array(b["uniform"]), y),
+                     **_metrics(p, y), "auc": _auc(p, y), "uniform": _metrics(np.array(b["uniform"]), y),
                      "reliability": _reliability(p, y)}
             if b["slot"]:
                 entry["starting_slot"] = _metrics(np.array(b["slot"]), y)
@@ -145,4 +169,53 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                 if name in entry and entry[name]["brier"]:
                     entry[f"skill_vs_{name}"] = round(1 - entry["brier"] / entry[name]["brier"], 4)
             out[kind][market] = entry
+    return out
+
+
+# --- the predicted order, the plain way -------------------------------------------------------
+
+HIT_TOPS = (1, 3, 5, 10)
+# (session, actual key, {method: predicted-order key})
+ORDERS = {
+    "race": ("actual_position", {"model": "predicted_position", "grid": "actual_grid", "standings": "standings_rank"}),
+    "qualifying": ("actual_grid", {"model": "predicted_grid", "standings": "standings_rank"}),
+}
+
+
+def _ranked(rows: List[Dict[str, Any]], key: str) -> Dict[str, int]:
+    """driver -> 1..n by `key` (lower is better), over the rows that have it."""
+    have = sorted((r for r in rows if r.get(key) is not None), key=lambda r: r[key])
+    return {r["driver_id"]: i + 1 for i, r in enumerate(have)}
+
+
+def hit_rates(races: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Winner / podium / top-5 / top-10 hit rates and position errors for the model's predicted
+    order and the baselines, over the races where all of them have an order to compare."""
+    out: Dict[str, Any] = {}
+    for kind, (actual_key, methods) in ORDERS.items():
+        tally = {m: {"hits": {t: [] for t in HIT_TOPS}, "errors": []} for m in methods}
+        races_used = 0
+        for race in races:
+            rows = [d for d in race["drivers"] if d.get(actual_key) is not None]
+            orders = {m: _ranked(rows, key) for m, key in methods.items()}
+            if len(rows) < 10 or any(len(o) < len(rows) for o in orders.values()):
+                continue
+            races_used += 1
+            actual = _ranked(rows, actual_key)
+            for m, order in orders.items():
+                for top in HIT_TOPS:
+                    named = {d for d, r in order.items() if r <= top}
+                    did = {d for d, r in actual.items() if r <= top}
+                    tally[m]["hits"][top].append(len(named & did) / top)
+                tally[m]["errors"].extend(order[d] - actual[d] for d in actual)
+        if not races_used:
+            continue
+        out[kind] = {"races": races_used}
+        for m, t in tally.items():
+            errors = np.array(t["errors"], dtype=float)
+            out[kind][m] = {
+                **{f"top{top}": round(float(np.mean(v)), 4) for top, v in t["hits"].items()},
+                "mae": round(float(np.mean(np.abs(errors))), 3),
+                "rmse": round(float(np.sqrt(np.mean(errors ** 2))), 3),
+            }
     return out

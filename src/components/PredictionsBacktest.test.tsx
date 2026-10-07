@@ -20,8 +20,14 @@ const score = (skillUniform: number, skillSlot?: number): ProbabilityScore => ({
   reliability: [{ from: 0.15, to: 0.3, n: 45, predicted: 0.19, observed: 0.56 }],
 });
 
+const rate = (top1: number, mae: number) => ({ top1, top3: 0.62, top5: 0.7, top10: 0.78, mae, rmse: 4.8 });
+
 const RESULT: BacktestResult = {
   method: { latest_season: 2026 },
+  hit_rates: {
+    race: { races: 86, model: rate(0.58, 3.44), grid: rate(0.58, 3.34), standings: rate(0.44, 3.85) },
+    qualifying: { races: 86, model: rate(0.35, 3.77), standings: rate(0.31, 3.59) },
+  },
   probability_scores: {
     races_scored: 75,
     race: { win: score(0.18, -0.24) },
@@ -53,6 +59,9 @@ test("each driver's chances and how good the chances were", async () => {
   expect(screen.getByText('18% better')).toBeInTheDocument();
   expect(screen.getByText('24% worse')).toBeInTheDocument();
   expect(screen.getByText(/given 19% to win on average won 56% of the time/)).toBeInTheDocument();
+  expect(screen.getByText('Against simple guesses')).toBeInTheDocument();
+  expect(screen.getByText('Picked the winner')).toBeInTheDocument();
+  expect(screen.getByText('3.34')).toHaveClass('font-semibold');          // the grid beat the model here
   expect(screen.getByText(/In 2026 each race is predicted by a model trained on everything up to the race before/))
     .toBeInTheDocument();
 });

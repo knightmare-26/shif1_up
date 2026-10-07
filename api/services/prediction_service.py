@@ -19,7 +19,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from services.backtest_scores import add_probabilities
+from services.backtest_scores import add_probabilities, hit_rates
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS, practice_features
 
 logger = logging.getLogger(__name__)
@@ -881,6 +881,14 @@ class PredictionService:
         if not drivers:
             return None
 
+        # The championship order going into the weekend (a baseline for services/backtest_scores.py):
+        # Grand Prix points so far this season, recent form breaking ties (round 1: all on 0).
+        if "season_points_before" in group:
+            standing = group.sort_values(["season_points_before", "driver_rolling_finish"], ascending=[False, True])
+            for rank, driver_id in enumerate(standing["driver_id"], start=1):
+                if driver_id in drivers:
+                    drivers[driver_id]["standings_rank"] = rank
+
         driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
 
         quali_errs = [abs(d["predicted_grid"] - d["actual_grid"]) for d in driver_rows
@@ -949,7 +957,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "3"
+    WALK_FORWARD_VERSION = "4"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1006,6 +1014,8 @@ class PredictionService:
         df["circuit_enc"]     = self._label_encode(df["circuit_name"].fillna("unknown"), le_circuit)
 
         df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
+        points = df["points"].fillna(0) if "points" in df else pd.Series(0.0, index=df.index)
+        df["season_points_before"] = (points.groupby([df["year"], df["driver_id"]]).cumsum() - points)
 
         all_years = sorted(df["year"].unique().tolist())
         if len(all_years) < 2:
@@ -1074,6 +1084,7 @@ class PredictionService:
                 "latest_season_method": "one model per round, trained on everything before that round",
             },
             "probability_scores": probability_scores,
+            "hit_rates": hit_rates(races_out),
             "method_version": self.WALK_FORWARD_VERSION,
             "units": units_out,
             "refits": refits,

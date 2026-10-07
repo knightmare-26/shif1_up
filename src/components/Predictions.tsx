@@ -3,7 +3,8 @@ import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 
 import { useSearchParams } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
 import {
-  backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestProbabilityScores, BacktestResult, ProbabilityScore,
+  backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestHitRates, BacktestProbabilityScores, BacktestResult,
+  HitRate, ProbabilityScore,
 } from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
@@ -319,6 +320,66 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
   );
 };
 
+const HIT_ROWS: { key: keyof HitRate; race: string; qualifying: string }[] = [
+  { key: 'top1', race: 'Picked the winner', qualifying: 'Picked pole' },
+  { key: 'top3', race: 'Podium named', qualifying: 'Top 3 named' },
+  { key: 'top10', race: 'Top 10 named', qualifying: 'Q3 (top 10) named' },
+  { key: 'mae', race: 'Places off (avg)', qualifying: 'Places off (avg)' },
+];
+
+/** The predicted order against simple guesses: the starting grid and the championship order. */
+const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
+  const sections = ([
+    rates.qualifying && { kind: 'qualifying' as const, title: 'Qualifying', races: rates.qualifying.races,
+      columns: [['Model', rates.qualifying.model], ['Championship order', rates.qualifying.standings]] as [string, HitRate][] },
+    rates.race && { kind: 'race' as const, title: 'Race (with the grid known)', races: rates.race.races,
+      columns: [['Model', rates.race.model], ['Starting grid', rates.race.grid], ['Championship order', rates.race.standings]] as [string, HitRate][] },
+  ]).filter(Boolean) as { kind: 'race' | 'qualifying'; title: string; races: number; columns: [string, HitRate][] }[];
+  if (!sections.length) return null;
+
+  const format = (key: keyof HitRate, v: number) => (key === 'mae' ? v.toFixed(2) : `${Math.round(v * 100)}%`);
+  const best = (key: keyof HitRate, cols: [string, HitRate][]) =>
+    (key === 'mae' ? Math.min : Math.max)(...cols.map(([, r]) => r[key]));
+
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title="Against simple guesses"
+        subtitle="The predicted order next to two guesses anyone could make: the starting grid, and the championship order going into the weekend"
+      />
+      <div className="grid gap-0 lg:grid-cols-2">
+        {sections.map(({ kind, title, races, columns }) => (
+          <div key={kind} className="min-w-0">{/* lets the table scroll inside its column instead of widening the page */}
+          <TableWrap>
+            <thead>
+              <tr className="border-b border-gray-800">
+                <Th>{title} · {races} races</Th>
+                {columns.map(([label]) => <Th key={label} align="right">{label}</Th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {HIT_ROWS.map(({ key, ...labels }) => {
+                const top = best(key, columns);
+                return (
+                  <Tr key={key}>
+                    <Td className="text-gray-300">{labels[kind]}</Td>
+                    {columns.map(([label, r]) => (
+                      <Td key={label} align="right" className={`tabular-nums ${r[key] === top ? 'font-semibold text-white' : 'text-gray-400'}`}>
+                        {format(key, r[key])}
+                      </Td>
+                    ))}
+                  </Tr>
+                );
+              })}
+            </tbody>
+          </TableWrap>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
 const BacktestTab: React.FC = () => {
   const [races, setRaces]                   = useState<BacktestRace[] | null>(null);
   const [error, setError]                   = useState<string | null>(null);
@@ -332,6 +393,7 @@ const BacktestTab: React.FC = () => {
   // works (`updating`) the current list is shown and checked again every 30s.
   const [updating, setUpdating]             = useState(false);
   const [scores, setScores]                 = useState<BacktestProbabilityScores | null>(null);
+  const [hitRates, setHitRates]             = useState<BacktestHitRates | null>(null);
   const [latestSeason, setLatestSeason]     = useState<number | null>(null);
   const latestId = useRef<string | null>(null);
   const selectedRef = useRef(selectedRaceId);
@@ -341,6 +403,7 @@ const BacktestTab: React.FC = () => {
     setRaces(r.races);
     setUpdating(Boolean(r.updating));
     setScores(r.probability_scores ?? null);
+    setHitRates(r.hit_rates ?? null);
     setLatestSeason(r.method?.latest_season ?? null);
     if (r.races.length === 0) return;
     const newest = r.races[0];   // most recent first
@@ -443,6 +506,7 @@ const BacktestTab: React.FC = () => {
         <Card><EmptyState title="No race matches the selected filters" /></Card>
       )}
 
+      {hitRates && <HitRates rates={hitRates} />}
       {scores && <ChanceScores scores={scores} />}
 
       <div className="mt-6">

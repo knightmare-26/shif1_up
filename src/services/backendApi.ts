@@ -186,6 +186,8 @@ export interface ProbabilityScore {
   observed_rate: number;
   uniform: { brier: number; log_loss: number };
   starting_slot?: { brier: number; log_loss: number };
+  /** How well the chances separate drivers who did it from those who didn't (0.5 = no better than a coin). */
+  auc?: number | null;
   /** 1 - brier / baseline brier: 1 = perfect, 0 = no better than the baseline, below 0 = worse. */
   skill_vs_uniform?: number;
   skill_vs_starting_slot?: number;
@@ -198,6 +200,21 @@ export interface BacktestProbabilityScores {
   qualifying: Partial<Record<'pole' | 'top3' | 'q3', ProbabilityScore>>;
 }
 
+/** Share of the top n named correctly (top1 = picked the winner), and position error. */
+export interface HitRate {
+  top1: number;
+  top3: number;
+  top5: number;
+  top10: number;
+  mae: number;
+  rmse: number;
+}
+
+export interface BacktestHitRates {
+  race?: { races: number; model: HitRate; grid: HitRate; standings: HitRate };
+  qualifying?: { races: number; model: HitRate; standings: HitRate };
+}
+
 export interface BacktestResult {
   races: BacktestRace[];
   /** The server is rebuilding the list to add races it doesn't cover yet. */
@@ -205,6 +222,7 @@ export interface BacktestResult {
   /** How the earlier seasons and the latest one were scored. */
   method?: { latest_season: number };
   probability_scores?: BacktestProbabilityScores;
+  hit_rates?: BacktestHitRates;
 }
 
 export interface SessionData {

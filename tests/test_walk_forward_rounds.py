@@ -119,3 +119,37 @@ async def test_brier_and_log_loss():
     m = backtest_scores._metrics(np.array([1.0, 0.0, 0.5]), np.array([1.0, 0.0, 1.0]))
     assert m["brier"] == pytest.approx(0.25 / 3, abs=1e-4)
     assert m["log_loss"] == pytest.approx(-np.log(0.5) / 3, abs=1e-3)
+
+
+# --- the predicted order against simple guesses -------------------------------------------------
+
+def race_rows(model, grid, standings, actual):
+    return {"year": 2025, "round": 1, "drivers": [
+        {"driver_id": f"d{i}", "predicted_position": m, "actual_grid": g, "standings_rank": s, "actual_position": a,
+         "predicted_grid": m}
+        for i, (m, g, s, a) in enumerate(zip(model, grid, standings, actual))]}
+
+
+async def test_hit_rates_compare_the_model_with_the_grid_and_the_championship_order():
+    n = list(range(1, 11))
+    race = race_rows(model=n, grid=[2, 1] + n[2:], standings=n[::-1], actual=n)
+    out = backtest_scores.hit_rates([race])["race"]
+
+    assert out["model"]["top1"] == 1.0 and out["model"]["mae"] == 0
+    assert out["grid"]["top1"] == 0.0 and out["grid"]["top3"] == 1.0        # front row swapped, podium named
+    assert out["standings"]["top10"] == 1.0 and out["standings"]["top1"] == 0.0
+    assert out["grid"]["rmse"] == pytest.approx(np.sqrt(2 / 10), abs=1e-3)
+
+
+async def test_the_championship_order_going_into_a_race_counts_only_earlier_races():
+    raw = synthetic_raw(years=[2024, 2025], rounds_per_year=6).assign(points=lambda d: (5 - d["position"]).clip(lower=0))
+    out = PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)
+
+    by_round = {r["round"]: r for r in out["races"] if r["year"] == 2025}
+    leader_after_r1 = max(by_round[1]["drivers"], key=lambda d: -d["actual_position"])   # won round 1
+    assert {d["driver_id"]: d["standings_rank"] for d in by_round[2]["drivers"]}[leader_after_r1["driver_id"]] == 1
+
+
+async def test_auc_is_the_chance_a_hit_ranks_above_a_miss():
+    assert backtest_scores._auc(np.array([0.9, 0.8, 0.1, 0.2]), np.array([1, 1, 0, 0])) == 1.0
+    assert backtest_scores._auc(np.array([0.5, 0.5]), np.array([1, 0])) == 0.5
