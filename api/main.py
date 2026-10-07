@@ -1504,7 +1504,10 @@ def _walkforward_running() -> bool:
 
 async def _refresh_walkforward() -> None:
     try:
-        result = await prediction_service.walk_forward_backtest(duckdb_service, years_back=3)
+        # Units (a season, or a round of the latest one) whose inputs haven't changed are reused.
+        previous = await duckdb_service.get_prediction_cache("_walkforward", "v1")
+        result = await prediction_service.walk_forward_backtest(
+            duckdb_service, years_back=3, previous=(previous or {}).get("result"))
         if result.get("races"):
             await duckdb_service.set_prediction_cache(
                 "_walkforward", "v1", result.get("data_fingerprint", ""), result
@@ -1524,12 +1527,16 @@ def _start_walkforward_refresh() -> None:
 
 
 def _walkforward_stale(cached: Optional[Dict[str, Any]]) -> bool:
-    """The cached backtest misses race results the current models were trained on. Unknown
-    (models not trained yet, or loaded from an older save) counts as current."""
+    """The cached backtest was made by an older method, or misses race results the current models
+    were trained on. Unknown data (models not trained yet, or loaded from an older save) counts
+    as current."""
+    result = (cached or {}).get("result", {})
+    if result.get("races") and result.get("method_version") != prediction_service.WALK_FORWARD_VERSION:
+        return True
     current = prediction_service._meta.get("data_fingerprint")
     if not current:
         return False
-    return (cached or {}).get("result", {}).get("data_fingerprint") != current
+    return result.get("data_fingerprint") != current
 
 
 async def _keep_backtest_current() -> None:

@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
-import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestResult } from '../services/backendApi';
+import {
+  backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestProbabilityScores, BacktestResult, ProbabilityScore,
+} from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
@@ -131,7 +133,9 @@ const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'n
   return 'bad';
 };
 
-type SortKey = 'driver_name' | 'predicted_grid' | 'actual_grid' | 'predicted_position' | 'actual_position';
+type SortKey = 'driver_name' | 'predicted_grid' | 'actual_grid' | 'predicted_position' | 'actual_position'
+  | 'pole_probability' | 'win_probability' | 'podium_probability';
+const CHANCE_KEYS: SortKey[] = ['pole_probability', 'win_probability', 'podium_probability'];
 type SortDir = 'asc' | 'desc';
 
 const SortableHeader: React.FC<{
@@ -176,7 +180,7 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortKey(col);
-      setSortDir('asc');
+      setSortDir(CHANCE_KEYS.includes(col) ? 'desc' : 'asc');   // biggest chance first
     }
   };
 
@@ -190,6 +194,9 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
     });
     return rows;
   }, [race.drivers, sortKey, sortDir]);
+
+  const hasChances = race.drivers.some((d) => d.win_probability != null || d.pole_probability != null);
+  const chance = (p: number | undefined) => (p != null ? formatChance(p) : '—');
 
   return (
     <Card>
@@ -211,8 +218,11 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
             <SortableHeader label="Driver"       col="driver_name"        align="left" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <SortableHeader label="Pred. Grid"   col="predicted_grid"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <SortableHeader label="Actual Grid"  col="actual_grid"        sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            {hasChances && <SortableHeader label="Pole chance" col="pole_probability" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
             <SortableHeader label="Pred. Finish" col="predicted_position" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
             <SortableHeader label="Actual Finish" col="actual_position"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            {hasChances && <SortableHeader label="Win chance"    col="win_probability"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
+            {hasChances && <SortableHeader label="Podium chance" col="podium_probability" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
           </tr>
         </thead>
         <tbody>
@@ -221,12 +231,81 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
               <Td className="font-medium text-white">{d.driver_name}</Td>
               <Td align="right" className="tabular-nums text-gray-400">{d.predicted_grid != null ? `P${d.predicted_grid}` : '—'}</Td>
               <Td align="right" className="tabular-nums text-white">{d.actual_grid != null ? `P${d.actual_grid}` : '—'}</Td>
+              {hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.pole_probability)}</Td>}
               <Td align="right" className="tabular-nums text-gray-400">{d.predicted_position != null ? `P${d.predicted_position}` : '—'}</Td>
               <Td align="right" className="tabular-nums text-white">{d.actual_position != null ? `P${d.actual_position}` : '—'}</Td>
+              {hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.win_probability)}</Td>}
+              {hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.podium_probability)}</Td>}
             </Tr>
           ))}
         </tbody>
       </TableWrap>
+    </Card>
+  );
+};
+
+const MARKET_LABELS: { kind: 'race' | 'qualifying'; key: string; label: string }[] = [
+  { kind: 'qualifying', key: 'pole', label: 'Pole' },
+  { kind: 'race', key: 'win', label: 'Race win' },
+  { kind: 'race', key: 'podium', label: 'Podium' },
+  { kind: 'race', key: 'points', label: 'Points (top 10)' },
+];
+
+/** "18% better" / "24% worse" — Brier skill against a baseline. */
+const skillLabel = (skill: number | undefined) => {
+  if (skill == null) return '—';
+  const pct = Math.round(Math.abs(skill) * 100);
+  return pct === 0 ? 'level' : `${pct}% ${skill > 0 ? 'better' : 'worse'}`;
+};
+const skillTone = (skill: number | undefined): 'good' | 'bad' | 'neutral' =>
+  skill == null || Math.abs(skill) < 0.02 ? 'neutral' : skill > 0 ? 'good' : 'bad';
+
+/** How good the chances were: each market against two baselines, plus the clearest calibration gap. */
+const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores }) => {
+  const rows = MARKET_LABELS
+    .map((m) => ({ ...m, score: (scores[m.kind] as Record<string, ProbabilityScore | undefined>)[m.key] }))
+    .filter((m): m is typeof m & { score: ProbabilityScore } => m.score != null);
+  if (!rows.length) return null;
+  // The band of win chances furthest from what happened (with enough drivers in it to mean something).
+  const win = scores.race.win;
+  const gap = win?.reliability
+    .filter((b) => b.n >= 20)
+    .sort((a, b) => Math.abs(b.observed - b.predicted) - Math.abs(a.observed - a.predicted))[0];
+
+  return (
+    <Card className="mt-6">
+      <CardHeader
+        title="How good the chances were"
+        subtitle={`Pole, win, podium and points chances for ${scores.races_scored} races, each worked out before the race from earlier races only`}
+      />
+      <TableWrap>
+        <thead>
+          <tr className="border-b border-gray-800">
+            <Th>Chance of</Th>
+            <Th align="right">vs. everyone equal</Th>
+            <Th align="right">vs. history of the grid slot</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ key, label, score }) => (
+            <Tr key={key}>
+              <Td className="font-medium text-white">{label}</Td>
+              <Td align="right"><Pill tone={skillTone(score.skill_vs_uniform)}>{skillLabel(score.skill_vs_uniform)}</Pill></Td>
+              <Td align="right">
+                {score.skill_vs_starting_slot != null
+                  ? <Pill tone={skillTone(score.skill_vs_starting_slot)}>{skillLabel(score.skill_vs_starting_slot)}</Pill>
+                  : <span className="text-gray-600">—</span>}
+              </Td>
+            </Tr>
+          ))}
+        </tbody>
+      </TableWrap>
+      {gap && Math.abs(gap.observed - gap.predicted) >= 0.05 && (
+        <p className="border-t border-gray-800 px-4 py-3 text-sm text-gray-400">
+          Drivers given {formatChance(gap.predicted)} to win on average won {formatChance(gap.observed)} of the time
+          ({gap.n} drivers) — the race chances are too {gap.observed > gap.predicted ? 'cautious' : 'confident'} at the front.
+        </p>
+      )}
     </Card>
   );
 };
@@ -243,6 +322,8 @@ const BacktestTab: React.FC = () => {
   // The server rebuilds this list by itself after a race weekend's results come in; while it
   // works (`updating`) the current list is shown and checked again every 30s.
   const [updating, setUpdating]             = useState(false);
+  const [scores, setScores]                 = useState<BacktestProbabilityScores | null>(null);
+  const [latestSeason, setLatestSeason]     = useState<number | null>(null);
   const latestId = useRef<string | null>(null);
   const selectedRef = useRef(selectedRaceId);
   selectedRef.current = selectedRaceId;
@@ -250,6 +331,8 @@ const BacktestTab: React.FC = () => {
   const apply = useCallback((r: BacktestResult) => {
     setRaces(r.races);
     setUpdating(Boolean(r.updating));
+    setScores(r.probability_scores ?? null);
+    setLatestSeason(r.method?.latest_season ?? null);
     if (r.races.length === 0) return;
     const newest = r.races[0];   // most recent first
     // Default to the latest race — and move along to a newly added one unless the user picked another.
@@ -351,13 +434,25 @@ const BacktestTab: React.FC = () => {
         <Card><EmptyState title="No race matches the selected filters" /></Card>
       )}
 
+      {scores && <ChanceScores scores={scores} />}
+
       <div className="mt-6">
         <HowItWorksCard>
           <p>
-            <strong className="text-gray-200">Honest by design:</strong> each season is predicted by a model trained only on
-            earlier seasons, so it never sees the results it's judged against. "Off by" is how many places a prediction
-            missed by, averaged over the drivers in that session: lower is better.
+            <strong className="text-gray-200">Honest by design:</strong> every race is predicted by a model that never saw
+            it. {latestSeason
+              ? `In ${latestSeason} each race is predicted by a model trained on everything up to the race before (as the site does, since it retrains after every race); earlier seasons by one model trained on the seasons before them.`
+              : 'Each season is predicted by a model trained only on earlier seasons.'}{' '}
+            "Off by" is how many places a prediction missed by, averaged over the drivers in that session: lower is better.
           </p>
+          {scores && (
+            <p>
+              <strong className="text-gray-200">Chances</strong> come from playing each session out thousands of times, with
+              the model's spread fitted only on earlier races. They're compared with two simple guesses: every driver equally
+              likely, and how often a car starting from that grid slot has won, podiumed or scored before (the race
+              predictions know the grid too). "Better" means a lower Brier score: the chances sat closer to what happened.
+            </p>
+          )}
           {quali != null && race != null && (
             <p>
               <strong className="text-gray-200">Overall:</strong> across {races.length} races

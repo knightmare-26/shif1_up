@@ -158,6 +158,10 @@ export interface BacktestDriverRow {
   actual_grid?: number | null;
   predicted_position?: number | null;
   actual_position?: number | null;
+  /** Chances from the held-out model (absent for the first races: nothing to calibrate on yet). */
+  pole_probability?: number;
+  win_probability?: number;
+  podium_probability?: number;
 }
 
 export interface BacktestRace {
@@ -174,10 +178,33 @@ export interface BacktestRace {
   drivers: BacktestDriverRow[];
 }
 
+export interface ProbabilityScore {
+  top: number;
+  n: number;
+  brier: number;
+  log_loss: number;
+  observed_rate: number;
+  uniform: { brier: number; log_loss: number };
+  starting_slot?: { brier: number; log_loss: number };
+  /** 1 - brier / baseline brier: 1 = perfect, 0 = no better than the baseline, below 0 = worse. */
+  skill_vs_uniform?: number;
+  skill_vs_starting_slot?: number;
+  reliability: { from: number; to: number; n: number; predicted: number; observed: number }[];
+}
+
+export interface BacktestProbabilityScores {
+  races_scored: number;
+  race: Partial<Record<'win' | 'podium' | 'points', ProbabilityScore>>;
+  qualifying: Partial<Record<'pole' | 'top3' | 'q3', ProbabilityScore>>;
+}
+
 export interface BacktestResult {
   races: BacktestRace[];
   /** The server is rebuilding the list to add races it doesn't cover yet. */
   updating?: boolean;
+  /** How the earlier seasons and the latest one were scored. */
+  method?: { latest_season: number };
+  probability_scores?: BacktestProbabilityScores;
 }
 
 export interface SessionData {

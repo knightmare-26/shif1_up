@@ -3,7 +3,8 @@
 The API rebuilds it by itself once its models have been trained on new race results; this does
 the same from a local machine — handy when the server is asleep or short on CPU.
 
-    python scripts/refresh_backtest.py
+    python scripts/refresh_backtest.py           # refits only what changed
+    python scripts/refresh_backtest.py --full    # refits everything
 
 Uses DATABASE_URL (Supabase), or the local DuckDB when it isn't set.
 """
@@ -42,14 +43,15 @@ async def main():
         before = await db.get_prediction_cache("_walkforward", "v1")
         if before:
             log.info("stored: %d races (%s)", len(before["result"].get("races", [])), before["result"].get("data_fingerprint"))
-        result = await PredictionService(model_dir="unused").walk_forward_backtest(db, years_back=3)
+        result = await PredictionService(model_dir="unused").walk_forward_backtest(
+            db, years_back=3, previous=None if "--full" in sys.argv else (before or {}).get("result"))
         if not result.get("races"):
             log.error("no races scored: %s", result.get("error"))
             return 1
         await db.set_prediction_cache("_walkforward", "v1", result["data_fingerprint"], result)
         latest = result["races"][0]
-        log.info("stored: %d races (%s), latest %s round %s — %s", len(result["races"]), result["data_fingerprint"],
-                 latest["year"], latest["round"], latest["race_name"])
+        log.info("stored: %d races (%s, %d refits), latest %s round %s — %s", len(result["races"]),
+                 result["data_fingerprint"], result.get("refits", 0), latest["year"], latest["round"], latest["race_name"])
         return 0
     finally:
         await db.cleanup()

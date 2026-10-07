@@ -11,12 +11,15 @@ F1 Race & Qualifying Prediction Service
 import json
 import logging
 import asyncio
+import hashlib
 import os
 from datetime import datetime
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+
+from services.backtest_scores import add_probabilities
 
 logger = logging.getLogger(__name__)
 
@@ -797,25 +800,29 @@ class PredictionService:
         if quali_model is not None:
             qdf = group.dropna(subset=required(quali_features) + ["grid"])
             if not qdf.empty:
-                ranks = self._ranks_from_scores(quali_model.predict(qdf[quali_features].fillna(10)))
-                for (_, row), rank in zip(qdf.iterrows(), ranks):
+                scores = quali_model.predict(qdf[quali_features].fillna(10))
+                ranks = self._ranks_from_scores(scores)
+                for (_, row), rank, score in zip(qdf.iterrows(), ranks, scores):
                     d = drivers.setdefault(row["driver_id"], {
                         "driver_id": row["driver_id"],
                         "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
                     })
                     d["predicted_grid"] = int(rank)
+                    d["quali_score"] = round(float(score), 5)   # for the odds (services/backtest_scores.py)
                     d["actual_grid"] = int(row["grid"]) if pd.notna(row["grid"]) else None
 
         if race_model is not None:
             rdf = group.dropna(subset=required(race_features) + ["position"])
             if not rdf.empty:
-                ranks = self._ranks_from_scores(race_model.predict(rdf[race_features].fillna(10)))
-                for (_, row), rank in zip(rdf.iterrows(), ranks):
+                scores = race_model.predict(rdf[race_features].fillna(10))
+                ranks = self._ranks_from_scores(scores)
+                for (_, row), rank, score in zip(rdf.iterrows(), ranks, scores):
                     d = drivers.setdefault(row["driver_id"], {
                         "driver_id": row["driver_id"],
                         "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
                     })
                     d["predicted_position"] = int(rank)
+                    d["race_score"] = round(float(score), 5)
                     d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
 
         if not drivers:
@@ -880,17 +887,21 @@ class PredictionService:
         return {"races": races_out}
 
     # ------------------------------------------------------------------
-    # Walk-forward backtest: a model trained only on seasons before Y,
-    # scored against Y itself — an honest holdout, unlike backtest() above
-    # which scores the live model against history it was fit on.
+    # Walk-forward backtest: every race is scored by a model that never saw
+    # it — an honest holdout, unlike backtest() above which scores the live
+    # model against history it was fit on.
     # ------------------------------------------------------------------
 
-    async def walk_forward_backtest(self, duckdb_service, years_back: int = 3) -> Dict[str, Any]:
-        """Retrains once per season boundary (not once per race — that would mean
-        60-80 full refits for a 3-year window at ~10s each) and scores each season
-        against a model that has never seen that season's results. Expensive
-        (3-4x a normal fit); callers should run this in the background and cache
-        the result, not call it per-request."""
+    # Bump when the backtest's method changes, so every cached unit is recomputed.
+    WALK_FORWARD_VERSION = "2"
+
+    async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
+                                    previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Earlier seasons are each scored by one model trained on the seasons before them; the
+        latest season race by race, each round by a model trained on everything up to the round
+        before — what the live site actually does, since it retrains after every race. Units whose
+        inputs haven't changed are taken from `previous` (the cached result), so a new race costs
+        one refit. Expensive the first time; run it in the background and cache the result."""
         raw = await self._load_raw(duckdb_service)
         if raw.empty or len(raw) < 20:
             return {"races": [], "error": f"Insufficient data ({len(raw)} rows)"}
@@ -900,9 +911,21 @@ class PredictionService:
         except ImportError as exc:
             return {"races": [], "error": f"ML packages missing: {exc}"}
 
-        return await asyncio.to_thread(self._walk_forward_fit, raw, lgb, years_back)
+        return await asyncio.to_thread(self._walk_forward_fit, raw, lgb, years_back, previous)
 
-    def _walk_forward_fit(self, raw: pd.DataFrame, lgb, years_back: int) -> Dict[str, Any]:
+    @staticmethod
+    def _unit_fingerprint(rows: pd.DataFrame, features: List[str], extra: str) -> str:
+        """What a scoring unit's result depends on: its training and test rows' model inputs and
+        targets, the feature list and the method version."""
+        cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid"]
+        cols = list(dict.fromkeys(c for c in cols if c in rows.columns))
+        ordered = rows.sort_values(["year", "round", "driver_id"])[cols]
+        digest = hashlib.sha1(pd.util.hash_pandas_object(ordered, index=False).values.tobytes())
+        digest.update("|".join(features + [extra, str(TIME_DECAY), PredictionService.WALK_FORWARD_VERSION]).encode())
+        return digest.hexdigest()[:16]
+
+    def _walk_forward_fit(self, raw: pd.DataFrame, lgb, years_back: int,
+                          previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         raw_race = raw[raw["session_type"] == "race"].copy()
         if raw_race.empty:
             return {"races": []}
@@ -919,7 +942,7 @@ class PredictionService:
         # Feature engineering runs over the whole history at once — safe because every
         # rolling/expanding feature already uses .shift(1), so a row's features only ever
         # reflect races strictly before it regardless of what else is in the frame. What
-        # actually gets walked forward is which rows each season's model is FIT on, below.
+        # actually gets walked forward is which rows each model is FIT on, below.
         df = self._engineer(raw_race)
         le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
         le_constructor = sorted(df["constructor_id"].fillna("unknown").unique().tolist())
@@ -939,6 +962,7 @@ class PredictionService:
 
         current_year = datetime.utcnow().year
         test_years = [y for y in all_years if y > all_years[0] and y >= current_year - years_back]
+        latest_year = all_years[-1]
 
         grid_available = bool(df["grid"].notna().mean() > 0.5)
         practice_available = bool(df["driver_practice_best_rank"].notna().mean() > 0.5)
@@ -946,28 +970,61 @@ class PredictionService:
         race_features = (RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID) + practice_feat
         quali_features = QUALI_FEATURES + practice_feat
 
-        races_out: List[Dict[str, Any]] = []
-        seasons_tested: List[int] = []
+        # Scoring units: (id, rows the model is fit on, rows it's scored on).
+        units = []
         for test_year in test_years:
-            train_df = df[df["year"] < test_year]
-            test_df = df[df["year"] == test_year]
+            if test_year == latest_year:
+                season = df[df["year"] == test_year]
+                for rnd in sorted(int(r) for r in season["round"].unique()):
+                    train = df[(df["year"] < test_year) | ((df["year"] == test_year) & (df["round"] < rnd))]
+                    units.append((f"{test_year}-r{rnd}", train, season[season["round"] == rnd]))
+            else:
+                units.append((str(test_year), df[df["year"] < test_year], df[df["year"] == test_year]))
+
+        cached_units = (previous or {}).get("units") or {}
+        cached_races: Dict[str, List[Dict[str, Any]]] = {}
+        for race in (previous or {}).get("races") or []:
+            if race.get("unit"):
+                cached_races.setdefault(race["unit"], []).append(race)
+
+        all_features = list(dict.fromkeys(race_features + quali_features))
+        races_out: List[Dict[str, Any]] = []
+        units_out: Dict[str, Dict[str, Any]] = {}
+        refits = 0
+        for unit_id, train_df, test_df in units:
             if test_df.empty:
                 continue
+            fingerprint = self._unit_fingerprint(pd.concat([train_df, test_df]), all_features,
+                                                 f"{unit_id}:{len(train_df)}")
+            if cached_units.get(unit_id, {}).get("fingerprint") == fingerprint and unit_id in cached_races:
+                scored = cached_races[unit_id]
+            else:
+                race_model  = self._fit_ranker(lgb, train_df, race_features, "position")
+                quali_model = self._fit_ranker(lgb, train_df, quali_features, "grid")
+                refits += 1
+                if race_model is None and quali_model is None:
+                    continue
+                scored = [{**r, "unit": unit_id}
+                          for r in self._score_races(test_df, quali_model, race_model, race_features, quali_features)]
+            units_out[unit_id] = {"fingerprint": fingerprint, "train_rows": int(len(train_df))}
+            races_out.extend(scored)
 
-            race_model  = self._fit_ranker(lgb, train_df, race_features, "position")
-            quali_model = self._fit_ranker(lgb, train_df, quali_features, "grid")
-
-            if race_model is None and quali_model is None:
-                continue
-
-            seasons_tested.append(int(test_year))
-            races_out.extend(self._score_races(test_df, quali_model, race_model, race_features, quali_features))
-
+        probability_scores = add_probabilities(races_out)
         races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
+        logger.info("walk-forward backtest: %d units (%d refitted), %d races", len(units_out), refits, len(races_out))
         return {
             "races": races_out,
             "computed_at": datetime.utcnow().isoformat(),
-            "seasons_tested": seasons_tested,
+            "seasons_tested": sorted({int(r["year"]) for r in races_out}),
+            "method": {
+                "earlier_seasons": "one model per season, trained on the seasons before it",
+                "latest_season": latest_year,
+                "latest_season_method": "one model per round, trained on everything before that round",
+            },
+            "probability_scores": probability_scores,
+            "method_version": self.WALK_FORWARD_VERSION,
+            "units": units_out,
+            "refits": refits,
             # Invalidation key: a walk-forward result is stale once new race results
             # are ingested, not when the live model retrains, so this is keyed to the
             # training data shape rather than self._meta["trained_at"].
