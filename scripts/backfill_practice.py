@@ -9,6 +9,8 @@ FP1 only) and retries each a few times with a growing pause.
     python scripts/backfill_practice.py --years 2022 2025 2026 --dry-run   # list what's missing
     python scripts/backfill_practice.py --years 2022 2025 2026
     python scripts/backfill_practice.py --years 2022 2023 2024 2025 --quali   # best Q1/Q2/Q3 lap per driver
+    python scripts/backfill_practice.py --years 2023 2024 2025 2026 --quali --refetch sprint_qualifying
+        # replace stored sessions of that type (sprint qualifying stored from FastF1 had no real order)
 
 Writes to the database in DATABASE_URL (Supabase), or the local DuckDB when it isn't set. Retrain
 and re-run the walk-forward backtest afterwards (POST /predict/train, POST /predict/backtest/refresh).
@@ -74,8 +76,9 @@ async def open_db():
     return db
 
 
-async def missing_sessions(db, years, quali=False):
-    """(year, round, gp, [session types]) for every raced weekend missing practice (or qualifying)."""
+async def missing_sessions(db, years, quali=False, refetch=()):
+    """(year, round, gp, [session types]) for every raced weekend missing practice (or qualifying);
+    session types in `refetch` count as missing even when stored."""
     todo = []
     for year in years:
         for race in await db.get_races_by_year(year):
@@ -87,7 +90,7 @@ async def missing_sessions(db, years, quali=False):
             if "race" not in have:
                 continue  # not raced yet
             wanted = expected_qualifying("sprint" in have, year) if quali else expected_practice("sprint" in have)
-            missing = [s for s in wanted if s not in have]
+            missing = [s for s in wanted if s not in have or s in refetch]
             if missing:
                 todo.append((year, int(race["round"]), race["gp"], missing))
     return todo
@@ -123,6 +126,8 @@ async def main():
     parser.add_argument("--years", type=int, nargs="+", required=True)
     parser.add_argument("--dry-run", action="store_true", help="only list the missing sessions")
     parser.add_argument("--quali", action="store_true", help="qualifying and sprint qualifying instead of practice")
+    parser.add_argument("--refetch", nargs="+", default=[], choices=list(FP_SESSION),
+                        help="re-fetch these session types even where stored")
     args = parser.parse_args()
 
     import fastf1
@@ -132,7 +137,7 @@ async def main():
 
     db = await open_db()
     try:
-        todo = await missing_sessions(db, args.years, args.quali)
+        todo = await missing_sessions(db, args.years, args.quali, set(args.refetch))
         total = sum(len(m) for *_, m in todo)
         log.info("%d weekends, %d %s sessions missing", len(todo), total, "qualifying" if args.quali else "practice")
         for year, round_n, gp, missing in todo:
