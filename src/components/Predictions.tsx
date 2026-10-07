@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { TrendingUp, RefreshCw, History, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
-import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow } from '../services/backendApi';
+import { backendApi, PredictableRace, BacktestRace, BacktestDriverRow, BacktestResult } from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
@@ -240,22 +240,43 @@ const BacktestTab: React.FC = () => {
   // lets the user switch the dropdown to circuit names to tell them apart.
   const [showCircuitName, setShowCircuitName] = useState(false);
 
+  // The server rebuilds this list by itself after a race weekend's results come in; while it
+  // works (`updating`) the current list is shown and checked again every 30s.
+  const [updating, setUpdating]             = useState(false);
+  const latestId = useRef<string | null>(null);
+  const selectedRef = useRef(selectedRaceId);
+  selectedRef.current = selectedRaceId;
+
+  const apply = useCallback((r: BacktestResult) => {
+    setRaces(r.races);
+    setUpdating(Boolean(r.updating));
+    if (r.races.length === 0) return;
+    const newest = r.races[0];   // most recent first
+    // Default to the latest race — and move along to a newly added one unless the user picked another.
+    if (!selectedRef.current || selectedRef.current === latestId.current) {
+      setYearFilter(newest.year);
+      setSelectedRaceId(newest.race_id);
+    }
+    latestId.current = newest.race_id;
+  }, []);
+
   const load = useCallback(() => {
     setError(null);
     setRaces(null);
     backendApi.getPredictionBacktest()
-      .then((r) => {
-        setRaces(r.races);
-        // Backend returns most-recent-first — default to the latest race.
-        if (r.races.length > 0) {
-          setYearFilter(r.races[0].year);
-          setSelectedRaceId(r.races[0].race_id);
-        }
-      })
+      .then(apply)
       .catch((e) => setError(e.message || 'Failed to load backtest results'));
-  }, []);
+  }, [apply]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!updating) return undefined;
+    const id = setInterval(() => {
+      backendApi.getPredictionBacktest().then(apply).catch(() => { /* keep showing what we have */ });
+    }, 30000);
+    return () => clearInterval(id);
+  }, [updating, apply]);
 
   const years = useMemo(
     () => Array.from(new Set((races ?? []).map((r) => r.year))).sort((a, b) => b - a),
@@ -316,6 +337,13 @@ const BacktestTab: React.FC = () => {
         </SelectField>
         <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
+
+      {updating && (
+        <Notice tone="info" className="mb-6">
+          Adding the latest races: the models are being re-scored against them. This takes a few minutes and the list
+          updates by itself.
+        </Notice>
+      )}
 
       {selectedRace ? (
         <BacktestRaceDetail race={selectedRace} />

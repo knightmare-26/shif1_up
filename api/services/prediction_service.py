@@ -13,7 +13,7 @@ import logging
 import asyncio
 import os
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -95,6 +95,20 @@ class PredictionService:
         self._trained = False
         self._grid_available = False
         self._meta: Dict[str, Any] = {}
+        # Called (as a task) after every successful training run — main.py uses it to bring the
+        # walk-forward backtest up to date once new results have been trained on.
+        self.on_trained: Optional[Callable[[], Awaitable[None]]] = None
+
+    @staticmethod
+    def data_fingerprint(raw: pd.DataFrame) -> str:
+        """Which race results a model or backtest was built from: changes when a race is added
+        (or removed), not when the same data is retrained."""
+        races = raw[raw["session_type"] == "race"] if "session_type" in raw else raw
+        return f"{len(races)}:{int(races['year'].max())}" if not races.empty else "0:0"
+
+    def _notify_trained(self, result: Dict[str, Any]) -> None:
+        if result.get("success") and self.on_trained is not None:
+            asyncio.create_task(self.on_trained())
 
     # ------------------------------------------------------------------
     # Label encoding
@@ -327,7 +341,9 @@ class PredictionService:
     async def train(self, duckdb_service) -> Dict[str, Any]:
         """Train (or retrain) the models. Serialised: a second caller waits for the first."""
         async with self._train_lock:
-            return await self._train_locked(duckdb_service)
+            result = await self._train_locked(duckdb_service)
+        self._notify_trained(result)
+        return result
 
     async def _train_locked(self, duckdb_service) -> Dict[str, Any]:
         try:
@@ -465,6 +481,7 @@ class PredictionService:
             "rows": len(df),
             "years": years_in_data,
             "decay_factor": TIME_DECAY,
+            "data_fingerprint": self.data_fingerprint(raw),
             "grid_coverage": result["grid_coverage"],
             "practice_coverage": result["practice_coverage"],
             "race_model_ready": self._race_model is not None,
@@ -593,8 +610,10 @@ class PredictionService:
         async with self._train_lock:
             if self._trained and self._df is not None:
                 return  # someone finished while we waited
-            if not self.load_from_disk() or self._df is None:
-                await self._train_locked(duckdb_service)
+            if self.load_from_disk() and self._df is not None:
+                return
+            result = await self._train_locked(duckdb_service)
+        self._notify_trained(result)
 
     async def predict_qualifying(self, circuit_name: str, duckdb_service,
                         field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
@@ -952,7 +971,7 @@ class PredictionService:
             # Invalidation key: a walk-forward result is stale once new race results
             # are ingested, not when the live model retrains, so this is keyed to the
             # training data shape rather than self._meta["trained_at"].
-            "data_fingerprint": f"{len(raw_race)}:{max(all_years)}",
+            "data_fingerprint": self.data_fingerprint(raw),
         }
 
     # ------------------------------------------------------------------

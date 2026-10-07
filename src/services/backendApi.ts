@@ -176,6 +176,8 @@ export interface BacktestRace {
 
 export interface BacktestResult {
   races: BacktestRace[];
+  /** The server is rebuilding the list to add races it doesn't cover yet. */
+  updating?: boolean;
 }
 
 export interface SessionData {
@@ -689,7 +691,10 @@ class BackendApiService {
   }
 
   async getPredictionBacktest(): Promise<BacktestResult> {
-    return this.getCachedOrFetch('/predict/backtest', {}, 300);
+    const result = await this.getCachedOrFetch<BacktestResult>('/predict/backtest', {}, 300);
+    // Mid-rebuild answers are about to change: don't keep them.
+    if (result.updating) this.cache.delete(this.getCacheKey('/predict/backtest', {}));
+    return result;
   }
 
   async predictQualifying(circuit: string): Promise<any> {
