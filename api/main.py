@@ -47,6 +47,7 @@ from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
 from services.entry_list import EntryListService
 from services.weekend_practice import check_again_in, load_weekend_practice
+from services import preseason_testing
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
@@ -239,11 +240,16 @@ async def _weekend_practice_loop() -> None:
                 await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
                 stored = await load_weekend_practice(duckdb_service, entry_lists.client,
                                                      prediction_service._constructor_map, _last_teams())
+                # Preseason testing (Feb to the first race): the new cars' first evidence (#35).
+                races = await duckdb_service.get_races_by_year(datetime.now().year)
+                first_race = min((str(r.get("date"))[:10] for r in races if r.get("date")), default=None)
+                if await preseason_testing.refresh(duckdb_service, entry_lists.client, datetime.now().year, first_race):
+                    stored = stored + [{"race_id": "preseason", "session_type": "testing"}]
                 if stored:
                     logger.info("Weekend practice stored (%s); retraining", ", ".join(
                         f"{s['race_id']} {s['session_type']}" for s in stored))
                     await prediction_service.train(duckdb_service)
-                delay = check_again_in(await duckdb_service.get_races_by_year(datetime.now().year), date.today())
+                delay = check_again_in(races, date.today())
         except asyncio.CancelledError:
             raise
         except Exception as exc:

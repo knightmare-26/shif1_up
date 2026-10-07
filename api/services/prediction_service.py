@@ -21,6 +21,7 @@ import pandas as pd
 
 from services.backtest_scores import add_probabilities, hit_rates
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS, practice_features
+from services import preseason_testing
 from services.season_form import QUALI_INPUTS as SEASON_QUALI, RACE_INPUTS as SEASON_RACE, add_season_form, team_points_after
 
 logger = logging.getLogger(__name__)
@@ -32,6 +33,16 @@ TIME_DECAY = 1.5
 # practice. Phase 1 (#30) measured which of them earn their place — see CLAUDE.md. Where a weekend
 # has no practice (an upcoming race, the title simulation) they're filled with the training
 # medians: filling them with 10 like other inputs made predictions worse than not using practice.
+# Preseason testing (services/preseason_testing.py, Phase 3b #35): in an era-start season
+# (preseason_testing.ERA_STARTS) the first races' form inputs start from the testing order and blend
+# into the real ones over TESTING_RACES races. Walk-forward on the two era starts (2022, 2026; races
+# 1-3): qualifying 2.92 -> 2.53 places off (2026 alone 2.98 -> 2.26), race 4.10 -> 4.05, later races
+# within noise. Testing as model inputs ("features", every season or era starts only) was worse: the
+# model learns mostly from stable seasons, where testing order is a worse guide than last season's.
+# Not used for the title simulation: for the season-long order, last season's form did slightly better.
+TESTING_MODE = "rule"     # "off" | "features" | "features_era" | "rule"
+TESTING_RACES = 3
+
 # The qualifying model learns the qualifying result (Phase 2, #31), falling back to the starting grid
 # where no qualifying is stored. The grid isn't the qualifying order: grid penalties, and on 2022
 # sprint weekends the sprint set it. Walk-forward: 0.19 places better (t = -2.7), even judged on the grid.
@@ -89,7 +100,7 @@ class PredictionService:
         "_race_features", "_quali_features", "_sprint_features",
         "_df", "_driver_map", "_constructor_map", "_le_driver", "_le_constructor", "_le_circuit",
         "_trained", "_grid_available", "_practice_available", "_meta",
-        "_practice_medians", "_weekend_practice", "_weekend_grids",
+        "_practice_medians", "_weekend_practice", "_weekend_grids", "_testing_data",
     )
 
     def __init__(self, model_dir: str = "data/models"):
@@ -114,6 +125,7 @@ class PredictionService:
         self._grid_available = False
         self._meta: Dict[str, Any] = {}
         self._practice_medians: Dict[str, float] = {}
+        self._testing_data: Dict[int, Dict[str, Any]] = {}     # year -> preseason testing summary
         # Practice already stored for weekends whose race hasn't been run (race_id, year,
         # circuit_name, driver_id + practice columns): used when that race is predicted.
         self._weekend_practice: Optional[pd.DataFrame] = None
@@ -136,6 +148,8 @@ class PredictionService:
         """Each race row's qualifying result (QUALI_TARGET), else its starting grid."""
         quali = (raw[raw["session_type"] == "qualifying"][["race_id", "driver_id", "position"]]
                  .drop_duplicates(["race_id", "driver_id"]).rename(columns={"position": "quali_position"}))
+        # As a rank within the session: an old row stored an unclassified driver at P99 (2026 Australia).
+        quali["quali_position"] = quali.groupby("race_id")["quali_position"].rank(method="first")
         df = df.drop(columns=["quali_position", QUALI_TARGET], errors="ignore").merge(quali, on=["race_id", "driver_id"], how="left")
         df[QUALI_TARGET] = df["quali_position"].fillna(df["grid"])
         return df
@@ -317,7 +331,16 @@ class PredictionService:
         df["constructor_circuit_avg"] = df["constructor_circuit_avg"].fillna(df["constructor_rolling_finish"])
         df["driver_dnf_rate"]         = df["driver_dnf_rate"].fillna(0.1)
 
-        return add_season_form(df)
+        return preseason_testing.apply_testing(add_season_form(df), self._testing_data, TESTING_MODE, TESTING_RACES)
+
+    def _testing_inputs(self) -> List[str]:
+        return list(preseason_testing.COLUMNS) if TESTING_MODE.startswith("features") and self._testing_data else []
+
+    async def _load_testing(self, duckdb_service, raw: pd.DataFrame) -> None:
+        if raw.empty or "year" not in raw:
+            return
+        years = sorted({int(y) for y in raw["year"].unique()} | {datetime.utcnow().year})
+        self._testing_data = await preseason_testing.load_stored(duckdb_service, years)
 
     def _encode(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
@@ -413,6 +436,7 @@ class PredictionService:
             # Fitting is CPU-bound and used to run right on the event loop, stalling every
             # request (including /health) for its whole duration. Run it in a worker thread,
             # on a private copy of the state, and swap the result in when it's done.
+            await self._load_testing(duckdb_service, raw)
             scratch = self._scratch_copy()
             result = await asyncio.to_thread(scratch._fit, raw, lgb)
             self._adopt(scratch)
@@ -495,7 +519,7 @@ class PredictionService:
         # ---- Race model ----
         grid_coverage = df["grid"].notna().mean()
         self._grid_available  = bool(grid_coverage > 0.5)
-        self._race_features   = (RACE_FEATURES_FULL if self._grid_available else RACE_FEATURES_NO_GRID) + practice_feat
+        self._race_features   = (RACE_FEATURES_FULL if self._grid_available else RACE_FEATURES_NO_GRID) + practice_feat + self._testing_inputs()
         result["grid_coverage"] = f"{grid_coverage:.0%}"
 
         self._race_model = self._fit_ranker(lgb, df, self._race_features, "position")
@@ -505,7 +529,7 @@ class PredictionService:
             result["race_model"] = "skipped — not enough complete rows"
 
         # ---- Qualifying model ----
-        self._quali_features = QUALI_FEATURES + practice_feat
+        self._quali_features = QUALI_FEATURES + practice_feat + self._testing_inputs()
         self._quali_model = self._fit_ranker(lgb, df, self._quali_features, QUALI_TARGET)
         result["quali_target_coverage"] = f"{df['quali_position'].notna().mean():.0%}"   # the rest use the grid
         if self._quali_model is not None:
@@ -556,7 +580,7 @@ class PredictionService:
 
     def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None,
                                field: Optional[Dict[str, Optional[str]]] = None,
-                               season: Optional[int] = None) -> pd.DataFrame:
+                               season: Optional[int] = None, use_testing: bool = True) -> pd.DataFrame:
         """One feature row per driver for a race at `circuit_name`.
 
         `field` is who's actually entered, driver_id -> constructor_id (None: their last team) —
@@ -610,7 +634,10 @@ class PredictionService:
             })
 
         out = pd.DataFrame(rows)
+        # Races into the season this one is: the new season's first, or the next after the latest.
+        race_no = 1 if new_season else int(df.loc[df["year"] == latest_year, "round"].nunique()) + 1
         if field is None:
+            out = self._with_testing(out, season, race_no) if use_testing else out
             return self._with_practice(out, circuit_name, live=df is self._df)
 
         # Entered drivers with no history at all (a debut): the field's typical driver inputs.
@@ -623,7 +650,13 @@ class PredictionService:
                 **typical.to_dict(), "driver_season_points": 0.0, "round": circuit_round,
             } for d in debutants])], ignore_index=True)
         out = self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name, team_points)
+        out = self._with_testing(out, season, race_no) if use_testing else out
         return self._with_practice(out, circuit_name, live=df is self._df)
+
+    def _with_testing(self, rows: pd.DataFrame, season: int, race_no: int) -> pd.DataFrame:
+        if TESTING_MODE != "rule":
+            return rows
+        return preseason_testing.apply_to_upcoming(rows, self._testing_data, season, race_no, TESTING_RACES)
 
     def weekend_practice(self, circuit_name: str) -> Optional[pd.DataFrame]:
         """Practice stored for the coming race at `circuit_name` (its race not run yet), if any."""
@@ -1020,7 +1053,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "6"
+    WALK_FORWARD_VERSION = "7"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1038,6 +1071,7 @@ class PredictionService:
         except ImportError as exc:
             return {"races": [], "error": f"ML packages missing: {exc}"}
 
+        await self._load_testing(duckdb_service, raw)
         return await asyncio.to_thread(self._walk_forward_fit, raw, lgb, years_back, previous)
 
     @staticmethod
@@ -1090,8 +1124,8 @@ class PredictionService:
         grid_available = bool(df["grid"].notna().mean() > 0.5)
         practice_available = bool(df["driver_practice_best_rank"].notna().mean() > 0.5)
         practice_feat = self._practice_inputs(df) if practice_available else []
-        race_features = (RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID) + practice_feat
-        quali_features = QUALI_FEATURES + practice_feat
+        race_features = (RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID) + practice_feat + self._testing_inputs()
+        quali_features = QUALI_FEATURES + practice_feat + self._testing_inputs()
 
         # Scoring units: (id, rows the model is fit on, rows it's scored on).
         units = []

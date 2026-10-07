@@ -421,7 +421,8 @@ class ChampionshipService:
         team_points = team_points_after(history, year if year is not None else int(history["year"].max())).to_dict()
         for rnd in remaining:
             if rnd.circuit not in cache:
-                rows = p._build_prediction_rows(rnd.circuit, history, season=year)
+                # Last season's form, not preseason testing: for the season-long order it did better (#35).
+                rows = p._build_prediction_rows(rnd.circuit, history, season=year, use_testing=False)
                 # A driver who changed teams races the new car (Sainz at Williams in 2025, not Ferrari).
                 rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit, team_points)
                 rows = p._encode(rows)
