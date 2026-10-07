@@ -4,35 +4,43 @@ import { SERVICE_WAKING_EVENT } from '../services/backendApi';
 import { probeService, ServiceStatus, SERVER_WAKING_MESSAGE } from '../services/serviceStatus';
 
 const POLL_MS = 4_000;
-// Don't flash the wait screen or banner for a backend that answers quickly.
-const SHOW_AFTER_MS = 700;
+// A cold start that's over within this shows nothing at all — the pages just load.
+const BANNER_AFTER_MS = 8_000;
 
 /**
  * Checks the API on load — which also wakes a sleeping host — and keeps checking
- * while it (or its database) is asleep.
+ * while it (or its database) is down.
  *
- *  - `gated` is true until the backend is fully ready for the first time (or the
- *    visitor chooses to continue anyway): the app shows a wait screen instead of pages.
- *  - After that, a failed API request re-triggers the check (SERVICE_WAKING_EVENT) and
- *    only a slim banner is shown; `epoch` changes when things come back so the
- *    routes remount and refetch whatever failed.
+ *  - The pages render straight away: a sleeping host holds their requests while it boots,
+ *    so a cold start only means a slower first load, and after a few seconds a slim
+ *    banner (`slow`) says why.
+ *  - `gated` is true only while the **database** is down (a paused Supabase project being
+ *    restored): the app shows a wait screen instead of pages that would only fail, until
+ *    it's back or the visitor chooses to continue anyway.
+ *  - A failed API request re-triggers the check (SERVICE_WAKING_EVENT); `epoch` changes
+ *    when things come back after a failure so the routes remount and refetch.
  */
 export function useServiceStatus() {
   const [status, setStatus] = useState<ServiceStatus>({ state: 'checking', message: '', detail: '', serverUp: false });
   const [slow, setSlow] = useState(false);
   const [epoch, setEpoch] = useState(0);
-  const [gated, setGated] = useState(true);
+  const [dismissed, setDismissed] = useState(false);
   const [elapsed, setElapsed] = useState(0);
 
   const loopId = useRef(0);
   const active = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const wasDown = useRef(false);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const needsRemount = useRef(false);   // something failed while it was down: refetch on recovery
 
   const start = useCallback((force: boolean) => {
     if (active.current && !force) return; // already polling — don't stack loops
     const id = ++loopId.current;           // a newer loop supersedes any older one
     clearTimeout(timer.current);
+    if (!active.current) {
+      clearTimeout(slowTimer.current);
+      slowTimer.current = setTimeout(() => setSlow(true), BANNER_AFTER_MS);
+    }
     active.current = true;
 
     const tick = async () => {
@@ -41,14 +49,16 @@ export function useServiceStatus() {
       setStatus(next);
       if (next.state === 'ready') {
         active.current = false;
-        setGated(false);
-        if (wasDown.current) {
-          wasDown.current = false;
+        clearTimeout(slowTimer.current);
+        setSlow(false);
+        setDismissed(false);   // a later database outage gets the wait screen again
+        if (needsRemount.current) {
+          needsRemount.current = false;
           setEpoch((e) => e + 1);
         }
         return;
       }
-      wasDown.current = true;
+      if (next.state === 'database-waking') needsRemount.current = true;
       timer.current = setTimeout(tick, POLL_MS);
     };
     tick();
@@ -58,39 +68,46 @@ export function useServiceStatus() {
     loopId.current++; // any loop in flight sees a newer id and drops its result
     active.current = false;
     clearTimeout(timer.current);
+    clearTimeout(slowTimer.current);
   }, []);
 
   useEffect(() => {
     start(true);
-    const slowTimer = setTimeout(() => setSlow(true), SHOW_AFTER_MS);
-    const onWaking = () => start(false);
+    const onWaking = () => {
+      needsRemount.current = true;
+      start(false);
+    };
     window.addEventListener(SERVICE_WAKING_EVENT, onWaking);
     return () => {
       stop();
-      clearTimeout(slowTimer);
       window.removeEventListener(SERVICE_WAKING_EVENT, onWaking);
     };
   }, [start, stop]);
+
+  const gated = status.state === 'database-waking' && !dismissed;
 
   // Seconds spent on the wait screen.
   useEffect(() => {
     if (!gated) return;
     const t0 = Date.now();
+    setElapsed(0);
     const id = setInterval(() => setElapsed(Math.floor((Date.now() - t0) / 1000)), 1000);
     return () => clearInterval(id);
   }, [gated]);
 
   const retry = useCallback(() => start(true), [start]);
-  const dismiss = useCallback(() => setGated(false), []);
+  const dismiss = useCallback(() => setDismissed(true), []);
 
   return { status, slow, epoch, gated, elapsed, retry, dismiss };
 }
 
-/** Slim, non-blocking notice for a backend that goes away after the site has loaded. */
+/** Slim, non-blocking notice: the server is still starting, or the database is down and the visitor continued anyway. */
 export const ServiceStatusBanner: React.FC<{ status: ServiceStatus; slow: boolean }> = ({ status, slow }) => {
-  const waking = status.state === 'server-waking' || status.state === 'database-waking';
-  const stillChecking = status.state === 'checking' && slow;
-  if (!waking && !stillChecking) return null;
+  // The database being down always shows (the visitor chose to continue past the wait screen);
+  // a server that's still starting only once it's taking a while.
+  const databaseDown = status.state === 'database-waking';
+  if (status.state === 'ready' || (!databaseDown && !slow)) return null;
+  const waking = databaseDown || status.state === 'server-waking';
 
   return (
     <div

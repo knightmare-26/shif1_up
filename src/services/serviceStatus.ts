@@ -2,8 +2,9 @@ import { API_BASE_URL } from './backendApi';
 
 /**
  * What the visitor should be told about the backend.
- *  - server-waking:   the API host isn't answering yet (a free Render instance boots on the first request)
- *  - database-waking: the API is up but its database is asleep or reconnecting (a paused Supabase project)
+ *  - server-waking:   the API host isn't answering yet (a free Render instance boots on the first request),
+ *                     or it has just booted and is still opening its database connection
+ *  - database-waking: the database is down — a paused Supabase project being restored, or unreachable
  */
 export type ServiceState = 'checking' | 'ready' | 'server-waking' | 'database-waking';
 
@@ -49,6 +50,10 @@ export async function probeService(): Promise<ServiceStatus> {
     // `checks.database` only exists when the API runs against Supabase; its `state`
     // is "ready" once connected. An older backend without it is treated as ready.
     const database = report.checks?.database;
+    if (database?.state === 'connecting') {
+      // A freshly booted API opening its pool: part of a normal cold start, not a database outage.
+      return { state: 'server-waking', message: SERVER_WAKING_MESSAGE, detail: 'The API is up and connecting to its database', serverUp: true };
+    }
     if (database && database.state !== 'ready') {
       const parts = [`The API is up; its database is ${database.state}`];
       if (database.project_status) parts.push(`Supabase reports the project as ${database.project_status}`);

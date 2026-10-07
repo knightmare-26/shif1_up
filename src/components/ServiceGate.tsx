@@ -1,6 +1,6 @@
 import React from 'react';
 import { Check, RefreshCw } from 'lucide-react';
-import { ServiceStatus, SERVER_WAKING_MESSAGE } from '../services/serviceStatus';
+import { ServiceStatus } from '../services/serviceStatus';
 import { Button, Wordmark } from './ui';
 
 // Longer than a normal cold start, so the wait screen never reads as broken too early.
@@ -30,20 +30,17 @@ const Step: React.FC<{ label: string; state: StepState }> = ({ label, state }) =
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /**
- * Full-screen blurred wait screen shown instead of the pages until the API and its
- * database are both ready. It never traps the visitor: after a couple of minutes it
- * offers to retry or to open the site anyway.
+ * Full-screen blurred wait screen shown instead of the pages while the database is down
+ * (a paused project being restored) — not for an ordinary cold start of the server. It
+ * never traps the visitor: after a couple of minutes it offers to retry or to open the
+ * site anyway.
  */
 export const ServiceGate: React.FC<{
   status: ServiceStatus;
-  visible: boolean;
   elapsed: number;
   onRetry: () => void;
   onContinue: () => void;
-}> = ({ status, visible, elapsed, onRetry, onContinue }) => {
-  if (!visible) return <div className="fixed inset-0 z-[60] bg-carbon-black" aria-hidden="true" />;
-
-  const databaseWaking = status.state === 'database-waking';
+}> = ({ status, elapsed, onRetry, onContinue }) => {
   const stuck = elapsed >= ESCALATE_AFTER_S;
 
   return (
@@ -60,17 +57,17 @@ export const ServiceGate: React.FC<{
 
       <div className="relative w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900/80 p-8 shadow-2xl backdrop-blur">
         <h2 id="gate-title"><Wordmark className="text-3xl" /></h2>
-        <p className="mt-1 text-sm text-gray-400">Getting things ready</p>
+        <p className="mt-1 text-sm text-gray-400">The database is waking up</p>
 
         <ul className="mt-6 space-y-3" aria-label="Progress">
-          <Step label="Waking the server" state={status.serverUp ? 'done' : 'active'} />
-          <Step label="Waking the database" state={!status.serverUp ? 'pending' : databaseWaking ? 'active' : 'done'} />
+          <Step label="Server is up" state="done" />
+          <Step label="Restoring the database" state="active" />
           <Step label="Loading the site" state="pending" />
         </ul>
 
         <div aria-live="polite">
           <p id="gate-message" className="mt-6 text-sm leading-relaxed text-gray-300">
-            {status.state === 'database-waking' ? status.message : SERVER_WAKING_MESSAGE}
+            {status.message}
           </p>
           <p className="mt-2 text-xs tabular-nums text-gray-500">Waiting {clock(elapsed)}</p>
           {elapsed >= HINT_AFTER_S && !stuck && (
