@@ -1,6 +1,7 @@
 """Phase 3b (#35): preseason testing as the first evidence about a new era's cars."""
 from datetime import datetime, timezone
 
+import os
 import httpx
 import numpy as np
 import pandas as pd
@@ -127,7 +128,7 @@ def test_a_new_eras_first_race_is_predicted_from_testing_but_the_title_simulatio
     from tests.test_prediction_training import FakeLgb, synthetic_raw
 
     raw = synthetic_raw(years=[2024, 2025], rounds_per_year=6, drivers=("ant", "rus", "lec", "ham")).assign(points=0.0)
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._testing_data = {2026: TESTING}
     svc._fit(raw, FakeLgb())
 

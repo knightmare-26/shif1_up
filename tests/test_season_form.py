@@ -1,4 +1,5 @@
 """Phase 2 (#31): season-to-date form — average grid, driver and team points so far this season."""
+import os
 import pandas as pd
 import pytest
 
@@ -42,7 +43,7 @@ DRIVERS = ("d1", "d2", "d3", "d4")
 
 
 def trained(years):
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     raw = synthetic_raw(years=years, rounds_per_year=6, drivers=DRIVERS).assign(
         points=lambda d: (5 - d["position"]).clip(lower=0).astype(float))
     svc._fit(raw, FakeLgb())
@@ -79,7 +80,7 @@ def test_the_qualifying_model_learns_the_qualifying_result_not_the_grid():
     raw = synthetic_raw(years=[2025, 2026], rounds_per_year=6, drivers=DRIVERS).assign(points=0.0)
     quali = raw.copy().assign(session_type="qualifying", position=lambda d: d["grid"].rsub(5))   # differs from the grid
     quali = quali[quali["round"] != 6]                                                           # one weekend without qualifying
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._fit(pd.concat([raw, quali], ignore_index=True), FakeLgb())
 
     df = svc._df.set_index(["year", "round", "driver_id"])

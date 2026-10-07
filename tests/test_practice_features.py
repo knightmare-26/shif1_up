@@ -1,5 +1,6 @@
 """Phase 1 (#30): practice pace as gaps, neutral values where a weekend has no practice, and the
 coming weekend's stored practice used when its race is predicted."""
+import os
 import numpy as np
 import pandas as pd
 import pytest
@@ -72,7 +73,7 @@ def history_with_practice(upcoming_practice=True):
 
 
 def test_the_coming_weekends_practice_is_used_for_its_prediction():
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._fit(history_with_practice(), FakeLgb())
 
     rows = svc._build_prediction_rows("circuit5").set_index("driver_id")
@@ -82,7 +83,7 @@ def test_the_coming_weekends_practice_is_used_for_its_prediction():
 
 
 def test_without_practice_every_driver_gets_the_neutral_median():
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._fit(history_with_practice(upcoming_practice=False), FakeLgb())
 
     rows = svc._build_prediction_rows("circuit2")          # a past circuit; nothing stored for a new weekend
@@ -102,7 +103,7 @@ async def test_a_prediction_says_whether_it_used_this_weekends_practice():
         async def set_prediction_cache(self, *a):
             pass
 
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._fit(history_with_practice(), FakeLgb())
     svc._df = svc._df          # trained; _ensure_trained is a no-op
 
@@ -124,7 +125,7 @@ async def test_a_race_predicted_after_qualifying_starts_from_the_real_qualifying
               "grid": None, "points": 0.0, "status": "", "session_type": "qualifying", "time": "",
               "circuit_name": "circuit5", "year": 2024, "round": 5, "race_name": "GP5", "driver_name": d,
               "constructor_name": f"Team {i % 2}"} for i, d in enumerate(DRIVERS)]          # d12 on pole
-    svc = PredictionService(model_dir="unused")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
     svc._fit(pd.concat([raw, pd.DataFrame(quali)], ignore_index=True), FakeLgb())
 
     race = await svc.predict_race("circuit5", Db())
