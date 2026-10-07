@@ -158,8 +158,11 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
     is_practice = session in PRACTICE_SESSIONS
     loop = asyncio.get_event_loop()
 
+    # 2023's sprint qualifying was the "Sprint Shootout", which FastF1 only knows as "SS".
+    fastf1_code = "SS" if session == "SQ" and year == 2023 else session
+
     def _load():
-        s = fastf1.get_session(year, event, session)
+        s = fastf1.get_session(year, event, fastf1_code)
         # Practice needs lap data regardless of include_laps — that's the
         # only way to rank drivers when there's no classified session.results.
         s.load(laps=include_laps or is_practice, telemetry=False, weather=False, messages=False)
