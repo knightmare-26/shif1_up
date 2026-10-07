@@ -20,11 +20,19 @@ import numpy as np
 import pandas as pd
 
 from services.backtest_scores import add_probabilities
+from services.practice_features import COLUMNS as PRACTICE_COLUMNS, practice_features
 
 logger = logging.getLogger(__name__)
 
 # Exponential decay factor — 2024 gets 1.5^4 ≈ 5× the weight of 2020
 TIME_DECAY = 1.5
+
+# Same-weekend practice inputs (services/practice_features.py), used once most training rows have
+# practice. Phase 1 (#30) measured which of them earn their place — see CLAUDE.md. Where a weekend
+# has no practice (an upcoming race, the title simulation) they're filled with the training
+# medians: filling them with 10 like other inputs made predictions worse than not using practice.
+PRACTICE_INPUTS = ["driver_practice_best_rank", "driver_practice_gap_pct",
+                   "team_practice_gap_pct", "driver_practice_teammate_gap_pct"]
 
 # Features used when grid data is available (after re-ingest)
 RACE_FEATURES_FULL = [
@@ -75,6 +83,7 @@ class PredictionService:
         "_race_features", "_quali_features", "_sprint_features",
         "_df", "_driver_map", "_constructor_map", "_le_driver", "_le_constructor", "_le_circuit",
         "_trained", "_grid_available", "_practice_available", "_meta",
+        "_practice_medians", "_weekend_practice",
     )
 
     def __init__(self, model_dir: str = "data/models"):
@@ -98,6 +107,10 @@ class PredictionService:
         self._trained = False
         self._grid_available = False
         self._meta: Dict[str, Any] = {}
+        self._practice_medians: Dict[str, float] = {}
+        # Practice already stored for weekends whose race hasn't been run (race_id, year,
+        # circuit_name, driver_id + practice columns): used when that race is predicted.
+        self._weekend_practice: Optional[pd.DataFrame] = None
         # Called (as a task) after every successful training run — main.py uses it to bring the
         # walk-forward backtest up to date once new results have been trained on.
         self.on_trained: Optional[Callable[[], Awaitable[None]]] = None
@@ -108,6 +121,25 @@ class PredictionService:
         (or removed), not when the same data is retrained."""
         races = raw[raw["session_type"] == "race"] if "session_type" in raw else raw
         return f"{len(races)}:{int(races['year'].max())}" if not races.empty else "0:0"
+
+    @staticmethod
+    def _practice_inputs(df: pd.DataFrame) -> List[str]:
+        """The practice inputs most rows have (lap times can be missing where ranks aren't)."""
+        return [c for c in PRACTICE_INPUTS if c in df and df[c].notna().mean() > 0.5]
+
+    @staticmethod
+    def _medians(df: pd.DataFrame) -> Dict[str, float]:
+        return {c: float(df[c].median()) for c in PRACTICE_COLUMNS if c in df and df[c].notna().any()}
+
+    @staticmethod
+    def _fill_practice(rows: pd.DataFrame, medians: Dict[str, float]) -> pd.DataFrame:
+        """Missing practice inputs -> the training medians (a neutral value, unlike the 10 the
+        other inputs fall back to)."""
+        rows = rows.copy()
+        for col in PRACTICE_COLUMNS:
+            if col in medians:
+                rows[col] = rows[col].fillna(medians[col]) if col in rows else medians[col]
+        return rows
 
     def _notify_trained(self, result: Dict[str, Any]) -> None:
         if result.get("success") and self.on_trained is not None:
@@ -218,6 +250,7 @@ class PredictionService:
             SELECT
                 rr.race_id, rr.driver_id, rr.constructor_id,
                 rr.position, rr.grid, rr.points, rr.status, rr.session_type,
+                rr.time,                          -- practice: the driver's best lap
                 r.circuit_name, r.year, r.round, r.gp AS race_name,
                 d.full_name  AS driver_name,
                 c.constructor_name
@@ -398,13 +431,8 @@ class PredictionService:
         raw_sprint = (raw[raw["session_type"] == "sprint"]
                       [["race_id", "driver_id", "position", "grid"]]
                       .rename(columns={"position": "sprint_position", "grid": "sprint_grid"}))
-        # Practice has no grid/classification — "position" there is already a rank by
-        # best lap of that session (ingest_service._extract_practice_results), 1 = fastest.
-        # A driver can run FP1/FP2/FP3; the best (lowest) rank across all three they ran
-        # is the same-weekend pace signal, independent of which/how many sessions ran.
-        raw_practice = (raw[raw["session_type"].isin(["fp1", "fp2", "fp3"])]
-                         .groupby(["race_id", "driver_id"])["position"].min()
-                         .reset_index().rename(columns={"position": "driver_practice_best_rank"}))
+        # Same-weekend practice pace: best rank and gaps (services/practice_features.py).
+        raw_practice = practice_features(raw)
 
         df = self._engineer(raw_race)
         self._le_driver      = sorted(df["driver_id"].fillna("unknown").unique().tolist())
@@ -421,12 +449,12 @@ class PredictionService:
             df["sprint_position"] = np.nan
             df["sprint_grid"] = np.nan
 
-        if not raw_practice.empty:
-            df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
-        else:
-            df["driver_practice_best_rank"] = np.nan
-
+        df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
         self._df = df
+        self._practice_medians = self._medians(df)
+        weekends = (raw[~raw["race_id"].isin(raw_race["race_id"])]
+                    .drop_duplicates("race_id")[["race_id", "year", "circuit_name"]])
+        self._weekend_practice = raw_practice.merge(weekends, on="race_id")
 
         result: Dict[str, Any] = {
             "rows": len(df),
@@ -440,7 +468,7 @@ class PredictionService:
         practice_coverage = df["driver_practice_best_rank"].notna().mean()
         self._practice_available = bool(practice_coverage > 0.5)
         result["practice_coverage"] = f"{practice_coverage:.0%}"
-        practice_feat = ["driver_practice_best_rank"] if self._practice_available else []
+        practice_feat = self._practice_inputs(df) if self._practice_available else []
 
         # ---- Race model ----
         grid_coverage = df["grid"].notna().mean()
@@ -542,17 +570,13 @@ class PredictionService:
                 "driver_dnf_rate":         float(r.get("driver_dnf_rate") or 0.1),
                 "driver_rolling_grid":     float(r.get("driver_rolling_grid")      or 10),
                 "driver_circuit_grid_avg": float(cir_d["grid"].mean()) if not cir_d.empty and cir_d["grid"].notna().any() else float(r.get("driver_rolling_grid") or 10),
-                # Genuinely unknown for a future weekend — last race's practice pace at a
-                # different circuit isn't a meaningful proxy the way rolling form is, so
-                # this is left NaN rather than estimated, same as the other .fillna(10)
-                # inputs at prediction time treat any missing feature.
-                "driver_practice_best_rank": np.nan,
+                # Practice is filled in below: this weekend's, if it's been stored, else neutral.
                 "round": circuit_round,
             })
 
         out = pd.DataFrame(rows)
         if field is None:
-            return out
+            return self._with_practice(out, circuit_name, live=df is self._df)
 
         # Entered drivers with no history at all (a debut): the field's typical driver inputs.
         known = set(out["driver_id"]) if not out.empty else set()
@@ -561,9 +585,29 @@ class PredictionService:
             typical = out[list(self._DRIVER_INPUTS)].median() if not out.empty else pd.Series(10.0, index=self._DRIVER_INPUTS)
             out = pd.concat([out, pd.DataFrame([{
                 "driver_id": d, "constructor_id": field.get(d) or "unknown", "circuit_name": circuit_name,
-                **typical.to_dict(), "driver_practice_best_rank": np.nan, "round": circuit_round,
+                **typical.to_dict(), "round": circuit_round,
             } for d in debutants])], ignore_index=True)
-        return self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name)
+        out = self._with_teams(out, {d: t for d, t in field.items() if t}, df, circuit_name)
+        return self._with_practice(out, circuit_name, live=df is self._df)
+
+    def weekend_practice(self, circuit_name: str) -> Optional[pd.DataFrame]:
+        """Practice stored for the coming race at `circuit_name` (its race not run yet), if any."""
+        wp = self._weekend_practice
+        if wp is None or wp.empty or self._df is None:
+            return None
+        rows = wp[(wp["circuit_name"] == circuit_name) & (wp["year"] == wp["year"].max())]
+        return rows if not rows.empty else None
+
+    def _with_practice(self, rows: pd.DataFrame, circuit_name: str, live: bool) -> pd.DataFrame:
+        if rows.empty:
+            return rows
+        rows = rows.drop(columns=[c for c in PRACTICE_COLUMNS if c in rows])
+        practice = self.weekend_practice(circuit_name) if live else None
+        if practice is not None:
+            rows = rows.merge(practice[["driver_id"] + PRACTICE_COLUMNS], on="driver_id", how="left")
+        else:
+            rows = rows.assign(**{c: np.nan for c in PRACTICE_COLUMNS})
+        return self._fill_practice(rows, self._practice_medians)
 
     def _with_teams(self, rows: pd.DataFrame, teams: Dict[str, str], history: pd.DataFrame,
                     circuit_name: str) -> pd.DataFrame:
@@ -661,6 +705,7 @@ class PredictionService:
             "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
             "field_source": field_source or "the last race's line-up",
+            "practice_used": self.weekend_practice(circuit_name) is not None,
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "qualifying", trained_at, result)
@@ -715,6 +760,7 @@ class PredictionService:
             "model": "LightGBM (ranker)",
             "grid_data_available": self._grid_available,
             "field_source": field_source or "the last race's line-up",
+            "practice_used": self.weekend_practice(circuit_name) is not None,
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "race", trained_at, result)
@@ -774,6 +820,7 @@ class PredictionService:
             "model": "LightGBM (ranker, sprint)",
             "grid_data_available": self._grid_available,
             "field_source": field_source or "the last race's line-up",
+            "practice_used": self.weekend_practice(circuit_name) is not None,
             "predictions": output,
         }
         await duckdb_service.set_prediction_cache(circuit_name, "sprint", trained_at, result)
@@ -784,18 +831,24 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     def _score_group(self, group: pd.DataFrame, quali_model, race_model,
-                      race_features: List[str], quali_features: List[str]) -> Optional[Dict[str, Any]]:
+                      race_features: List[str], quali_features: List[str],
+                      practice_medians: Optional[Dict[str, float]] = None) -> Optional[Dict[str, Any]]:
         """Score one race's rows against a given model pair. Used by both backtest()
         (the live model) and walk_forward_backtest() (a season-scoped scratch model) —
         takes the models as arguments rather than reading self._quali_model/self._race_model
         so the two callers can pass different ones."""
         drivers: Dict[str, Dict[str, Any]] = {}
+        if practice_medians:
+            practice_data = bool(group["driver_practice_best_rank"].notna().mean() > 0.5) if "driver_practice_best_rank" in group else False
+            group = self._fill_practice(group, practice_medians)
+        else:
+            practice_data = None
 
         # Practice pace is optional here: a weekend without stored practice is scored with it
         # missing (filled like any missing input, the way an upcoming race is predicted) rather
         # than dropped, and flagged, so recent races don't vanish from the accuracy tab.
         def required(features: List[str]) -> List[str]:
-            return [f for f in features if f != "driver_practice_best_rank"]
+            return [f for f in features if f not in PRACTICE_COLUMNS]
 
         if quali_model is not None:
             qdf = group.dropna(subset=required(quali_features) + ["grid"])
@@ -844,16 +897,18 @@ class PredictionService:
             "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
             "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
             # Whether the practice-pace input was known for this weekend (None: not a model input).
-            "practice_data": (bool(group["driver_practice_best_rank"].notna().mean() > 0.5)
+            "practice_data": ((practice_data if practice_data is not None
+                               else bool(group["driver_practice_best_rank"].notna().mean() > 0.5))
                               if "driver_practice_best_rank" in set(race_features) | set(quali_features) else None),
             "drivers": driver_rows,
         }
 
     def _score_races(self, df: pd.DataFrame, quali_model, race_model,
-                      race_features: List[str], quali_features: List[str]) -> List[Dict[str, Any]]:
+                      race_features: List[str], quali_features: List[str],
+                      practice_medians: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
         races_out = []
         for _, group in df.groupby(["year", "round", "race_id"], sort=False):
-            race = self._score_group(group, quali_model, race_model, race_features, quali_features)
+            race = self._score_group(group, quali_model, race_model, race_features, quali_features, practice_medians)
             if race is not None:
                 races_out.append(race)
         return races_out
@@ -882,7 +937,8 @@ class PredictionService:
         if df.empty:
             return {"races": []}
 
-        races_out = self._score_races(df, self._quali_model, self._race_model, self._race_features, self._quali_features)
+        races_out = self._score_races(df, self._quali_model, self._race_model, self._race_features,
+                                      self._quali_features, self._practice_medians)
         races_out.sort(key=lambda r: (r["year"], r["round"]), reverse=True)
         return {"races": races_out}
 
@@ -893,7 +949,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "2"
+    WALK_FORWARD_VERSION = "3"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -935,9 +991,7 @@ class PredictionService:
             names = raw_race.dropna(subset=["driver_name"]).drop_duplicates("driver_id", keep="last")
             self._driver_map = {**names.set_index("driver_id")["driver_name"].to_dict(), **self._driver_map}
 
-        raw_practice = (raw[raw["session_type"].isin(["fp1", "fp2", "fp3"])]
-                         .groupby(["race_id", "driver_id"])["position"].min()
-                         .reset_index().rename(columns={"position": "driver_practice_best_rank"}))
+        raw_practice = practice_features(raw)
 
         # Feature engineering runs over the whole history at once — safe because every
         # rolling/expanding feature already uses .shift(1), so a row's features only ever
@@ -951,10 +1005,7 @@ class PredictionService:
         df["constructor_enc"] = self._label_encode(df["constructor_id"].fillna("unknown"), le_constructor)
         df["circuit_enc"]     = self._label_encode(df["circuit_name"].fillna("unknown"), le_circuit)
 
-        if not raw_practice.empty:
-            df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
-        else:
-            df["driver_practice_best_rank"] = np.nan
+        df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
 
         all_years = sorted(df["year"].unique().tolist())
         if len(all_years) < 2:
@@ -966,7 +1017,7 @@ class PredictionService:
 
         grid_available = bool(df["grid"].notna().mean() > 0.5)
         practice_available = bool(df["driver_practice_best_rank"].notna().mean() > 0.5)
-        practice_feat = ["driver_practice_best_rank"] if practice_available else []
+        practice_feat = self._practice_inputs(df) if practice_available else []
         race_features = (RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID) + practice_feat
         quali_features = QUALI_FEATURES + practice_feat
 
@@ -1005,7 +1056,8 @@ class PredictionService:
                 if race_model is None and quali_model is None:
                     continue
                 scored = [{**r, "unit": unit_id}
-                          for r in self._score_races(test_df, quali_model, race_model, race_features, quali_features)]
+                          for r in self._score_races(test_df, quali_model, race_model, race_features, quali_features,
+                                                     self._medians(train_df))]
             units_out[unit_id] = {"fingerprint": fingerprint, "train_rows": int(len(train_df))}
             races_out.extend(scored)
 

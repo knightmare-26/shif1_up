@@ -31,6 +31,8 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 import numpy as np
 import pandas as pd
 
+from services.practice_features import COLUMNS as PRACTICE_COLUMNS
+
 logger = logging.getLogger(__name__)
 
 RACE_POINTS = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
@@ -306,7 +308,7 @@ class ChampionshipService:
         input is the qualifying model's predicted rank and there's no practice pace yet."""
         p = self.pred
         rows = rows.copy()
-        rows["driver_practice_best_rank"] = np.nan
+        rows = p._fill_practice(rows.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
         if quali_model is not None:
             rows["grid"] = p._ranks_from_scores(quali_model.predict(rows[p._quali_features].astype(float).fillna(10)))
         return race_model.predict(rows[p._race_features].astype(float).fillna(10))
@@ -334,7 +336,7 @@ class ChampionshipService:
                 races[year].append(np.asarray(self._score_rows(rows, quali_model, race_model)))
                 graded = rows.dropna(subset=["grid"]).sort_values("grid")
                 if quali_model is not None and len(graded) >= 2:
-                    graded = graded.assign(driver_practice_best_rank=np.nan)
+                    graded = p._fill_practice(graded.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
                     qualifyings.append(np.asarray(quali_model.predict(graded[p._quali_features].astype(float).fillna(10))))
         all_races = [r for rs in races.values() for r in rs]
         return {

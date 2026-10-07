@@ -39,6 +39,8 @@ interface PredictionResult {
   /** Where the driver list came from: "this weekend's qualifying", "the practice 2 entry list",
    *  or "the last race's line-up" when nothing says who's entered yet. */
   field_source?: string;
+  /** This weekend's stored practice pace went in (else it was left neutral). */
+  practice_used?: boolean;
   error?: string;
 }
 
@@ -126,6 +128,13 @@ const UnavailableCard: React.FC<{ what: string; reason?: string; severe?: boolea
 );
 
 /** Rank error: average places a prediction was off by. Lower is better. */
+/** "Baku · drivers: this weekend's practice 2 · with this weekend's practice pace" */
+const predictionSubtitle = (r: PredictionResult) => [
+  r.circuit,
+  r.field_source && `drivers: ${r.field_source}`,
+  r.practice_used != null && (r.practice_used ? "with this weekend's practice pace" : 'before practice: no pace data yet'),
+].filter(Boolean).join(' · ');
+
 const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'neutral' => {
   if (err == null) return 'neutral';
   if (err <= 1.5) return 'good';
@@ -617,17 +626,17 @@ const Predictions: React.FC = () => {
             ) : hasResults ? (
               <FadeIn className="flex flex-col gap-6 xl:flex-row">
                 {qualiResult?.predictions.length ? (
-                  <PredictionTable title="Qualifying Prediction" subtitle={`${qualiResult.circuit}${qualiResult.field_source ? ` · drivers: ${qualiResult.field_source}` : ""}`} data={qualiResult.predictions}
+                  <PredictionTable title="Qualifying Prediction" subtitle={predictionSubtitle(qualiResult)} data={qualiResult.predictions}
                     valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
                 ) : qualiResult && <UnavailableCard what="Qualifying prediction" reason={qualiResult.error} />}
 
                 {sprintResult?.predictions.length ? (
-                  <PredictionTable title="Sprint Prediction" subtitle={`${sprintResult.circuit}${sprintResult.field_source ? ` · drivers: ${sprintResult.field_source}` : ""}`} data={sprintResult.predictions}
+                  <PredictionTable title="Sprint Prediction" subtitle={predictionSubtitle(sprintResult)} data={sprintResult.predictions}
                     valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
                 ) : sprintResult && <UnavailableCard what="Sprint prediction" reason={sprintResult.error} />}
 
                 {raceResult?.predictions.length ? (
-                  <PredictionTable title="Race Prediction" subtitle={`${raceResult.circuit}${raceResult.field_source ? ` · drivers: ${raceResult.field_source}` : ""}`} data={raceResult.predictions}
+                  <PredictionTable title="Race Prediction" subtitle={predictionSubtitle(raceResult)} data={raceResult.predictions}
                     valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
                 ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
               </FadeIn>
