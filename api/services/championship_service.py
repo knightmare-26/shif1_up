@@ -50,17 +50,18 @@ BETA_GRID = np.logspace(-2, 1.5, 141)
 # every race is independent and a favourite wins the title in ~100% of runs from round 0 (e.g.
 # 2024, when McLaren overtook Red Bull mid-season). Chosen by the championship backtest's log score
 # over the finished seasons in the database (see backtest(form_sd=...)).
-FORM_SHOCK_SD = 0.25
+FORM_SHOCK_SD = 0.75
 # How each simulated race is drawn: "finish_odds" — the Predictions page's strength (model score
 # and predicted grid, fitted on the front of held-out races, retirements); "whole_order" — the
 # model score with one beta fitted on whole orders (before Phase 4).
 TITLE_STRENGTH = "finish_odds"
 # A season-long shift for each car, shared by its two drivers (per-driver shifts cancel out across
 # a team, which left the constructors' title over-confident). Chosen with FORM_SHOCK_SD by the title
-# backtest's joint log score (drivers + constructors, 2023-25): 0.25 + 1.0 -> -1.363, vs -1.490
-# for the whole-order beta with FORM_SHOCK_SD 1.0 (drivers Brier 0.350 -> 0.271, champion named
-# 74% -> 77%; constructors 0.338 -> 0.362, 76% -> 77%).
-TEAM_FORM_SHOCK_SD = 1.0
+# backtest's joint log score (drivers + constructors, 2023-25), re-tuned after the blend (Phase 5):
+# 0.75 + 0.75 -> -1.307, vs -1.490 for the whole-order beta with a driver shock of 1.0 (drivers
+# Brier 0.350 -> 0.300, champion named 74% -> 77%; constructors 0.338 -> 0.310, 76% -> 81%).
+# Nearby settings were within ~0.02.
+TEAM_FORM_SHOCK_SD = 0.75
 # Bump when the title simulation changes: a stored track record from an older method is rebuilt by
 # data upkeep (services/data_upkeep.py).
 TITLE_BACKTEST_VERSION = "3"
