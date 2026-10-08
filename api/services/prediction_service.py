@@ -20,6 +20,8 @@ import numpy as np
 import pandas as pd
 
 from services.backtest_scores import add_probabilities, hit_rates
+from services import blend
+from services.blend import BLEND_WEIGHT, BlendedRanker
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS, practice_features
 from services import preseason_testing
 from services.season_form import QUALI_INPUTS as SEASON_QUALI, RACE_INPUTS as SEASON_RACE, add_season_form, team_points_after
@@ -395,11 +397,25 @@ class PredictionService:
         relevance = (train["_field_size"] + 1 - train[target_col]).clip(lower=0).astype(float)
 
         model = self._new_ranker(lgb)
+        weights = self._time_weights(train)
         model.fit(
             train[features].astype(float), relevance.values,
-            group=group, sample_weight=self._time_weights(train),
+            group=group, sample_weight=weights,
         )
-        return model
+        if not BLEND_WEIGHT:
+            return model
+        # Blended with a linear model on the same rows (services/blend.py): the two make different
+        # mistakes — qualifying 3.20 -> 2.97 places off in the walk-forward.
+        return BlendedRanker(model, features, BLEND_WEIGHT).fit_linear(train[features], relevance.values, weights)
+
+    @staticmethod
+    def _factors(model, X: pd.DataFrame, features: List[str]) -> List[Dict[str, float]]:
+        """What drove each driver's score, grouped (services/blend.py); empty if the model can't say."""
+        try:
+            return blend.factors(blend.contributions(model, X, features), X)
+        except Exception as exc:
+            logger.debug("no factors: %s", exc)
+            return [{} for _ in range(len(X))]
 
     def _ranks_from_scores(self, scores) -> np.ndarray:
         """A ranker's predict() returns a relevance score (higher = better, arbitrary
@@ -735,7 +751,8 @@ class PredictionService:
         if not cached or cached.get("model_trained_at") != trained_at:
             return False
         preds = cached.get("result", {}).get("predictions") or []
-        if not preds or (need_scores and "score" not in preds[0]) or "field_source" not in cached["result"]:
+        if not preds or (need_scores and ("score" not in preds[0] or "factors" not in preds[0])) \
+                or "field_source" not in cached["result"]:
             return False
         if field is None:
             return True
@@ -776,6 +793,7 @@ class PredictionService:
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[self._quali_features].fillna(10))
         feat["score"] = preds
+        feat["factors"] = self._factors(self._quali_model, feat[self._quali_features].fillna(10), self._quali_features)
         feat["predicted_grid"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_grid").reset_index(drop=True)
 
@@ -789,6 +807,7 @@ class PredictionService:
                 "constructor_name": self._constructor_map.get(row["constructor_id"], row["constructor_id"]),
                 "predicted_grid":   int(row["predicted_grid"]),
                 "score":            round(float(row["score"]), 6),
+                "factors":          row["factors"],
                 "circuit_avg_grid": round(float(row["driver_circuit_grid_avg"]), 2) if pd.notna(row.get("driver_circuit_grid_avg")) else None,
                 "rolling_avg_grid": round(float(row["driver_rolling_grid"]), 2)     if pd.notna(row.get("driver_rolling_grid"))      else None,
             })
@@ -829,6 +848,7 @@ class PredictionService:
         feat  = self._encode(feat)
         preds = self._race_model.predict(feat[self._race_features].fillna(10))
         feat["score"] = preds
+        feat["factors"] = self._factors(self._race_model, feat[self._race_features].fillna(10), self._race_features)
         feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
@@ -845,6 +865,7 @@ class PredictionService:
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
                 "predicted_grid":     int(row["grid"]),
+                "factors":            row["factors"],
                 "dnf_rate":           round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None,
             })
 
@@ -892,6 +913,7 @@ class PredictionService:
         feat  = self._encode(feat)
         preds = self._sprint_model.predict(feat[self._sprint_features].fillna(10))
         feat["score"] = preds
+        feat["factors"] = self._factors(self._sprint_model, feat[self._sprint_features].fillna(10), self._sprint_features)
         feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
@@ -908,6 +930,7 @@ class PredictionService:
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
                 "predicted_grid":     int(row["sprint_grid"]),
                 "score":              round(float(row["score"]), 6),
+                "factors":            row["factors"],
                 "dnf_rate":           round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None,
             })
 
@@ -1080,7 +1103,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "9"
+    WALK_FORWARD_VERSION = "10"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:

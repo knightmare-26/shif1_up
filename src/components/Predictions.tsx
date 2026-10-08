@@ -28,7 +28,28 @@ interface PredictionRow {
   expected_position?: number;
   win_probability?: number;
   podium_probability?: number;
+  /** What lifted (+) or held back (−) this driver against the field's average, biggest first. */
+  factors?: Record<string, number>;
 }
+
+/** "▲ Team · ▼ This circuit": the two biggest things behind a driver's place, the rest on hover. */
+const WhyLine: React.FC<{ factors?: Record<string, number> }> = ({ factors }) => {
+  const entries = Object.entries(factors ?? {}).filter(([k, v]) => k !== 'Other' && Math.abs(v) >= 0.01)
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
+  if (!entries.length) return null;
+  const full = entries.map(([k, v]) => `${v > 0 ? '+' : '−'} ${k} (${Math.abs(v).toFixed(2)})`).join('\n');
+  return (
+    <span className="mt-0.5 block text-xs font-normal text-gray-500" title={`Against the field's average driver:\n${full}`}>
+      {entries.slice(0, 2).map(([k, v], i) => (
+        <span key={k}>
+          {i > 0 && ' · '}
+          <span className={v > 0 ? 'text-green-400' : 'text-red-400'} aria-hidden="true">{v > 0 ? '▲' : '▼'}</span>
+          <span className="sr-only">{v > 0 ? 'helped by' : 'held back by'}</span> {k}
+        </span>
+      ))}
+    </span>
+  );
+};
 
 interface PredictionResult {
   success: boolean;
@@ -88,7 +109,7 @@ const PredictionTable: React.FC<{
         {data.map((row) => (
           <Tr key={row.driver_id}>
             <Td><PositionBadge position={row.predicted_rank} /></Td>
-            <Td className="font-medium text-white">{row.driver_name}</Td>
+            <Td className="font-medium text-white">{row.driver_name}<WhyLine factors={row.factors} /></Td>
             <Td className="hidden text-xs text-gray-400 sm:table-cell">{row.constructor_name}</Td>
             <Td align="right" className={`font-semibold ${positionColor(row.predicted_rank)}`}>
               P{Math.round(row[valueKey] ?? row.predicted_rank)}
@@ -721,7 +742,8 @@ const Predictions: React.FC = () => {
                 <HowItWorksCard>
                   <p>
                     <strong className="text-gray-200">The order</strong> comes from ranking models trained on every race
-                    since 2022: recent form, form at this circuit, the team's pace, reliability and the predicted grid.
+                    since 2022 — gradient-boosted trees and a linear model, averaged, as they make different mistakes:
+                    recent form, form at this circuit, the team's pace, practice, reliability and the predicted grid.
                   </p>
                   {(raceResult?.odds_available || qualiResult?.odds_available || sprintResult?.odds_available) && (
                     <p>
@@ -733,6 +755,13 @@ const Predictions: React.FC = () => {
                       with the chances (a sprint's points chance is the top 8).
                     </p>
                   )}
+                  <p>
+                    <strong className="text-gray-200">▲ / ▼ under a driver</strong> are the two biggest things lifting
+                    them above, or holding them below, the field's average driver: recent form, the team, this
+                    circuit, practice, the starting grid (predicted, until qualifying), reliability or the driver themselves (hover for the full
+                    list). They come from the model itself — each input's share of the score — and in a race include how
+                    much the starting position counts.
+                  </p>
                   <p>
                     <strong className="text-gray-200">The drivers</strong> are the ones entered for this weekend, taken
                     from its latest session so far (qualifying first; first practice only as a last resort, since

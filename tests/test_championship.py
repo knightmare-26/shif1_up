@@ -330,3 +330,15 @@ def test_a_shared_car_swing_spreads_the_constructors_title():
         return sims["teams"]["a"]["title_probability"]
 
     assert team_a_title(0.0) > team_a_title(1.5) > 0.5        # still the favourite, but less certain
+
+
+def test_the_race_factors_add_the_grids_own_effect_and_come_biggest_first():
+    pred = {"success": True, "grid_source": "this weekend's qualifying", "predictions": [
+        {"predicted_rank": 1, "driver_id": "a", "score": 1.0, "predicted_grid": 1, "factors": {"Team": 0.4, "Practice": 0.1}},
+        {"predicted_rank": 2, "driver_id": "b", "score": -1.0, "predicted_grid": 10, "factors": {"Team": -0.4, "Practice": -0.1}}]}
+    rows = {r["driver_id"]: r for r in odds_service().with_finish_odds(pred, "race")["predictions"]}
+
+    a = rows["a"]["factors"]
+    assert a["Starting grid"] > 0 > rows["b"]["factors"]["Starting grid"]       # pole helps, P10 doesn't
+    assert list(a) == sorted(a, key=lambda k: -abs(a[k]))                      # biggest first
+    assert a["Team"] == pytest.approx(1.0 * 0.4, abs=1e-3)                     # beta 1.0 x the model's effect

@@ -145,9 +145,13 @@ def test_a_driver_in_a_different_car_gets_that_teams_form():
 
 def test_a_cached_prediction_is_reused_only_for_the_same_drivers_in_the_same_cars():
     cached = {"model_trained_at": "t", "result": {"field_source": "x", "predictions": [
-        {"driver_id": "aaa", "constructor_id": "fast", "score": 1.0}, {"driver_id": "bbb", "constructor_id": "slow", "score": 0.0}]}}
+        {"driver_id": "aaa", "constructor_id": "fast", "score": 1.0, "factors": {}},
+        {"driver_id": "bbb", "constructor_id": "slow", "score": 0.0, "factors": {}}]}}
     usable = PredictionService._cache_usable
 
     assert usable(cached, "t", {"aaa": "fast", "bbb": None})
     assert not usable(cached, "t", {"aaa": "fast", "ccc": None})           # different driver
     assert not usable(cached, "t", {"aaa": "fast", "bbb": "fast"})         # bbb changed teams
+    old = {**cached, "result": {**cached["result"], "predictions": [
+        {k: v for k, v in p.items() if k != "factors"} for p in cached["result"]["predictions"]]}}
+    assert not usable(old, "t", {"aaa": "fast", "bbb": None})              # cached before the "why": recompute

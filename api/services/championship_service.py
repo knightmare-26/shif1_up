@@ -63,7 +63,7 @@ TITLE_STRENGTH = "finish_odds"
 TEAM_FORM_SHOCK_SD = 1.0
 # Bump when the title simulation changes: a stored track record from an older method is rebuilt by
 # data upkeep (services/data_upkeep.py).
-TITLE_BACKTEST_VERSION = "2"
+TITLE_BACKTEST_VERSION = "3"
 
 
 def fastest_lap_point(year: int) -> int:
@@ -495,11 +495,23 @@ class ChampionshipService:
             stats[key] = in_strength_order(sim[market], strength)
         enriched = [{**r, **{k: round(float(v[i]), 1 if k == "expected_position" else 4) for k, v in stats.items()}}
                     for i, r in enumerate(preds)]
+        # What drove each driver's strength, in its units: the model's factors x beta, and in a race
+        # the grid's own term (against the field's average start) added to "Starting grid".
+        params = model.params
+        log_grid = np.log(FinishOdds._grid(grid, len(preds))) if racing else None
+        for i, r in enumerate(enriched):
+            if r.get("factors") is None:
+                continue
+            f = {k: params["beta"] * v for k, v in r["factors"].items()}
+            if racing and params["gamma"]:
+                f["Starting grid"] = f.get("Starting grid", 0.0) - params["gamma"] * (log_grid[i] - log_grid.mean())
+            if racing and not str(result.get("grid_source") or "").startswith("this weekend's") and "Starting grid" in f:
+                f["Predicted grid"] = f.pop("Starting grid")          # from the qualifying prediction, not real
+            r["factors"] = {k: round(v, 3) for k, v in sorted(f.items(), key=lambda kv: -abs(kv[1]))}
         if racing:
             enriched = [enriched[i] for i in np.argsort(-strength, kind="stable")]
             for rank, r in enumerate(enriched, start=1):
                 r["predicted_rank"] = r["predicted_position"] = rank
-        params = model.params
         return {**result, "predictions": enriched, "odds_available": True,
                 "odds_method": {"strength": "model score" + (" and grid" if racing and params["gamma"] else ""),
                                 **{k: round(v, 3) for k, v in params.items()}}}
