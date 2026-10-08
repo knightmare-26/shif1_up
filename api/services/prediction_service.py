@@ -321,11 +321,18 @@ class PredictionService:
         def roll(s, w=5):
             return s.shift(1).rolling(w, min_periods=1).mean()
 
+        def roll_after(s, w=5):     # the same window, including this race: form going into the next one
+            return s.rolling(w, min_periods=1).mean()
+
         def expand(s):
             return s.expanding().mean().shift(1)
 
         df["driver_rolling_finish"]      = df.groupby("driver_id")["position"].transform(roll)
         df["driver_rolling_grid"]        = df.groupby("driver_id")["grid"].transform(roll)
+        # *_after: the same inputs once this race is in — what an upcoming race is predicted from
+        # (_build_prediction_rows), so a live prediction sees the form the backtest scores with.
+        df["driver_rolling_finish_after"] = df.groupby("driver_id")["position"].transform(roll_after)
+        df["driver_rolling_grid_after"]   = df.groupby("driver_id")["grid"].transform(roll_after)
         df["driver_circuit_avg"]         = df.groupby(["driver_id", "circuit_name"])["position"].transform(expand)
         df["driver_circuit_grid_avg"]    = df.groupby(["driver_id", "circuit_name"])["grid"].transform(expand)
         df = self._team_form(df)
@@ -336,6 +343,7 @@ class PredictionService:
         df["driver_dnf_rate"] = df.groupby("driver_id")["dnf"].transform(
             lambda x: x.shift(1).rolling(10, min_periods=1).mean()
         )
+        df["driver_dnf_rate_after"] = df.groupby("driver_id")["dnf"].transform(lambda x: x.rolling(10, min_periods=1).mean())
 
         # Fill NaN with nearest available proxy
         df["driver_circuit_avg"]      = df["driver_circuit_avg"].fillna(df["driver_rolling_finish"])
@@ -355,11 +363,13 @@ class PredictionService:
                    .reset_index().sort_values(["year", "round"], kind="stable"))
         races["constructor_rolling_finish"] = races.groupby("constructor_id")["_team"].transform(
             lambda s: s.shift(1).rolling(TEAM_FORM_RACES, min_periods=1).mean())
+        races["constructor_rolling_finish_after"] = races.groupby("constructor_id")["_team"].transform(
+            lambda s: s.rolling(TEAM_FORM_RACES, min_periods=1).mean())
         races["constructor_circuit_avg"] = races.groupby(["constructor_id", "_circuit"])["_team"].transform(
             lambda s: s.expanding().mean().shift(1))
-        return (df.drop(columns=["constructor_rolling_finish", "constructor_circuit_avg"], errors="ignore")
-                  .merge(races[["year", "round", "constructor_id", "constructor_rolling_finish", "constructor_circuit_avg"]],
-                         on=["year", "round", "constructor_id"], how="left"))
+        team = ["constructor_rolling_finish", "constructor_circuit_avg", "constructor_rolling_finish_after"]
+        return (df.drop(columns=team, errors="ignore")
+                  .merge(races[["year", "round", "constructor_id"] + team], on=["year", "round", "constructor_id"], how="left"))
 
     def _testing_inputs(self) -> List[str]:
         return list(preseason_testing.COLUMNS) if TESTING_MODE.startswith("features") and self._testing_data else []
@@ -620,9 +630,33 @@ class PredictionService:
     _DRIVER_INPUTS = ("grid", "driver_rolling_finish", "driver_circuit_avg", "driver_dnf_rate",
                       "driver_rolling_grid", "driver_circuit_grid_avg", "driver_season_avg_grid")
 
+    @staticmethod
+    def _after(r, col: str, default: float) -> float:
+        """A driver's `col` going into the race after their latest one (`col`_after; models saved
+        before it existed only have `col`, the form going into the latest race)."""
+        for key in (f"{col}_after", col):
+            v = r.get(key)
+            if v is not None and pd.notna(v):
+                return float(v)
+        return default
+
+    @staticmethod
+    def _team_forms(df: pd.DataFrame) -> pd.Series:
+        """Each team's form after its latest race."""
+        col = "constructor_rolling_finish_after" if "constructor_rolling_finish_after" in df else "constructor_rolling_finish"
+        return df.sort_values(["year", "round"], kind="stable").groupby("constructor_id")[col].last()
+
+    @staticmethod
+    def _team_at_circuit(df: pd.DataFrame, team: Optional[str], circuit_name: str) -> Optional[float]:
+        """A team's average finish at `circuit_name`, per race (the mean of its cars), as _team_form."""
+        at = df[(df["constructor_id"] == team) & (df["circuit_name"] == circuit_name)]
+        races = at.groupby(["year", "round"])["position"].mean().dropna()
+        return float(races.mean()) if len(races) else None
+
     def _build_prediction_rows(self, circuit_name: str, df: Optional[pd.DataFrame] = None,
                                field: Optional[Dict[str, Optional[str]]] = None,
-                               season: Optional[int] = None, use_testing: bool = True) -> pd.DataFrame:
+                               season: Optional[int] = None, use_testing: bool = True,
+                               round_no: Optional[int] = None) -> pd.DataFrame:
         """One feature row per driver for a race at `circuit_name`.
 
         `field` is who's actually entered, driver_id -> constructor_id (None: their last team) —
@@ -630,7 +664,12 @@ class PredictionService:
         misses a driver returning (e.g. from injury) and keeps one who's out. `df` is the history
         to build from — the full training frame by default; the championship backtest passes
         history cut off at an earlier round. `season` is the race's season (default: this year for
-        the live frame), which says whether season-to-date form starts from nothing."""
+        the live frame), which says whether season-to-date form starts from nothing. `round_no` is the
+        race's round on the calendar (default: the round this circuit usually is).
+
+        Every input is the one the race's own row would get from _engineer once it's run — form
+        after each driver's latest race, the team's after its latest — so a live prediction sees
+        what the walk-forward backtest scores with."""
         df = self._df if df is None else df
         if field is None:
             most_recent_year = int(df["year"].max())
@@ -643,6 +682,9 @@ class PredictionService:
 
         circuit_round_series = df[df["circuit_name"] == circuit_name]["round"]
         circuit_round = int(circuit_round_series.mode().iloc[0]) if not circuit_round_series.empty else 1
+        if round_no is not None:
+            circuit_round = int(round_no)
+        team_forms = self._team_forms(df)
 
         # Season form going into the race: after the latest race, or nothing yet in a new season.
         latest_year = int(df["year"].max())
@@ -653,23 +695,30 @@ class PredictionService:
         rows = []
         for _, r in latest.iterrows():
             cir_d = df[(df["driver_id"]      == r["driver_id"])      & (df["circuit_name"] == circuit_name)]
-            cir_c = df[(df["constructor_id"] == r["constructor_id"]) & (df["circuit_name"] == circuit_name)]
+            rolling_finish = self._after(r, "driver_rolling_finish", 10.0)
+            rolling_grid = self._after(r, "driver_rolling_grid", 10.0)
+            # The team's form after its latest race (a driver back from a break: not their own last race).
+            team_form = team_forms.get(r.get("constructor_id"))
+            team_form = float(team_form) if team_form is not None and pd.notna(team_form) else self._after(r, "constructor_rolling_finish", 10.0)
+            team_here = self._team_at_circuit(df, r.get("constructor_id"), circuit_name)
+            driver_here = cir_d["position"].dropna()
+            grid_here = cir_d["grid"].dropna()
 
             rows.append({
                 "driver_id":               r["driver_id"],
                 "constructor_id":          r.get("constructor_id", "unknown"),
                 "circuit_name":            circuit_name,
-                "grid":                    float(r.get("grid") or r.get("driver_rolling_grid") or 10),
-                "driver_rolling_finish":   float(r.get("driver_rolling_finish")    or 10),
-                "driver_circuit_avg":      float(cir_d["position"].mean()) if not cir_d.empty else float(r.get("driver_rolling_finish") or 10),
-                "constructor_rolling_finish": float(r.get("constructor_rolling_finish") or 10),
-                "constructor_circuit_avg": float(cir_c["position"].mean()) if not cir_c.empty else float(r.get("constructor_rolling_finish") or 10),
-                "driver_dnf_rate":         float(r.get("driver_dnf_rate") or 0.1),
-                "driver_rolling_grid":     float(r.get("driver_rolling_grid")      or 10),
-                "driver_circuit_grid_avg": float(cir_d["grid"].mean()) if not cir_d.empty and cir_d["grid"].notna().any() else float(r.get("driver_rolling_grid") or 10),
+                "grid":                    float(r.get("grid") or rolling_grid),
+                "driver_rolling_finish":   rolling_finish,
+                "driver_circuit_avg":      float(driver_here.mean()) if len(driver_here) else rolling_finish,
+                "constructor_rolling_finish": team_form,
+                "constructor_circuit_avg": team_here if team_here is not None else team_form,
+                "driver_dnf_rate":         self._after(r, "driver_dnf_rate", 0.1),
+                "driver_rolling_grid":     rolling_grid,
+                "driver_circuit_grid_avg": float(grid_here.mean()) if len(grid_here) else rolling_grid,
                 "driver_season_points":    0.0 if new_season or int(r["year"]) != latest_year
                                            else float(r.get("driver_season_points_after") or 0),
-                "driver_season_avg_grid":  float(r.get("driver_season_avg_grid_after") or r.get("driver_rolling_grid") or 10),
+                "driver_season_avg_grid":  float(r.get("driver_season_avg_grid_after") or rolling_grid),
                 "team_season_points":      float(team_points.get(r.get("constructor_id"), 0.0)),
                 # Practice is filled in below: this weekend's, if it's been stored, else neutral.
                 "round": circuit_round,
@@ -750,16 +799,16 @@ class PredictionService:
         if rows.empty or not teams:
             return rows
         rows = rows.copy()
-        team_form = history.sort_values(["year", "round"]).groupby("constructor_id")["constructor_rolling_finish"].last()
+        team_form = self._team_forms(history)
         for i, row in rows.iterrows():
             team = teams.get(row["driver_id"])
             if not team or (team == row["constructor_id"] and pd.notna(row.get("constructor_rolling_finish"))):
                 continue
-            at_circuit = history.loc[(history["constructor_id"] == team) & (history["circuit_name"] == circuit_name), "position"]
+            at_circuit = self._team_at_circuit(history, team, circuit_name)
             form = team_form.get(team, np.nan)
             rows.at[i, "constructor_id"] = team
             rows.at[i, "constructor_rolling_finish"] = form
-            rows.at[i, "constructor_circuit_avg"] = at_circuit.mean() if not at_circuit.empty else form
+            rows.at[i, "constructor_circuit_avg"] = at_circuit if at_circuit is not None else form
             if team_points is not None:
                 rows.at[i, "team_season_points"] = float(team_points.get(team, 0.0))
         return rows
@@ -800,7 +849,8 @@ class PredictionService:
         self._notify_trained(result)
 
     async def predict_qualifying(self, circuit_name: str, duckdb_service,
-                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None,
+                        round_no: Optional[int] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._quali_model is None:
@@ -815,7 +865,7 @@ class PredictionService:
         if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
-        feat  = self._build_prediction_rows(circuit_name, field=field)
+        feat  = self._build_prediction_rows(circuit_name, field=field, round_no=round_no)
         feat  = self._encode(feat)
         preds = self._quali_model.predict(feat[self._quali_features].fillna(10))
         feat["score"] = preds
@@ -851,7 +901,8 @@ class PredictionService:
         return result
 
     async def predict_race(self, circuit_name: str, duckdb_service,
-                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None,
+                        round_no: Optional[int] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._race_model is None:
@@ -862,7 +913,7 @@ class PredictionService:
         if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
-        feat = self._build_prediction_rows(circuit_name, field=field)
+        feat = self._build_prediction_rows(circuit_name, field=field, round_no=round_no)
 
         # Pipe qualifying predictions in as the grid input — as a rank (1..N), the same
         # scale the race model's own "grid" training column is on, not the ranker's raw
@@ -909,7 +960,8 @@ class PredictionService:
         return result
 
     async def predict_sprint(self, circuit_name: str, duckdb_service,
-                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None) -> Dict[str, Any]:
+                        field: Optional[Dict[str, Optional[str]]] = None, field_source: Optional[str] = None,
+                        round_no: Optional[int] = None) -> Dict[str, Any]:
         await self._ensure_trained(duckdb_service)
 
         if self._sprint_model is None:
@@ -924,7 +976,7 @@ class PredictionService:
         if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
-        feat = self._build_prediction_rows(circuit_name, field=field)
+        feat = self._build_prediction_rows(circuit_name, field=field, round_no=round_no)
 
         # No separate sprint-qualifying model (too little data to train one
         # reliably) — the main qualifying model's prediction is used as a

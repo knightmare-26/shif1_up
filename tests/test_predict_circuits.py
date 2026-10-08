@@ -59,3 +59,15 @@ async def test_only_this_weekend_is_checked_and_a_missing_database_hides_nothing
 
     monkeypatch.setattr(main, "duckdb_service", None)
     assert await main._completed_sessions(2026, [18]) == {}
+
+
+async def test_a_prediction_is_made_for_the_coming_races_place_on_the_calendar(monkeypatch):
+    """The round is a model input: the race's own, not the one the circuit usually is."""
+    class Schedule:
+        async def get_race_schedule(self, year):
+            return [event(5, -150), event(17, 3), event(18, 17)]
+    monkeypatch.setattr(main, "fastf1_service", Schedule())
+
+    assert await main._calendar_round("Circuit 17") == 17
+    assert await main._calendar_round("Circuit 5") == 5          # already run this season: its round
+    assert await main._calendar_round("Nowhere") is None

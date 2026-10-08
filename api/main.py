@@ -1533,6 +1533,21 @@ def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
     return championship_service.with_finish_odds(result, kind)
 
 
+async def _calendar_round(circuit: str) -> Optional[int]:
+    """The coming race at `circuit`'s round on this season's calendar (a model input; None: unknown,
+    and the round this circuit usually is is used)."""
+    try:
+        schedule = await fastf1_service.get_race_schedule(datetime.now().year)
+    except Exception as exc:
+        logger.info("calendar round for %s: %s", circuit, exc)
+        return None
+    today = datetime.utcnow().date().isoformat()
+    here = [r for r in schedule if r.circuit_name == circuit]
+    coming = [r for r in here if r.date >= today]
+    race = min(coming, key=lambda r: r.date) if coming else max(here, key=lambda r: r.date, default=None)
+    return race.round if race else None
+
+
 async def _weekend_field(circuit: str):
     """Who's entered for the weekend at `circuit` (None: not known yet — the last race's line-up
     is used). See services/entry_list.py."""
@@ -1549,7 +1564,8 @@ async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "qualifying")
@@ -1565,7 +1581,8 @@ async def predict_race(circuit: str):
     """Predict race finishing positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_race(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_race(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "race")
@@ -1581,7 +1598,8 @@ async def predict_sprint(circuit: str):
     """Predict sprint race finishing positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "sprint")

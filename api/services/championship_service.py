@@ -60,11 +60,13 @@ TITLE_STRENGTH = "finish_odds"
 # backtest's joint log score (drivers + constructors, 2023-25), re-tuned after the blend (Phase 5):
 # 0.75 + 0.75 -> -1.307, vs -1.490 for the whole-order beta with a driver shock of 1.0 (drivers
 # Brier 0.350 -> 0.300, champion named 74% -> 77%; constructors 0.338 -> 0.310, 76% -> 81%).
-# Nearby settings were within ~0.02. With team form fixed (no teammate leak): -1.278.
+# Nearby settings were within ~0.02. With team form fixed (no teammate leak): -1.278; with each
+# remaining race predicted from form after the latest race (not before it): -1.260 (drivers Brier
+# 0.303 -> 0.320, constructors 0.296 -> 0.276; 0.5 / 0.75 and 0.75 / 1.0 within 0.02).
 TEAM_FORM_SHOCK_SD = 0.75
 # Bump when the title simulation changes: a stored track record from an older method is rebuilt by
 # data upkeep (services/data_upkeep.py).
-TITLE_BACKTEST_VERSION = "4"
+TITLE_BACKTEST_VERSION = "5"
 
 
 def fastest_lap_point(year: int) -> int:
@@ -527,28 +529,32 @@ class ChampionshipService:
         self._retire holds each entrant's retirement chance."""
         p = self.pred
         out = []
-        cache: Dict[str, np.ndarray] = {}
+        cache: Dict[Tuple[str, int], np.ndarray] = {}
         self._retire = None
         # Season form going into the remaining rounds (none yet if the season hasn't started).
         team_points = team_points_after(history, year if year is not None else int(history["year"].max())).to_dict()
+        circuit_rows: Dict[str, pd.DataFrame] = {}
         for rnd in remaining:
-            if rnd.circuit not in cache:
-                # Last season's form, not preseason testing: for the season-long order it did better (#35).
-                rows = p._build_prediction_rows(rnd.circuit, history, season=year, use_testing=False)
-                # A driver who changed teams races the new car (Sainz at Williams in 2025, not Ferrari).
-                rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit, team_points)
-                rows = p._encode(rows)
-                rows = rows.set_index("driver_id").reindex(entrants)
-                # A driver with no history (a debut) gets the field's median inputs.
-                rows = rows.fillna(rows.median(numeric_only=True)).reset_index()
+            key = (rnd.circuit, rnd.round)
+            if key not in cache:
+                if rnd.circuit not in circuit_rows:
+                    # Last season's form, not preseason testing: for the season-long order it did better (#35).
+                    rows = p._build_prediction_rows(rnd.circuit, history, season=year, use_testing=False)
+                    # A driver who changed teams races the new car (Sainz at Williams in 2025, not Ferrari).
+                    rows = p._with_teams(rows, {d: t for d, t in team_of.items() if t}, history, rnd.circuit, team_points)
+                    rows = p._encode(rows)
+                    rows = rows.set_index("driver_id").reindex(entrants)
+                    # A driver with no history (a debut) gets the field's median inputs.
+                    circuit_rows[rnd.circuit] = rows.fillna(rows.median(numeric_only=True)).reset_index()
+                rows = circuit_rows[rnd.circuit].assign(round=rnd.round)      # its place on the calendar
                 if odds is None:
-                    cache[rnd.circuit] = np.asarray(self._score_rows(rows, quali_model, race_model), dtype=float)
+                    cache[key] = np.asarray(self._score_rows(rows, quali_model, race_model), dtype=float)
                 else:
                     scores, grid = self._score_rows(rows, quali_model, race_model, with_grid=True)
-                    cache[rnd.circuit] = odds.strength(scores, grid)
+                    cache[key] = odds.strength(scores, grid)
                     if self._retire is None and "driver_dnf_rate" in rows:
                         self._retire = retirement_chance(rows["driver_dnf_rate"].tolist())
-            out.append((cache[rnd.circuit], rnd.sprint))
+            out.append((cache[key], rnd.sprint))
         return out
 
     # ---- one season at one point in time -------------------------------------------------
