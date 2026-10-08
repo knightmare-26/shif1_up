@@ -164,7 +164,7 @@ Predictions page tab **Title Race** (`/predictions?tab=title`, `&view=constructo
 ```
 /             → MainPage
 /dashboard    → Dashboard (tabs: Overview | Drivers | Teams | Tracks | Race Results)
-/predictions  → Predictions (tabs: Upcoming Predictions | Title Race | Predicted vs Actual; `?tab=title|backtest`)
+/predictions  → Predictions (tabs: Upcoming Predictions | Title Race | Predicted vs Actual; `?tab=title|backtest`; on Upcoming one session at a time from a Session dropdown, `?session=sprint|qualifying`, Race by default — weekend order, Sprint only on a sprint weekend)
 /live         → LiveAnalytics   (Live section, "Overview" tab)
 /live-monitor → LiveDataMonitor (Live section, "Live Monitor" tab)
 /lap-data     → LapData (not in the nav)

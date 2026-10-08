@@ -573,6 +573,13 @@ const BacktestTab: React.FC = () => {
 };
 
 type PredictionTab = 'upcoming' | 'title' | 'backtest';
+
+/** One session's prediction at a time, chosen from a dropdown (?session=, Race by default). */
+type PredictedSession = 'sprint' | 'qualifying' | 'race';
+const SESSION_LABELS: Record<PredictedSession, string> = { sprint: 'Sprint', qualifying: 'Qualifying', race: 'Race' };
+/** In weekend order: a sprint weekend runs the sprint on Saturday before qualifying. */
+const sessionsFor = (sprintWeekend: boolean): PredictedSession[] =>
+  sprintWeekend ? ['sprint', 'qualifying', 'race'] : ['qualifying', 'race'];
 const PREDICTION_TABS: { id: PredictionTab; label: string }[] = [
   { id: 'upcoming', label: 'Upcoming Predictions' },
   { id: 'title', label: 'Title Race' },
@@ -596,6 +603,8 @@ const Predictions: React.FC = () => {
   const rawTab = params.get('tab') as PredictionTab | null;
   const tab: PredictionTab = rawTab && PREDICTION_TAB_IDS.includes(rawTab) ? rawTab : 'upcoming';
   const setTab = (t: PredictionTab) => setParams(t === 'upcoming' ? {} : { tab: t });
+  const rawSession = params.get('session') as PredictedSession | null;
+  const setSession = (s: PredictedSession) => setParams(s === 'race' ? {} : { session: s });
   const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
@@ -614,6 +623,9 @@ const Predictions: React.FC = () => {
 
   const selectedRace = circuits.find((c) => c.circuit_name === selected);
   const isSprintWeekend = !!selectedRace?.is_sprint;
+  const sessionOptions = sessionsFor(isSprintWeekend);
+  // A sprint picked for one weekend falls back to the race on a weekend without one.
+  const session: PredictedSession = rawSession && sessionOptions.includes(rawSession) ? rawSession : 'race';
 
   const runPredictions = useCallback(async () => {
     if (!selected) return;
@@ -654,6 +666,7 @@ const Predictions: React.FC = () => {
   const warmingUp = !!status && !status.trained && (loading || !!selected);
   const gridMissing = !!status?.trained && !status.grid_data_available;
   const hasResults = !!(qualiResult || raceResult || sprintResult);
+  const shown = { qualifying: qualiResult, sprint: sprintResult, race: raceResult }[session];
 
   return (
     <PageShell>
@@ -685,6 +698,10 @@ const Predictions: React.FC = () => {
                     Round {c.round} — {showCircuitName ? c.circuit_name : c.race_name}{c.is_sprint ? ' (Sprint weekend)' : ''}
                   </option>
                 ))}
+              </SelectField>
+              <SelectField label="Session" value={session} onChange={(v) => setSession(v as PredictedSession)}
+                className="min-w-[160px]" disabled={circuits.length === 0}>
+                {sessionOptions.map((s) => <option key={s} value={s}>{SESSION_LABELS[s]}</option>)}
               </SelectField>
               <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
@@ -720,21 +737,21 @@ const Predictions: React.FC = () => {
             ) : loading && !hasResults ? (
               <Card><LoadingState label={warmingUp ? "Training the models — the first run after a restart takes a little longer…" : "Generating predictions…"} /></Card>
             ) : hasResults ? (
-              <FadeIn className="flex flex-col gap-6 xl:flex-row">
-                {qualiResult?.predictions.length ? (
-                  <PredictionTable title="Qualifying Prediction" subtitle={predictionSubtitle(qualiResult)} data={qualiResult.predictions}
-                    valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
-                ) : qualiResult && <UnavailableCard what="Qualifying prediction" reason={qualiResult.error} />}
-
-                {sprintResult?.predictions.length ? (
-                  <PredictionTable title="Sprint Prediction" subtitle={predictionSubtitle(sprintResult)} data={sprintResult.predictions}
-                    valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
-                ) : sprintResult && <UnavailableCard what="Sprint prediction" reason={sprintResult.error} />}
-
-                {raceResult?.predictions.length ? (
-                  <PredictionTable title="Race Prediction" subtitle={predictionSubtitle(raceResult)} data={raceResult.predictions}
-                    valueKey="predicted_position" avgKey="circuit_avg_finish" rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
-                ) : raceResult && <UnavailableCard what="Race prediction" reason={raceResult.error} severe />}
+              <FadeIn key={session}>
+                {shown?.predictions.length ? (
+                  session === 'qualifying' ? (
+                    <PredictionTable title="Qualifying Prediction" subtitle={predictionSubtitle(shown)} data={shown.predictions}
+                      valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
+                  ) : (
+                    <PredictionTable title={`${SESSION_LABELS[session]} Prediction`} subtitle={predictionSubtitle(shown)}
+                      data={shown.predictions} valueKey="predicted_position" avgKey="circuit_avg_finish"
+                      rollingKey="rolling_avg_finish" gridMissing={gridMissing} />
+                  )
+                ) : shown ? (
+                  <UnavailableCard what={`${SESSION_LABELS[session]} prediction`} reason={shown.error} severe={session === 'race'} />
+                ) : (
+                  <Card><LoadingState label={`Generating the ${SESSION_LABELS[session].toLowerCase()} prediction…`} /></Card>
+                )}
               </FadeIn>
             ) : null}
             {!error && hasResults && (
@@ -745,7 +762,7 @@ const Predictions: React.FC = () => {
                     since 2022 — gradient-boosted trees and a linear model, averaged, as they make different mistakes:
                     recent form, form at this circuit, the team's pace, practice, reliability and the predicted grid.
                   </p>
-                  {(raceResult?.odds_available || qualiResult?.odds_available || sprintResult?.odds_available) && (
+                  {shown?.odds_available && (
                     <p>
                       <strong className="text-gray-200">avg and the win / pole and podium chances</strong> come from
                       playing the session out 20,000 times. Each driver's strength is the model's score — in a race also
