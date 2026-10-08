@@ -60,11 +60,11 @@ TITLE_STRENGTH = "finish_odds"
 # backtest's joint log score (drivers + constructors, 2023-25), re-tuned after the blend (Phase 5):
 # 0.75 + 0.75 -> -1.307, vs -1.490 for the whole-order beta with a driver shock of 1.0 (drivers
 # Brier 0.350 -> 0.300, champion named 74% -> 77%; constructors 0.338 -> 0.310, 76% -> 81%).
-# Nearby settings were within ~0.02.
+# Nearby settings were within ~0.02. With team form fixed (no teammate leak): -1.278.
 TEAM_FORM_SHOCK_SD = 0.75
 # Bump when the title simulation changes: a stored track record from an older method is rebuilt by
 # data upkeep (services/data_upkeep.py).
-TITLE_BACKTEST_VERSION = "3"
+TITLE_BACKTEST_VERSION = "4"
 
 
 def fastest_lap_point(year: int) -> int:

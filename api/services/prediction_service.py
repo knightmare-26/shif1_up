@@ -50,6 +50,14 @@ TESTING_RACES = 3
 # sprint weekends the sprint set it. Walk-forward: 0.19 places better (t = -2.7), even judged on the grid.
 QUALI_TARGET = "quali_target"
 
+# Team form (constructor_rolling_finish) is the team's average finish over its last TEAM_FORM_RACES
+# races, each race the mean of its cars. It used to be rolled over driver rows (5 rows, ~2.5 races),
+# so one teammate's row took in the other's finish from the same race — a leak, worst for the sprint
+# (the teammate's race that weekend comes after it). Walk-forward, 85 races: qualifying 2.976 -> 2.990
+# places off, race 3.223 -> 3.217, sprint 2.756 -> 2.841 (23 sprints), all within noise (t <= 1.1);
+# 2 and 4 races were level, 5 worse for qualifying (+0.05, t = 2.4: staler form).
+TEAM_FORM_RACES = 3
+
 PRACTICE_INPUTS = ["driver_practice_best_rank", "driver_practice_gap_pct",
                    "team_practice_gap_pct", "driver_practice_teammate_gap_pct"]
 
@@ -320,8 +328,7 @@ class PredictionService:
         df["driver_rolling_grid"]        = df.groupby("driver_id")["grid"].transform(roll)
         df["driver_circuit_avg"]         = df.groupby(["driver_id", "circuit_name"])["position"].transform(expand)
         df["driver_circuit_grid_avg"]    = df.groupby(["driver_id", "circuit_name"])["grid"].transform(expand)
-        df["constructor_rolling_finish"] = df.groupby("constructor_id")["position"].transform(roll)
-        df["constructor_circuit_avg"]    = df.groupby(["constructor_id", "circuit_name"])["position"].transform(expand)
+        df = self._team_form(df)
 
         # DNF: anything that isn't "Finished" or "+X laps"
         df["dnf"] = (~df["status"].str.startswith("Finished", na=True) &
@@ -337,6 +344,22 @@ class PredictionService:
         df["driver_dnf_rate"]         = df["driver_dnf_rate"].fillna(0.1)
 
         return preseason_testing.apply_testing(add_season_form(df), self._testing_data, TESTING_MODE, TESTING_RACES)
+
+    @staticmethod
+    def _team_form(df: pd.DataFrame) -> pd.DataFrame:
+        """constructor_rolling_finish / constructor_circuit_avg: the team's finishes in races before
+        this one, worked out per race (the mean of its cars) so both cars of a race see the same
+        earlier races and never each other's result."""
+        races = (df.groupby(["year", "round", "constructor_id"])
+                   .agg(_team=("position", "mean"), _circuit=("circuit_name", "first"))
+                   .reset_index().sort_values(["year", "round"], kind="stable"))
+        races["constructor_rolling_finish"] = races.groupby("constructor_id")["_team"].transform(
+            lambda s: s.shift(1).rolling(TEAM_FORM_RACES, min_periods=1).mean())
+        races["constructor_circuit_avg"] = races.groupby(["constructor_id", "_circuit"])["_team"].transform(
+            lambda s: s.expanding().mean().shift(1))
+        return (df.drop(columns=["constructor_rolling_finish", "constructor_circuit_avg"], errors="ignore")
+                  .merge(races[["year", "round", "constructor_id", "constructor_rolling_finish", "constructor_circuit_avg"]],
+                         on=["year", "round", "constructor_id"], how="left"))
 
     def _testing_inputs(self) -> List[str]:
         return list(preseason_testing.COLUMNS) if TESTING_MODE.startswith("features") and self._testing_data else []
@@ -1108,7 +1131,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "11"
+    WALK_FORWARD_VERSION = "12"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
