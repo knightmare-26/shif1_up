@@ -874,7 +874,7 @@ class PredictionService:
 
         trained_at = self._meta.get("trained_at")
         cached = await duckdb_service.get_prediction_cache(circuit_name, "sprint")
-        if self._cache_usable(cached, trained_at, field, need_scores=False):
+        if self._cache_usable(cached, trained_at, field):
             return cached["result"]
 
         feat = self._build_prediction_rows(circuit_name, field=field)
@@ -891,6 +891,7 @@ class PredictionService:
 
         feat  = self._encode(feat)
         preds = self._sprint_model.predict(feat[self._sprint_features].fillna(10))
+        feat["score"] = preds
         feat["predicted_position"] = self._ranks_from_scores(preds)
         feat  = feat.sort_values("predicted_position").reset_index(drop=True)
 
@@ -906,6 +907,8 @@ class PredictionService:
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
                 "predicted_grid":     int(row["sprint_grid"]),
+                "score":              round(float(row["score"]), 6),
+                "dnf_rate":           round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None,
             })
 
         result = {
@@ -927,7 +930,8 @@ class PredictionService:
 
     def _score_group(self, group: pd.DataFrame, quali_model, race_model,
                       race_features: List[str], quali_features: List[str],
-                      practice_medians: Optional[Dict[str, float]] = None) -> Optional[Dict[str, Any]]:
+                      practice_medians: Optional[Dict[str, float]] = None,
+                      sprint_model=None, sprint_features: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """Score one race's rows against a given model pair. Used by both backtest()
         (the live model) and walk_forward_backtest() (a season-scoped scratch model) —
         takes the models as arguments rather than reading self._quali_model/self._race_model
@@ -977,6 +981,21 @@ class PredictionService:
                     d["dnf_rate"] = round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None
                     d.setdefault("actual_grid", int(row["grid"]) if pd.notna(row["grid"]) else None)
 
+        if sprint_model is not None and sprint_features and "sprint_position" in group:
+            sdf = group.dropna(subset=required(sprint_features) + ["sprint_position"])
+            if len(sdf) >= 2:
+                scores = sprint_model.predict(sdf[sprint_features].fillna(10))
+                ranks = self._ranks_from_scores(scores)
+                for (_, row), rank, score in zip(sdf.iterrows(), ranks, scores):
+                    d = drivers.setdefault(row["driver_id"], {
+                        "driver_id": row["driver_id"],
+                        "driver_name": self._driver_map.get(row["driver_id"], row["driver_id"]),
+                    })
+                    d["predicted_sprint"] = int(rank)
+                    d["sprint_score"] = round(float(score), 5)
+                    d["actual_sprint"] = int(row["sprint_position"])
+                    d["sprint_grid"] = int(row["sprint_grid"]) if pd.notna(row.get("sprint_grid")) else None
+
         if not drivers:
             return None
 
@@ -994,6 +1013,8 @@ class PredictionService:
                       if d.get("predicted_grid") is not None and d.get("actual_quali") is not None]
         race_errs = [abs(d["predicted_position"] - d["actual_position"]) for d in driver_rows
                      if d.get("predicted_position") is not None and d.get("actual_position") is not None]
+        sprint_errs = [abs(d["predicted_sprint"] - d["actual_sprint"]) for d in driver_rows
+                       if d.get("predicted_sprint") is not None and d.get("actual_sprint") is not None]
 
         return {
             "year": int(group["year"].iloc[0]),
@@ -1003,6 +1024,7 @@ class PredictionService:
             "circuit_name": group["circuit_name"].iloc[0],
             "quali_mae": round(sum(quali_errs) / len(quali_errs), 2) if quali_errs else None,
             "race_mae": round(sum(race_errs) / len(race_errs), 2) if race_errs else None,
+            "sprint_mae": round(sum(sprint_errs) / len(sprint_errs), 2) if sprint_errs else None,
             # Whether the practice-pace input was known for this weekend (None: not a model input).
             "practice_data": ((practice_data if practice_data is not None
                                else bool(group["driver_practice_best_rank"].notna().mean() > 0.5))
@@ -1012,10 +1034,12 @@ class PredictionService:
 
     def _score_races(self, df: pd.DataFrame, quali_model, race_model,
                       race_features: List[str], quali_features: List[str],
-                      practice_medians: Optional[Dict[str, float]] = None) -> List[Dict[str, Any]]:
+                      practice_medians: Optional[Dict[str, float]] = None,
+                      sprint_model=None, sprint_features: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         races_out = []
         for _, group in df.groupby(["year", "round", "race_id"], sort=False):
-            race = self._score_group(group, quali_model, race_model, race_features, quali_features, practice_medians)
+            race = self._score_group(group, quali_model, race_model, race_features, quali_features, practice_medians,
+                                     sprint_model, sprint_features)
             if race is not None:
                 races_out.append(race)
         return races_out
@@ -1056,7 +1080,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "8"
+    WALK_FORWARD_VERSION = "9"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1081,7 +1105,7 @@ class PredictionService:
     def _unit_fingerprint(rows: pd.DataFrame, features: List[str], extra: str) -> str:
         """What a scoring unit's result depends on: its training and test rows' model inputs and
         targets, the feature list and the method version."""
-        cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid", QUALI_TARGET]
+        cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid", QUALI_TARGET, "sprint_position", "sprint_grid"]
         cols = list(dict.fromkeys(c for c in cols if c in rows.columns))
         ordered = rows.sort_values(["year", "round", "driver_id"])[cols]
         digest = hashlib.sha1(pd.util.hash_pandas_object(ordered, index=False).values.tobytes())
@@ -1115,6 +1139,10 @@ class PredictionService:
 
         df = df.merge(raw_practice, on=["race_id", "driver_id"], how="left")
         df = self._with_qualifying(df, raw)
+        raw_sprint = (raw[raw["session_type"] == "sprint"][["race_id", "driver_id", "position", "grid"]]
+                      .drop_duplicates(["race_id", "driver_id"])
+                      .rename(columns={"position": "sprint_position", "grid": "sprint_grid"}))
+        df = df.merge(raw_sprint, on=["race_id", "driver_id"], how="left")
 
         all_years = sorted(df["year"].unique().tolist())
         if len(all_years) < 2:
@@ -1129,6 +1157,9 @@ class PredictionService:
         practice_feat = self._practice_inputs(df) if practice_available else []
         race_features = (RACE_FEATURES_FULL if grid_available else RACE_FEATURES_NO_GRID) + practice_feat + self._testing_inputs()
         quali_features = QUALI_FEATURES + practice_feat + self._testing_inputs()
+        sprints = df.dropna(subset=["sprint_position"])
+        sprint_grid_ok = bool(len(sprints)) and bool(sprints["sprint_grid"].notna().mean() > 0.5)
+        sprint_features = (SPRINT_FEATURES_FULL if sprint_grid_ok else SPRINT_FEATURES_NO_GRID) + practice_feat
 
         # Scoring units: (id, rows the model is fit on, rows it's scored on).
         units = []
@@ -1147,7 +1178,7 @@ class PredictionService:
             if race.get("unit"):
                 cached_races.setdefault(race["unit"], []).append(race)
 
-        all_features = list(dict.fromkeys(race_features + quali_features))
+        all_features = list(dict.fromkeys(race_features + quali_features + sprint_features))
         races_out: List[Dict[str, Any]] = []
         units_out: Dict[str, Dict[str, Any]] = {}
         refits = 0
@@ -1161,12 +1192,14 @@ class PredictionService:
             else:
                 race_model  = self._fit_ranker(lgb, train_df, race_features, "position")
                 quali_model = self._fit_ranker(lgb, train_df, quali_features, QUALI_TARGET)
+                sprint_model = (self._fit_ranker(lgb, train_df, sprint_features, "sprint_position")
+                                if test_df["sprint_position"].notna().any() else None)
                 refits += 1
                 if race_model is None and quali_model is None:
                     continue
                 scored = [{**r, "unit": unit_id}
                           for r in self._score_races(test_df, quali_model, race_model, race_features, quali_features,
-                                                     self._medians(train_df))]
+                                                     self._medians(train_df), sprint_model, sprint_features)]
             units_out[unit_id] = {"fingerprint": fingerprint, "train_rows": int(len(train_df))}
             races_out.extend(scored)
 

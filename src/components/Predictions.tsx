@@ -257,11 +257,14 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
   );
 };
 
-const MARKET_LABELS: { kind: 'race' | 'qualifying'; key: string; label: string }[] = [
+const MARKET_LABELS: { kind: 'race' | 'sprint' | 'qualifying'; key: string; label: string }[] = [
   { kind: 'qualifying', key: 'pole', label: 'Pole' },
   { kind: 'race', key: 'win', label: 'Race win' },
   { kind: 'race', key: 'podium', label: 'Podium' },
   { kind: 'race', key: 'points', label: 'Points (top 10)' },
+  { kind: 'sprint', key: 'win', label: 'Sprint win' },
+  { kind: 'sprint', key: 'podium', label: 'Sprint podium' },
+  { kind: 'sprint', key: 'points', label: 'Sprint points (top 8)' },
 ];
 
 /** "18% better" / "24% worse" — Brier skill against a baseline. */
@@ -276,7 +279,7 @@ const skillTone = (skill: number | undefined): 'good' | 'bad' | 'neutral' =>
 /** How good the chances were: each market against two baselines, plus the clearest calibration gap. */
 const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores }) => {
   const rows = MARKET_LABELS
-    .map((m) => ({ ...m, score: (scores[m.kind] as Record<string, ProbabilityScore | undefined>)[m.key] }))
+    .map((m) => ({ ...m, score: ((scores[m.kind] ?? {}) as Record<string, ProbabilityScore | undefined>)[m.key] }))
     .filter((m): m is typeof m & { score: ProbabilityScore } => m.score != null);
   if (!rows.length) return null;
   // The band of win chances furthest from what happened (with enough drivers in it to mean something).
@@ -316,18 +319,19 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
       {gap && Math.abs(gap.observed - gap.predicted) >= 0.05 && (
         <p className="border-t border-gray-800 px-4 py-3 text-sm text-gray-400">
           Drivers given {formatChance(gap.predicted)} to win on average won {formatChance(gap.observed)} of the time
-          ({gap.n} drivers) — the race chances are too {gap.observed > gap.predicted ? 'cautious' : 'confident'} at the front.
+          ({gap.n} drivers) — the race chances are {Math.abs(gap.observed - gap.predicted) >= 0.15 ? 'too' : 'a little'}{' '}
+          {gap.observed > gap.predicted ? 'cautious' : 'confident'} at the front.
         </p>
       )}
     </Card>
   );
 };
 
-const HIT_ROWS: { key: keyof HitRate; race: string; qualifying: string }[] = [
-  { key: 'top1', race: 'Picked the winner', qualifying: 'Picked pole' },
-  { key: 'top3', race: 'Podium named', qualifying: 'Top 3 named' },
-  { key: 'top10', race: 'Top 10 named', qualifying: 'Q3 (top 10) named' },
-  { key: 'mae', race: 'Places off (avg)', qualifying: 'Places off (avg)' },
+const HIT_ROWS: { key: keyof HitRate; race: string; sprint: string; qualifying: string }[] = [
+  { key: 'top1', race: 'Picked the winner', sprint: 'Picked the winner', qualifying: 'Picked pole' },
+  { key: 'top3', race: 'Podium named', sprint: 'Podium named', qualifying: 'Top 3 named' },
+  { key: 'top10', race: 'Top 10 named', sprint: 'Top 10 named', qualifying: 'Q3 (top 10) named' },
+  { key: 'mae', race: 'Places off (avg)', sprint: 'Places off (avg)', qualifying: 'Places off (avg)' },
 ];
 
 /** The predicted order against simple guesses: the starting grid and the championship order. */
@@ -337,7 +341,9 @@ const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
       columns: [['Model', rates.qualifying.model], ['Championship order', rates.qualifying.standings]] as [string, HitRate][] },
     rates.race && { kind: 'race' as const, title: 'Race (with the grid known)', races: rates.race.races,
       columns: [['Model', rates.race.model], ['Starting grid', rates.race.grid], ['Championship order', rates.race.standings]] as [string, HitRate][] },
-  ]).filter(Boolean) as { kind: 'race' | 'qualifying'; title: string; races: number; columns: [string, HitRate][] }[];
+    rates.sprint && { kind: 'sprint' as const, title: 'Sprint (with the grid known)', races: rates.sprint.races,
+      columns: [['Model', rates.sprint.model], ['Starting grid', rates.sprint.grid], ['Championship order', rates.sprint.standings]] as [string, HitRate][] },
+  ]).filter(Boolean) as { kind: 'race' | 'sprint' | 'qualifying'; title: string; races: number; columns: [string, HitRate][] }[];
   if (!sections.length) return null;
 
   const format = (key: keyof HitRate, v: number) => (key === 'mae' ? v.toFixed(2) : `${Math.round(v * 100)}%`);
@@ -717,14 +723,14 @@ const Predictions: React.FC = () => {
                     <strong className="text-gray-200">The order</strong> comes from ranking models trained on every race
                     since 2022: recent form, form at this circuit, the team's pace, reliability and the predicted grid.
                   </p>
-                  {(raceResult?.odds_available || qualiResult?.odds_available) && (
+                  {(raceResult?.odds_available || qualiResult?.odds_available || sprintResult?.odds_available) && (
                     <p>
                       <strong className="text-gray-200">avg and the win / pole and podium chances</strong> come from
                       playing the session out 20,000 times. Each driver's strength is the model's score — in a race also
                       their starting position (the predicted one until qualifying, then the real one, which counts for
                       more) — with retirements drawn from their recent record, all tuned on how the front of real races
-                      it hadn't seen turned out. The race order follows that strength, so it always agrees with the
-                      chances. Sprints show the order only.
+                      it hadn't seen turned out. The race and sprint order follows that strength, so it always agrees
+                      with the chances (a sprint's points chance is the top 8).
                     </p>
                   )}
                   <p>

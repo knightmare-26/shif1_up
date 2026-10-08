@@ -101,7 +101,8 @@ export interface ChampionshipOutlook {
   max_points_remaining: number;
   next_race_clinch: { round: number; race_name: string; rival: string; rival_name: string; margin_needed: number } | null;
   standings: ChampionshipRow[];
-  method: { simulations: number; beta: number; calibration_races: number; model_trained_at: string | null };
+  method: { simulations: number; beta: number; calibration_races: number; model_trained_at: string | null;
+    strength?: string; driver_form_sd?: number; team_form_sd?: number };
   computed_at: string;
 }
 
@@ -199,6 +200,7 @@ export interface ProbabilityScore {
 export interface BacktestProbabilityScores {
   races_scored: number;
   race: Partial<Record<'win' | 'podium' | 'points', ProbabilityScore>>;
+  sprint?: Partial<Record<'win' | 'podium' | 'points', ProbabilityScore>>;
   qualifying: Partial<Record<'pole' | 'top3' | 'q3', ProbabilityScore>>;
 }
 
@@ -214,6 +216,7 @@ export interface HitRate {
 
 export interface BacktestHitRates {
   race?: { races: number; model: HitRate; grid: HitRate; standings: HitRate };
+  sprint?: { races: number; model: HitRate; grid: HitRate; standings: HitRate };
   qualifying?: { races: number; model: HitRate; standings: HitRate };
 }
 

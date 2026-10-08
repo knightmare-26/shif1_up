@@ -1557,7 +1557,7 @@ async def predict_sprint(circuit: str):
         result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source)
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "sprint")
     except HTTPException:
         raise
     except Exception as exc:

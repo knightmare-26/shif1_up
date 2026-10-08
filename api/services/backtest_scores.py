@@ -27,9 +27,15 @@ SIMULATIONS = 5000
 # (market, top-n, the driver-row key that carries the chance)
 MARKETS = {
     "race": [("win", 1, "win_probability"), ("podium", 3, "podium_probability"), ("points", 10, "points_probability")],
+    "sprint": [("win", 1, "sprint_win_probability"), ("podium", 3, "sprint_podium_probability"),
+               ("points", 8, "sprint_points_probability")],
     "qualifying": [("pole", 1, "pole_probability"), ("top3", 3, "quali_top3_probability"), ("q3", 10, "q3_probability")],
 }
-FIELDS = {"race": ("race_score", "actual_position"), "qualifying": ("quali_score", "actual_quali")}
+FIELDS = {"race": ("race_score", "actual_position"), "sprint": ("sprint_score", "actual_sprint"),
+          "qualifying": ("quali_score", "actual_quali")}
+GRID = {"race": "actual_grid", "sprint": "sprint_grid"}                 # the starting slot, for races
+ORDER = {"race": "predicted_position", "sprint": "predicted_sprint"}     # re-ordered by strength
+MAE = {"race": "race_mae", "sprint": "sprint_mae"}
 BANDS = [0.0, 0.05, 0.15, 0.3, 0.5, 0.75, 1.0]
 EPS = 1e-4
 
@@ -100,7 +106,7 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
     on the sessions before it — the same method the Predictions page uses. A race is also re-ranked
     by that strength (the page's order); the model's own order is kept as `model_position`."""
     models = {kind: FinishOdds(kind) for kind in MARKETS}
-    slots = _SlotHistory()
+    slots = {kind: _SlotHistory() for kind in GRID}
     pairs: Dict[str, Dict[str, Dict[str, list]]] = {
         kind: {m: {"model": [], "uniform": [], "slot": [], "y": []} for m, _, _ in markets}
         for kind, markets in MARKETS.items()
@@ -114,6 +120,8 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                     d.pop(key, None)
             if "model_position" in d:
                 d["predicted_position"] = d["model_position"]
+            if "model_sprint" in d:
+                d["predicted_sprint"] = d["model_sprint"]
         given = False
         for kind, markets in MARKETS.items():
             rows = _scored(race, kind)
@@ -123,8 +131,8 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
             scores = np.array([float(d[score_key]) for d in rows])
             actual = np.array([int(d[actual_key]) for d in rows])
             field = len(rows)
-            is_race = kind == "race"
-            grid = [d.get("actual_grid") for d in rows] if is_race else None
+            is_race = kind in GRID
+            grid = [d.get(GRID[kind]) for d in rows] if is_race else None
             model = models[kind]
 
             if model.ready:
@@ -132,12 +140,13 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                                      seed=seed + n_race, sims=SIMULATIONS)
                 given = True
                 if is_race:
+                    order_key, own_key = ORDER[kind], "model_position" if kind == "race" else "model_sprint"
                     ranks = np.argsort(-pred["strength"], kind="stable").argsort() + 1
                     for d, rank in zip(rows, ranks):
-                        d["model_position"] = d.get("model_position", d.get("predicted_position"))
-                        d["predicted_position"] = int(rank)
-                    errs = [abs(d["predicted_position"] - d["actual_position"]) for d in rows]
-                    race["race_mae"] = round(sum(errs) / len(errs), 2)
+                        d[own_key] = d.get(own_key, d.get(order_key))
+                        d[order_key] = int(rank)
+                    errs = [abs(d[order_key] - d[actual_key]) for d in rows]
+                    race[MAE[kind]] = round(sum(errs) / len(errs), 2)
                 for market, top, key in markets:
                     chance = in_strength_order(pred[market], pred["strength"])
                     hit = (actual <= top).astype(float)
@@ -148,15 +157,16 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                     bucket["uniform"].extend([min(1.0, top / field)] * field)
                     bucket["y"].extend(hit)
                     if is_race:
-                        bucket["slot"].extend(slots.chance(int(d["actual_grid"] or field), top, field) if d.get("actual_grid")
+                        bucket["slot"].extend(slots[kind].chance(int(d[GRID[kind]]), top, field) if d.get(GRID[kind])
                                               else min(1.0, top / field) for d in rows)
                 model.record(pred["raw"], actual)
 
-            model.add(scores, actual, grid, [d.get("status") for d in rows] if is_race else None)
+            model.add(scores, actual, grid, [d.get("status") for d in rows] if kind == "race" else None)
 
-        for d in _scored(race, "race"):
-            if d.get("actual_grid"):
-                slots.add(int(d["actual_grid"]), int(d["actual_position"]), [t for _, t, _ in MARKETS["race"]])
+        for kind in GRID:
+            for d in _scored(race, kind):
+                if d.get(GRID[kind]):
+                    slots[kind].add(int(d[GRID[kind]]), int(d[FIELDS[kind][1]]), [t for _, t, _ in MARKETS[kind]])
         scored_races += given
 
     out: Dict[str, Any] = {"races_scored": scored_races, "simulations": SIMULATIONS, "min_history": MIN_HISTORY,
@@ -187,6 +197,7 @@ HIT_TOPS = (1, 3, 5, 10)
 # (session, actual key, {method: predicted-order key})
 ORDERS = {
     "race": ("actual_position", {"model": "predicted_position", "grid": "actual_grid", "standings": "standings_rank"}),
+    "sprint": ("actual_sprint", {"model": "predicted_sprint", "grid": "sprint_grid", "standings": "standings_rank"}),
     "qualifying": ("actual_quali", {"model": "predicted_grid", "standings": "standings_rank"}),
 }
 

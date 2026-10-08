@@ -132,3 +132,20 @@ async def test_a_race_predicted_after_qualifying_starts_from_the_real_qualifying
     assert race["grid_source"] == "this weekend's qualifying"
     assert {p["driver_id"]: p["predicted_grid"] for p in race["predictions"]}["d12"] == 1
     assert (await svc.predict_race("circuit2", Db()))["grid_source"] == "predicted qualifying"
+
+
+@pytest.mark.asyncio
+async def test_a_sprint_prediction_carries_its_scores_for_the_odds():
+    class Db:
+        async def get_prediction_cache(self, *a):
+            return None
+
+        async def set_prediction_cache(self, *a):
+            pass
+
+    raw = history_with_practice()
+    sprint = raw[(raw["session_type"] == "race") & (raw["round"] <= 4)].assign(session_type="sprint")
+    svc = PredictionService(model_dir=os.environ["MODEL_DIR"])
+    svc._fit(pd.concat([raw, sprint], ignore_index=True), FakeLgb())
+    out = await svc.predict_sprint("circuit5", Db())
+    assert out["success"] and all("score" in p and "dnf_rate" in p for p in out["predictions"])

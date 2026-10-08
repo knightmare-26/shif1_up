@@ -31,7 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 import numpy as np
 import pandas as pd
 
-from services.finish_odds import FinishOdds, in_strength_order
+from services.finish_odds import FinishOdds, in_strength_order, retirement_chance
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS
 from services.season_form import team_points_after
 
@@ -50,7 +50,17 @@ BETA_GRID = np.logspace(-2, 1.5, 141)
 # every race is independent and a favourite wins the title in ~100% of runs from round 0 (e.g.
 # 2024, when McLaren overtook Red Bull mid-season). Chosen by the championship backtest's log score
 # over the finished seasons in the database (see backtest(form_sd=...)).
-FORM_SHOCK_SD = 1.0
+FORM_SHOCK_SD = 0.25
+# How each simulated race is drawn: "finish_odds" — the Predictions page's strength (model score
+# and predicted grid, fitted on the front of held-out races, retirements); "whole_order" — the
+# model score with one beta fitted on whole orders (before Phase 4).
+TITLE_STRENGTH = "finish_odds"
+# A season-long shift for each car, shared by its two drivers (per-driver shifts cancel out across
+# a team, which left the constructors' title over-confident). Chosen with FORM_SHOCK_SD by the title
+# backtest's joint log score (drivers + constructors, 2023-25): 0.25 + 1.0 -> -1.363, vs -1.490
+# for the whole-order beta with FORM_SHOCK_SD 1.0 (drivers Brier 0.350 -> 0.271, champion named
+# 74% -> 77%; constructors 0.338 -> 0.362, 76% -> 77%).
+TEAM_FORM_SHOCK_SD = 1.0
 
 
 def fastest_lap_point(year: int) -> int:
@@ -180,12 +190,15 @@ def fit_beta(races: Sequence[np.ndarray]) -> float:
 
 
 def sample_orders(scores: np.ndarray, beta: float, n_sims: int, rng: np.random.Generator,
-                  offset: Optional[np.ndarray] = None) -> np.ndarray:
+                  offset: Optional[np.ndarray] = None, retire: Optional[np.ndarray] = None) -> np.ndarray:
     """(n_sims, n) finishing positions (0 = winner) drawn from Plackett-Luce via Gumbel noise.
     `offset` (n_sims, n) shifts each simulated season's strengths (see FORM_SHOCK_SD)."""
     u = beta * scores[None, :] + rng.gumbel(size=(n_sims, len(scores)))
     if offset is not None:
         u = u + offset
+    if retire is not None:                         # each driver's retirement chance: to the back
+        out = rng.random(u.shape) < retire[None, :]
+        u[out] = -1e9 + rng.random(int(out.sum()))
     order = np.argsort(-u, axis=1)
     pos = np.empty_like(order)
     np.put_along_axis(pos, order, np.arange(len(scores))[None, :].repeat(n_sims, 0), axis=1)
@@ -212,6 +225,8 @@ def simulate_season(
     n_sims: int,
     rng: np.random.Generator,
     form_sd: float = 0.0,
+    retire: Optional[np.ndarray] = None,
+    team_form_sd: float = 0.0,
 ) -> Dict[str, Dict[str, Any]]:
     """Play out the remaining rounds n_sims times.
 
@@ -251,13 +266,18 @@ def simulate_season(
     # Form that lasts: in each simulated season every driver is a bit quicker or slower than the
     # model says for all the remaining rounds, not independently race by race.
     shock = rng.normal(0.0, form_sd, size=(n_sims, n)) if form_sd > 0 else None
+    # ...and every team's car a bit better or worse — shared by both its drivers, which is what
+    # spreads the constructors' title (per-driver shocks cancel out across a team's two cars).
+    if team_form_sd > 0 and len(teams):
+        car = rng.normal(0.0, team_form_sd, size=(n_sims, len(teams))) @ team_matrix.T
+        shock = car if shock is None else shock + car
 
     for scores, sprint in round_scores:
-        pos = sample_orders(scores, beta, n_sims, rng, shock)
+        pos = sample_orders(scores, beta, n_sims, rng, shock, retire)
         gained = race_pts[pos]
         tb = tiebreak[pos]  # countback: Grand Prix finishes only
         if sprint:
-            gained = gained + sprint_pts[sample_orders(scores, beta, n_sims, rng, shock)]
+            gained = gained + sprint_pts[sample_orders(scores, beta, n_sims, rng, shock, retire)]
         d_pts[:, e_cols] += gained
         d_tot[:, e_cols] += gained + tb
         t_pts += gained @ team_matrix
@@ -291,6 +311,7 @@ class ChampionshipService:
         self.pred = prediction_service
         self.seed = seed
         self.form_sd = FORM_SHOCK_SD
+        self.team_form_sd = TEAM_FORM_SHOCK_SD
         self._held_out: Optional[Dict[str, Any]] = None  # per-season models + held-out race scores
         self._cache: Dict[Tuple, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
@@ -304,6 +325,26 @@ class ChampionshipService:
             return None, None
         return (p._fit_ranker(lgb, train, p._quali_features, "grid"),
                 p._fit_ranker(lgb, train, p._race_features, "position"))
+
+    def _season_sprint_model(self, lgb, year: int):
+        p = self.pred
+        train = p._df[(p._df["year"] < year)]
+        if "sprint_position" not in train or train["sprint_position"].notna().sum() < 20:
+            return None
+        return p._fit_ranker(lgb, train, p._sprint_features, "sprint_position")
+
+    def _score_sprint(self, rows: pd.DataFrame, quali_model, sprint_model, known: bool):
+        """A sprint's scores and the grid used: before sprint qualifying the qualifying model's
+        predicted rank (as the Predictions page does), after it the real sprint grid."""
+        p = self.pred
+        if known:
+            rows = p._fill_practice(rows.copy(), p._practice_medians)
+        else:
+            rows = p._fill_practice(rows.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
+            if quali_model is not None:
+                rows["sprint_grid"] = p._ranks_from_scores(quali_model.predict(rows[p._quali_features].astype(float).fillna(10)))
+        scores = sprint_model.predict(rows[p._sprint_features].astype(float).fillna(10))
+        return scores, rows["sprint_grid"].to_numpy(dtype=float)
 
     def _score_rows(self, rows: pd.DataFrame, quali_model, race_model, known: bool = False,
                     with_grid: bool = False):
@@ -337,12 +378,16 @@ class ChampionshipService:
         # can be made in: a race before qualifying (predicted grid, no practice) or after it (the
         # real grid and practice); qualifying before or after the weekend's practice.
         odds = {"race_pre": FinishOdds("race"), "race_post": FinishOdds("race"),
+                "sprint_pre": FinishOdds("sprint"), "sprint_post": FinishOdds("sprint"),
                 "quali_pre": FinishOdds("qualifying"), "quali_post": FinishOdds("qualifying")}
+        race_pre_by_year: Dict[int, FinishOdds] = {}       # the title backtest leaves the tested season out
         for year in years[1:]:
             quali_model, race_model = self._season_models(lgb, year)
             if race_model is None:
                 continue
             models[year] = (quali_model, race_model)
+            sprint_model = self._season_sprint_model(lgb, year)
+            race_pre_by_year[year] = FinishOdds("race")
             season = df[(df["year"] == year) & df["position"].notna()]
             races[year] = []
             for _, rows in sorted(season.groupby("race_id"), key=lambda g: int(g[1]["round"].iloc[0])):
@@ -352,8 +397,16 @@ class ChampionshipService:
                 actual, statuses = rows["position"].to_numpy(dtype=float), rows.get("status")
                 statuses = list(statuses) if statuses is not None else None
                 odds["race_pre"].add(pre, actual, pre_grid, statuses)
+                race_pre_by_year[year].add(pre, actual, pre_grid, statuses)
                 post, post_grid = self._score_rows(rows, quali_model, race_model, known=True, with_grid=True)
                 odds["race_post"].add(post, actual, post_grid, statuses)
+
+                sprinted = rows.dropna(subset=["sprint_position"]) if "sprint_position" in rows else rows.iloc[0:0]
+                if sprint_model is not None and len(sprinted) >= 2:
+                    s_actual = sprinted["sprint_position"].to_numpy(dtype=float)
+                    for key, known in (("sprint_pre", False), ("sprint_post", True)):
+                        scores, grid = self._score_sprint(sprinted, quali_model, sprint_model, known)
+                        odds[key].add(scores, s_actual, grid)
 
                 target = "quali_target" if "quali_target" in rows else "grid"   # the qualifying result
                 graded = rows.dropna(subset=[target]).sort_values(target)
@@ -377,6 +430,7 @@ class ChampionshipService:
             "races_used": len(all_races),
             "beta_qualifying": fit_beta(qualifyings) if qualifyings else None,
             "odds": odds,
+            "race_pre_by_year": race_pre_by_year,
         }
 
     def _held_out_state(self) -> Dict[str, Any]:
@@ -405,9 +459,9 @@ class ChampionshipService:
     def odds_model(self, result: Dict[str, Any], kind: str) -> Optional[FinishOdds]:
         """The odds fit for the situation the prediction was made in (see _build_held_out)."""
         odds = (self._held_out or {}).get("odds") or {}
-        if kind == "race":
+        if kind in ("race", "sprint"):
             after_qualifying = str(result.get("grid_source") or "").startswith("this weekend's")
-            model = odds.get("race_post" if after_qualifying else "race_pre")
+            model = odds.get(f"{kind}_post" if after_qualifying else f"{kind}_pre")
         else:
             model = odds.get("quali_post" if result.get("practice_used") else "quali_pre")
         return model if model is not None and model.ready else None
@@ -418,17 +472,19 @@ class ChampionshipService:
         grid they start from, so the race is re-ordered by it — the order and the chances always
         agree. Needs the calibration (warm()); without it the result is returned unchanged."""
         preds = result.get("predictions") or []
-        if kind not in ("race", "qualifying") or not preds or any("score" not in r for r in preds) or not self.odds_ready():
+        if kind not in ("race", "sprint", "qualifying") or not preds or any("score" not in r for r in preds) or not self.odds_ready():
             return {**result, "odds_available": False}
         model = self.odds_model(result, kind)
         if model is None:
             return {**result, "odds_available": False}
         scores = np.array([float(r["score"]) for r in preds])
-        grid = [r.get("predicted_grid") for r in preds] if kind == "race" else None
-        dnf = [r.get("dnf_rate") for r in preds] if kind == "race" else None
+        racing = kind in ("race", "sprint")
+        grid = [r.get("predicted_grid") for r in preds] if racing else None
+        dnf = [r.get("dnf_rate") for r in preds] if racing else None
         sim = model.predict(scores, grid, dnf, seed=0, sims=ODDS_SIMULATIONS)
         strength = sim["strength"]
-        markets = (("win_probability", "win"), ("podium_probability", "podium"), ("points_probability", "points"))             if kind == "race" else (("win_probability", "pole"), ("podium_probability", "top3"))
+        markets = ((("win_probability", "win"), ("podium_probability", "podium"), ("points_probability", "points"))
+                   if racing else (("win_probability", "pole"), ("podium_probability", "top3")))
         # Kept in strength order: near-equal drivers can otherwise swap through simulation noise or
         # their own retirement chances, and a stronger driver would show a worse number.
         stats = {"expected_position": in_strength_order(sim["expected_position"], strength, higher_is_better=False)}
@@ -436,23 +492,27 @@ class ChampionshipService:
             stats[key] = in_strength_order(sim[market], strength)
         enriched = [{**r, **{k: round(float(v[i]), 1 if k == "expected_position" else 4) for k, v in stats.items()}}
                     for i, r in enumerate(preds)]
-        if kind == "race":
+        if racing:
             enriched = [enriched[i] for i in np.argsort(-strength, kind="stable")]
             for rank, r in enumerate(enriched, start=1):
                 r["predicted_rank"] = r["predicted_position"] = rank
         params = model.params
         return {**result, "predictions": enriched, "odds_available": True,
-                "odds_method": {"strength": "model score" + (" and grid" if kind == "race" and params["gamma"] else ""),
+                "odds_method": {"strength": "model score" + (" and grid" if racing and params["gamma"] else ""),
                                 **{k: round(v, 3) for k, v in params.items()}}}
 
     # ---- scores for the rounds still to run ----------------------------------------------
 
     def _round_scores(self, remaining: List[Round], entrants: List[str], team_of: Dict[str, str],
                       history: pd.DataFrame, quali_model, race_model,
-                      year: Optional[int] = None) -> List[Tuple[np.ndarray, bool]]:
+                      year: Optional[int] = None, odds: Optional[FinishOdds] = None) -> List[Tuple[np.ndarray, bool]]:
+        """Per remaining round, (scores aligned to `entrants`, sprint weekend). With `odds`, the
+        scores are already strengths (services/finish_odds.py: model score and predicted grid), and
+        self._retire holds each entrant's retirement chance."""
         p = self.pred
         out = []
         cache: Dict[str, np.ndarray] = {}
+        self._retire = None
         # Season form going into the remaining rounds (none yet if the season hasn't started).
         team_points = team_points_after(history, year if year is not None else int(history["year"].max())).to_dict()
         for rnd in remaining:
@@ -465,7 +525,13 @@ class ChampionshipService:
                 rows = rows.set_index("driver_id").reindex(entrants)
                 # A driver with no history (a debut) gets the field's median inputs.
                 rows = rows.fillna(rows.median(numeric_only=True)).reset_index()
-                cache[rnd.circuit] = np.asarray(self._score_rows(rows, quali_model, race_model), dtype=float)
+                if odds is None:
+                    cache[rnd.circuit] = np.asarray(self._score_rows(rows, quali_model, race_model), dtype=float)
+                else:
+                    scores, grid = self._score_rows(rows, quali_model, race_model, with_grid=True)
+                    cache[rnd.circuit] = odds.strength(scores, grid)
+                    if self._retire is None and "driver_dnf_rate" in rows:
+                        self._retire = retirement_chance(rows["driver_dnf_rate"].tolist())
             out.append((cache[rnd.circuit], rnd.sprint))
         return out
 
@@ -473,7 +539,8 @@ class ChampionshipService:
 
     def _project(self, year: int, results: pd.DataFrame, rounds: List[Round], completed: int,
                  history: pd.DataFrame, quali_model, race_model, beta: float, n_sims: int,
-                 rng: np.random.Generator, form_sd: Optional[float] = None) -> Dict[str, Any]:
+                 rng: np.random.Generator, form_sd: Optional[float] = None,
+                 odds: Optional[FinishOdds] = None) -> Dict[str, Any]:
         done = results[results["round"] <= completed]
         driver_table = season_table(done, "driver_id")
         team_table = season_table(done, "constructor_id")
@@ -496,9 +563,11 @@ class ChampionshipService:
 
         sims = None
         if remaining and entrants and race_model is not None:
-            scores = self._round_scores(remaining, entrants, team_of, history, quali_model, race_model, year)
-            sims = simulate_season(driver_table, team_table, entrants, team_of, scores, beta, n_sims, rng,
-                                   self.form_sd if form_sd is None else form_sd)
+            use = odds if TITLE_STRENGTH == "finish_odds" and odds is not None and odds.ready else None
+            scores = self._round_scores(remaining, entrants, team_of, history, quali_model, race_model, year, use)
+            sims = simulate_season(driver_table, team_table, entrants, team_of, scores, 1.0 if use else beta, n_sims, rng,
+                                   self.form_sd if form_sd is None else form_sd, self._retire if use else None,
+                                   self.team_form_sd if use else 0.0)
 
         return {
             "remaining": remaining,
@@ -545,7 +614,7 @@ class ChampionshipService:
         p = self.pred
         rng = np.random.default_rng(self.seed)
         proj = self._project(year, results, rounds, completed, p._df, p._quali_model, p._race_model,
-                             held["beta"], LIVE_SIMULATIONS, rng)
+                             held["beta"], LIVE_SIMULATIONS, rng, odds=held.get("odds", {}).get("race_pre"))
 
         names = results.drop_duplicates("driver_id").set_index("driver_id")["driver_name"].to_dict() if not results.empty else {}
         team_names = results.dropna(subset=["constructor_id"]).drop_duplicates("constructor_id").set_index("constructor_id")["constructor_name"].to_dict() if not results.empty else {}
@@ -608,6 +677,9 @@ class ChampionshipService:
             "method": {
                 "simulations": LIVE_SIMULATIONS if remaining else 0,
                 "beta": round(held["beta"], 4),
+                "strength": TITLE_STRENGTH,
+                "driver_form_sd": self.form_sd,
+                "team_form_sd": self.team_form_sd if TITLE_STRENGTH == "finish_odds" else 0.0,
                 "calibration_races": held["races_used"],
                 "model_trained_at": p._meta.get("trained_at"),
             },
@@ -643,6 +715,8 @@ class ChampionshipService:
             quali_model, race_model = held["models"][year]
             others = [r for y, rs in held["races"].items() if y != year for r in rs]
             beta = fit_beta(others) if others else held["beta"]
+            other_odds = [m for y, m in held.get("race_pre_by_year", {}).items() if y != year and m.sessions]
+            odds = FinishOdds.combine(other_odds) if other_odds else None
 
             race_rounds = sorted(int(r) for r in results.loc[results["session_type"] == "race", "round"].unique())
             sprint_done = set(results.loc[results["session_type"] == "sprint", "round"].astype(int))
@@ -657,7 +731,7 @@ class ChampionshipService:
             for completed in range(0, len(rounds)):
                 history = p._df[(p._df["year"] < year) | ((p._df["year"] == year) & (p._df["round"] <= completed))]
                 proj = self._project(year, results, rounds, completed, history, quali_model, race_model,
-                                     beta, BACKTEST_SIMULATIONS, rng, form_sd)
+                                     beta, BACKTEST_SIMULATIONS, rng, form_sd, odds)
                 entry = {"round": completed}
                 for kind in ("drivers", "teams"):
                     table, exact, sims = proj[kind]

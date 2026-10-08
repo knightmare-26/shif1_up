@@ -34,7 +34,10 @@ MIN_PAIRS = 200             # (chance, outcome) pairs before a correction curve 
 BETAS = np.logspace(-2, 1.5, 36)
 GAMMAS = np.linspace(0, 3, 31)
 MARKETS = {"race": [("win", 1), ("podium", 3), ("points", 10)],
+           "sprint": [("win", 1), ("podium", 3), ("points", 8)],
            "qualifying": [("pole", 1), ("top3", 3), ("q3", 10)]}
+# Retirements drawn in the simulation (sprints too: points chances 0.0973 -> 0.0941 with them).
+RETIREMENTS = {"race": True, "sprint": True, "qualifying": False}
 
 
 def finished(status: Optional[str]) -> bool:
@@ -46,8 +49,8 @@ def finished(status: Optional[str]) -> bool:
 class FinishOdds:
     def __init__(self, kind: str):
         self.kind = kind
-        self.uses_grid = kind == "race"
-        self.retirements = kind == "race"
+        self.uses_grid = kind in ("race", "sprint")
+        self.retirements = RETIREMENTS[kind]
         gammas = GAMMAS if self.uses_grid else GAMMAS[:1]
         self._gammas = gammas
         self._ll = np.zeros((len(BETAS), len(gammas)))
@@ -55,6 +58,15 @@ class FinishOdds:
         self._pairs: Dict[str, List[List[float]]] = {m: [[], []] for m, _ in MARKETS[kind]}
         self._curves: Dict[str, Any] = {}
         self._curve_size: Dict[str, int] = {}
+
+    @classmethod
+    def combine(cls, models: List["FinishOdds"]) -> "FinishOdds":
+        """One fit from several (the likelihoods add up) — e.g. every season but the one tested."""
+        out = cls(models[0].kind)
+        for m in models:
+            out._ll = out._ll + m._ll
+            out.sessions += m.sessions
+        return out
 
     # ---- fitting -------------------------------------------------------------------------------
 
@@ -117,9 +129,7 @@ class FinishOdds:
         n = len(strength)
         u = strength[None, :] + rng.gumbel(size=(sims, n))
         if self.retirements:
-            given = [None] * n if dnf_rates is None else list(dnf_rates)
-            rates = np.array([r if r is not None and r == r else DNF_PRIOR for r in given], float)
-            q = DNF_SHRINK * rates + (1 - DNF_SHRINK) * DNF_PRIOR
+            q = retirement_chance([None] * n if dnf_rates is None else list(dnf_rates))
             out = rng.random((sims, n)) < q[None, :]
             u[out] = -1e9 + rng.random(int(out.sum()))          # the retired go to the back, any order
         order = np.argsort(-u, axis=1)
@@ -142,6 +152,12 @@ class FinishOdds:
             self._curve_size[market] = len(x)
         c = self._curves[market].predict(p)
         return np.clip(c * min(top, len(p)) / max(c.sum(), 1e-9), 0, 1)
+
+
+def retirement_chance(rates) -> np.ndarray:
+    """Each driver's chance of retiring: their recent DNF rate, shrunk halfway to the prior."""
+    rates = np.array([r if r is not None and r == r else DNF_PRIOR for r in rates], float)
+    return DNF_SHRINK * rates + (1 - DNF_SHRINK) * DNF_PRIOR
 
 
 def in_strength_order(values: np.ndarray, strength: np.ndarray, higher_is_better: bool = True) -> np.ndarray:

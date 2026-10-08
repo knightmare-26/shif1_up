@@ -306,3 +306,27 @@ def test_a_driver_who_missed_the_latest_race_is_still_in_contention_on_the_maths
 
     assert proj["drivers"][1]["alive"]["hurt"] is True        # 18 + 75 still beats 50
     assert "hurt" not in proj["entrants"] and "sub" in proj["entrants"]
+
+
+# --- the title simulation's draw (Phase 4, #33) ------------------------------------------------
+
+def test_a_retired_car_goes_to_the_back():
+    from services.championship_service import sample_orders
+    pos = sample_orders(np.array([5.0, 0.0, -5.0]), 1.0, 2000, np.random.default_rng(0), retire=np.array([1.0, 0.0, 0.0]))
+    assert (pos[:, 0] == 2).all()                       # the favourite always retires, so always last
+
+
+def test_a_shared_car_swing_spreads_the_constructors_title():
+    from services.championship_service import simulate_season
+    entrants = ["a1", "a2", "b1", "b2"]
+    team_of = {"a1": "a", "a2": "a", "b1": "b", "b2": "b"}
+    table = {d: {"points": 0.0, "countback": [0] * 30} for d in entrants}
+    teams = {t: {"points": 0.0, "countback": [0] * 30} for t in ("a", "b")}
+    rounds = [(np.array([1.0, 0.9, 0.0, -0.1]), False)] * 6
+
+    def team_a_title(team_sd):
+        sims = simulate_season(table, teams, entrants, team_of, rounds, 1.0, 4000, np.random.default_rng(1),
+                               form_sd=0.25, team_form_sd=team_sd)
+        return sims["teams"]["a"]["title_probability"]
+
+    assert team_a_title(0.0) > team_a_title(1.5) > 0.5        # still the favourite, but less certain

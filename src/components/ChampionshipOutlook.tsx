@@ -147,9 +147,10 @@ const HowItWorks: React.FC<{ outlook: Outlook; kind: View; backtest: Championshi
         </p>
         <p>
           <strong className="text-gray-200">Chances and projected points</strong> come from playing the rest of the season out
-          {outlook.method.simulations ? ` ${outlook.method.simulations.toLocaleString()} times` : ''}. Each race's order is drawn from
-          the race-prediction model, tuned on {outlook.method.calibration_races} real races the model hadn't seen, and each run gives
-          every driver a season-long form swing so one quick car can't look like a certainty. The range under projected points covers
+          {outlook.method.simulations ? ` ${outlook.method.simulations.toLocaleString()} times` : ''}. Each race's order is drawn as on the
+          Predictions page — every driver's strength from the race-prediction model and their predicted grid, tuned on how the front
+          of {outlook.method.calibration_races} real races the model hadn't seen turned out, with retirements — and each run gives
+          every car and every driver a season-long form swing, so one quick car can't look like a certainty. The range under projected points covers
           the middle 80% of runs. A driver who missed the latest race — injured or out of the seat — is projected to score
           nothing more, since there's no telling when they'll be back; who can still win stays pure maths. {kind === 'constructors' && 'Team totals add up both cars from the same simulated races, so they always match the drivers\' view.'}
         </p>
