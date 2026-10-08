@@ -14,7 +14,8 @@ so it never strains OpenF1's free tier (30 requests a minute) or the free instan
    have but doesn't, and sprint qualifying stored without times (FastF1's feed order), from OpenF1;
 4. preseason testing (2023 on) for seasons that don't have it, once their testing is over;
 5. weather (2023 on) for stored sessions that don't have it;
-6. the title race's track record, once a season has finished and isn't in it.
+6. the title race's track record, once a season has finished and isn't in it, or when the title
+   simulation's method changed (championship_service.TITLE_BACKTEST_VERSION).
 
 What it can't get (a session OpenF1 doesn't have, a race FastF1 won't load) is remembered for the
 life of the process and retried after a cold start, so a gap can't cost requests on every run.
@@ -71,13 +72,15 @@ class Report:
 
 
 class DataUpkeep:
-    def __init__(self, ingest_race: Callable, load_weather: Callable, rebuild_title_backtest: Callable):
+    def __init__(self, ingest_race: Callable, load_weather: Callable, rebuild_title_backtest: Callable,
+                 title_backtest_version: Optional[str] = None):
         """`ingest_race(db, year, round, session)` stores a session from FastF1 (ingest_service);
         `load_weather(year, gp, code)` fetches and stores a session's weather (SessionReplayService);
         `rebuild_title_backtest()` recomputes and stores the title race's track record."""
         self.ingest_race = ingest_race
         self.load_weather = load_weather
         self.rebuild_title_backtest = rebuild_title_backtest
+        self.title_backtest_version = title_backtest_version
         self._unavailable: Set[Tuple] = set()       # (race_id, session_type) OpenF1 doesn't have
         self._failed_at: Dict[Tuple, float] = {}    # FastF1 loads that failed, and when
 
@@ -251,10 +254,10 @@ class DataUpkeep:
     async def _title_backtest(self, db, races, today: date, report: Report) -> None:
         seasons = sorted({r["year"] for r in races.values()})
         finished = {y for y in seasons if y < today.year}
-        cached = await db.get_prediction_cache("_championship", "backtest")
-        considered = set((cached or {}).get("result", {}).get("seasons_considered")
-                         or [s["year"] for s in (cached or {}).get("result", {}).get("seasons", [])])
-        if not finished - considered - {min(seasons, default=0)}:
+        cached = (await db.get_prediction_cache("_championship", "backtest") or {}).get("result", {})
+        considered = set(cached.get("seasons_considered") or [s["year"] for s in cached.get("seasons", [])])
+        outdated = bool(cached.get("seasons")) and self.title_backtest_version is not None             and cached.get("method_version") != self.title_backtest_version
+        if not outdated and not finished - considered - {min(seasons, default=0)}:
             return
         if await self.rebuild_title_backtest(sorted(finished)):
             report.title_backtest = True

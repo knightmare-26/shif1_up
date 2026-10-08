@@ -159,3 +159,14 @@ async def test_the_title_track_record_is_rebuilt_only_when_a_finished_season_is_
     title.clear()
     await upkeep(title=title).run(db, openf1([]), {}, {}, now=NOW)
     assert title == []
+
+
+async def test_a_title_track_record_from_an_older_method_is_rebuilt():
+    races = [{**RACE, "year": y, "race_id": f"{y}_X"} for y in (2023, 2024, 2025)] + [{**RACE, "year": 2026, "race_id": "2026_X"}]
+    db, title = FakeDb(races, {}), []
+    db.cache[("_championship", "backtest")] = {"result": {"seasons": [{"year": 2024}, {"year": 2025}],
+                                                          "seasons_considered": [2023, 2024, 2025], "method_version": "1"}}
+    job = upkeep(title=title)
+    job.title_backtest_version = "2"
+    await job.run(db, openf1([]), {}, {}, now=NOW)
+    assert title == [[2023, 2024, 2025]]

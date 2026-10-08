@@ -42,7 +42,7 @@ from services.auth_service import (
 )
 from services import ingest_service
 from services.prediction_service import PredictionService
-from services.championship_service import ChampionshipService
+from services.championship_service import TITLE_BACKTEST_VERSION, ChampionshipService
 from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
 from services.entry_list import EntryListService
@@ -251,6 +251,7 @@ data_upkeep = DataUpkeep(
     ingest_race=lambda db, year, rnd, session: ingest_service.ingest_single_race(db, year, rnd, False, session=session),
     load_weather=lambda year, gp, code: session_replays.load_weather(year, gp, code),
     rebuild_title_backtest=_rebuild_title_backtest,
+    title_backtest_version=TITLE_BACKTEST_VERSION,
 )
 
 

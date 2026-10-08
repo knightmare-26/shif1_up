@@ -61,6 +61,9 @@ TITLE_STRENGTH = "finish_odds"
 # for the whole-order beta with FORM_SHOCK_SD 1.0 (drivers Brier 0.350 -> 0.271, champion named
 # 74% -> 77%; constructors 0.338 -> 0.362, 76% -> 77%).
 TEAM_FORM_SHOCK_SD = 1.0
+# Bump when the title simulation changes: a stored track record from an older method is rebuilt by
+# data upkeep (services/data_upkeep.py).
+TITLE_BACKTEST_VERSION = "2"
 
 
 def fastest_lap_point(year: int) -> int:
@@ -775,6 +778,7 @@ class ChampionshipService:
             "seasons": out_seasons,
             "drivers": summary("drivers"),
             "constructors": summary("teams"),
+            "method_version": TITLE_BACKTEST_VERSION,
             "form_sd": form_sd,
             "computed_at": datetime.utcnow().isoformat(),
         }
