@@ -47,6 +47,7 @@ from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
 from services.entry_list import EntryListService
 from services.weekend_practice import check_again_in, load_weekend_practice
+from services.data_upkeep import DataUpkeep
 from services import preseason_testing
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
@@ -214,15 +215,21 @@ async def _results_refresh_loop() -> None:
         await asyncio.sleep(RESULTS_REFRESH_INTERVAL)
 
 
-# Each race weekend's practice (FP1-3), loaded from OpenF1 as the sessions finish, so live
-# predictions get the weekend's practice pace (services/weekend_practice.py). With Supabase only,
-# like the results refresh; WEEKEND_PRACTICE=0 turns it off.
-WEEKEND_PRACTICE = os.getenv("WEEKEND_PRACTICE", "1") != "0"
-WEEKEND_PRACTICE_FIRST_DELAY = 120
+# The data keeps itself up to date (with Supabase only, like the results refresh; DATA_UPKEEP=0
+# turns it off): every 20 min over a race weekend, else every 6 h,
+#  - each weekend's practice, sprint qualifying and qualifying, from OpenF1 as they finish
+#    (services/weekend_practice.py), so live predictions use them;
+#  - preseason testing, February to the first race (services/preseason_testing.py);
+#  - everything else that's missing or wrong — older gaps, a race the server slept through, P99
+#    placeholders, sprint qualifying in feed order, weather, the title race's track record — a small
+#    batch at a time (services/data_upkeep.py).
+# Anything that changed the results retrains the models (which rebuilds the backtest).
+DATA_UPKEEP = os.getenv("DATA_UPKEEP", "1") != "0"
+DATA_UPKEEP_FIRST_DELAY = 120
 
 
 def _last_teams() -> Dict[str, str]:
-    """Each driver's team in their latest race — for a practice row whose team name doesn't match."""
+    """Each driver's team in their latest race — for a session row whose team name doesn't match."""
     df = prediction_service._df
     if df is None or df.empty:
         return {}
@@ -230,30 +237,48 @@ def _last_teams() -> Dict[str, str]:
     return latest.to_dict()
 
 
-async def _weekend_practice_loop() -> None:
-    await asyncio.sleep(WEEKEND_PRACTICE_FIRST_DELAY)
+async def _rebuild_title_backtest(finished: List[int]) -> bool:
+    """Recompute the title race's track record and store it (with the seasons it was asked to
+    cover, so data upkeep only asks again when another season finishes)."""
+    result = await championship_service.backtest(duckdb_service)
+    result["seasons_considered"] = finished
+    await duckdb_service.set_prediction_cache("_championship", "backtest", result.get("computed_at") or "", result)
+    logger.info("Championship backtest cached: seasons %s", [s["year"] for s in result.get("seasons", [])])
+    return bool(result.get("seasons"))
+
+
+data_upkeep = DataUpkeep(
+    ingest_race=lambda db, year, rnd, session: ingest_service.ingest_single_race(db, year, rnd, False, session=session),
+    load_weather=lambda year, gp, code: session_replays.load_weather(year, gp, code),
+    rebuild_title_backtest=_rebuild_title_backtest,
+)
+
+
+async def _data_upkeep_loop() -> None:
+    await asyncio.sleep(DATA_UPKEEP_FIRST_DELAY)
     while True:
         delay = 3600
         try:
             ready = duckdb_service is not None and (database_guardian is None or database_guardian.ready)
             if ready and not ingest_service.status.get("running"):
                 await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
-                stored = await load_weekend_practice(duckdb_service, entry_lists.client,
-                                                     prediction_service._constructor_map, _last_teams())
-                # Preseason testing (Feb to the first race): the new cars' first evidence (#35).
+                changed = [f"{s['race_id']} {s['session_type']}" for s in await load_weekend_practice(
+                    duckdb_service, entry_lists.client, prediction_service._constructor_map, _last_teams())]
                 races = await duckdb_service.get_races_by_year(datetime.now().year)
                 first_race = min((str(r.get("date"))[:10] for r in races if r.get("date")), default=None)
                 if await preseason_testing.refresh(duckdb_service, entry_lists.client, datetime.now().year, first_race):
-                    stored = stored + [{"race_id": "preseason", "session_type": "testing"}]
-                if stored:
-                    logger.info("Weekend practice stored (%s); retraining", ", ".join(
-                        f"{s['race_id']} {s['session_type']}" for s in stored))
+                    changed.append("preseason testing")
+                report = await data_upkeep.run(duckdb_service, entry_lists.client,
+                                               prediction_service._constructor_map, _last_teams())
+                logger.info("Data upkeep: %s", report.summary())
+                if changed or report.needs_retrain:
+                    logger.info("New data (%s); retraining", ", ".join(changed) or report.summary())
                     await prediction_service.train(duckdb_service)
                 delay = check_again_in(races, date.today())
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.warning("Weekend practice check failed: %s", exc)
+            logger.warning("Data upkeep failed: %s", exc, exc_info=True)
         await asyncio.sleep(delay)
 
 
@@ -301,8 +326,8 @@ async def lifespan(app: FastAPI):
         await database_guardian.start()
         if RESULTS_REFRESH_DAYS > 0:
             refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
-        if WEEKEND_PRACTICE:
-            practice_task = asyncio.create_task(_weekend_practice_loop(), name="weekend-practice")
+        if DATA_UPKEEP:
+            practice_task = asyncio.create_task(_data_upkeep_loop(), name="data-upkeep")
     else:
         logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
