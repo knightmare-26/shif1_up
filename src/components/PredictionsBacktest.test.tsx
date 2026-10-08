@@ -65,3 +65,25 @@ test("each driver's chances and how good the chances were", async () => {
   expect(screen.getByText(/In 2026 each race is predicted by a model trained on everything up to the race before/))
     .toBeInTheDocument();
 });
+
+test('a weekend whose race is still to run shows its finished sessions, not an empty race', async () => {
+  api.getPredictionBacktest.mockResolvedValue({
+    ...RESULT,
+    races: [{
+      year: 2026, round: 17, race_id: '2026_Singapore', race_name: 'Singapore Grand Prix', circuit_name: 'Marina Bay',
+      quali_mae: 2.0, race_mae: null, sprint_mae: 1.5, in_progress: true, sessions_done: ['sprint', 'qualifying'],
+      drivers: [{ driver_id: 'nor', driver_name: 'Lando Norris', predicted_sprint: 2, actual_sprint: 1,
+        predicted_grid: 3, actual_quali: 1 }],
+    }, ...RESULT.races],
+  });
+  await act(async () => {
+    render(<MemoryRouter initialEntries={['/predictions?tab=backtest']}><Predictions /></MemoryRouter>);
+  });
+
+  expect(screen.getByText('Round 17 — Singapore Grand Prix (race to come)')).toBeInTheDocument();
+  expect(screen.getByText('Race still to run')).toBeInTheDocument();
+  expect(screen.getByText('Sprint off by 1.5')).toBeInTheDocument();
+  expect(screen.getByText('Actual Sprint')).toBeInTheDocument();
+  expect(screen.queryByText('Actual Finish')).not.toBeInTheDocument();
+  expect(screen.getByText(/across 1 races/)).toBeInTheDocument();      // only races that have been run
+});

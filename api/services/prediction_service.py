@@ -138,12 +138,15 @@ class PredictionService:
         # walk-forward backtest up to date once new results have been trained on.
         self.on_trained: Optional[Callable[[], Awaitable[None]]] = None
 
+    SCORED_SESSIONS = ("race", "qualifying", "sprint")
+
     @staticmethod
     def data_fingerprint(raw: pd.DataFrame) -> str:
-        """Which race results a model or backtest was built from: changes when a race is added
-        (or removed), not when the same data is retrained."""
-        races = raw[raw["session_type"] == "race"] if "session_type" in raw else raw
-        return f"{len(races)}:{int(races['year'].max())}" if not races.empty else "0:0"
+        """Which results a model or backtest was built from: changes when a race, qualifying or sprint
+        is added (or removed) — a weekend's qualifying moves it into Predicted vs Actual before its
+        race — not when the same data is retrained or practice arrives."""
+        scored = raw[raw["session_type"].isin(PredictionService.SCORED_SESSIONS)] if "session_type" in raw else raw
+        return f"{len(scored)}:{int(scored['year'].max())}" if not scored.empty else "0:0"
 
     @staticmethod
     def _with_qualifying(df: pd.DataFrame, raw: pd.DataFrame) -> pd.DataFrame:
@@ -1030,7 +1033,9 @@ class PredictionService:
                 if driver_id in drivers:
                     drivers[driver_id]["standings_rank"] = rank
 
-        driver_rows = sorted(drivers.values(), key=lambda d: d.get("actual_position") or 99)
+        # Finishing order; a weekend whose race is still to run, by its sprint or qualifying result.
+        driver_rows = sorted(drivers.values(), key=lambda d: (d.get("actual_position") or 99,
+                                                              d.get("actual_sprint") or 99, d.get("actual_quali") or 99))
 
         quali_errs = [abs(d["predicted_grid"] - d["actual_quali"]) for d in driver_rows
                       if d.get("predicted_grid") is not None and d.get("actual_quali") is not None]
@@ -1103,7 +1108,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "10"
+    WALK_FORWARD_VERSION = "11"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1131,9 +1136,32 @@ class PredictionService:
         cols = ["year", "round", "race_id", "driver_id"] + [c for c in features if c not in ("year", "round")] + ["position", "grid", QUALI_TARGET, "sprint_position", "sprint_grid"]
         cols = list(dict.fromkeys(c for c in cols if c in rows.columns))
         ordered = rows.sort_values(["year", "round", "driver_id"])[cols]
+        # Numbers as floats: a weekend under way has no positions yet (NaN), which turns the column
+        # to float, and the same rows mustn't hash differently once its race is in.
+        ordered = ordered.apply(lambda c: c.astype("float64") if pd.api.types.is_numeric_dtype(c) else c)
         digest = hashlib.sha1(pd.util.hash_pandas_object(ordered, index=False).values.tobytes())
         digest.update("|".join(features + [extra, str(TIME_DECAY), PredictionService.WALK_FORWARD_VERSION]).encode())
         return digest.hexdigest()[:16]
+
+    @staticmethod
+    def _pending_races(raw: pd.DataFrame, raw_race: pd.DataFrame) -> pd.DataFrame:
+        """Placeholder race rows (no result yet) for weekends after the latest race whose
+        qualifying or sprint is stored: one per driver entered, so the weekend goes through the same
+        feature path as every scored race and its finished sessions are scored before the race."""
+        if raw.empty or raw_race.empty:
+            return raw_race.iloc[0:0]
+        last = max(zip(raw_race["year"], raw_race["round"]))
+        later = raw[[(y, r) > last for y, r in zip(raw["year"], raw["round"])]]
+        started = later.loc[later["session_type"].isin(["qualifying", "sprint"]), "race_id"].unique()
+        entered = (later[later["race_id"].isin(started) & later["session_type"].isin(["qualifying", "sprint_qualifying", "sprint"])]
+                   .sort_values("session_type").drop_duplicates(["race_id", "driver_id"]))
+        if entered.empty:
+            return raw_race.iloc[0:0]
+        # A driver's team from the weekend, else their latest race's.
+        latest_team = raw_race.drop_duplicates("driver_id", keep="last").set_index("driver_id")["constructor_id"]
+        team = entered["constructor_id"].where(entered["constructor_id"].fillna("").astype(str).str.len() > 0)
+        return entered.assign(session_type="race", position=np.nan, grid=np.nan, points=0.0, status=None,
+                              constructor_id=team.fillna(entered["driver_id"].map(latest_team)))[raw_race.columns]
 
     def _walk_forward_fit(self, raw: pd.DataFrame, lgb, years_back: int,
                           previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -1147,6 +1175,10 @@ class PredictionService:
             self._driver_map = {**names.set_index("driver_id")["driver_name"].to_dict(), **self._driver_map}
 
         raw_practice = practice_features(raw)
+        # A weekend under way (qualifying or sprint done, race not yet): scored like the others.
+        placeholders = self._pending_races(raw, raw_race)
+        pending = set(placeholders["race_id"])
+        raw_race = pd.concat([raw_race, placeholders], ignore_index=True) if pending else raw_race
 
         # Feature engineering runs over the whole history at once — safe because every
         # rolling/expanding feature already uses .shift(1), so a row's features only ever
@@ -1173,6 +1205,7 @@ class PredictionService:
 
         current_year = datetime.utcnow().year
         test_years = [y for y in all_years if y > all_years[0] and y >= current_year - years_back]
+        # (a new season's first weekend under way makes its year the latest: one unit per round)
         latest_year = all_years[-1]
 
         grid_available = bool(df["grid"].notna().mean() > 0.5)
@@ -1223,6 +1256,11 @@ class PredictionService:
                 scored = [{**r, "unit": unit_id}
                           for r in self._score_races(test_df, quali_model, race_model, race_features, quali_features,
                                                      self._medians(train_df), sprint_model, sprint_features)]
+                for r in scored:
+                    if r["race_id"] in pending:      # the race still to run; its finished sessions scored
+                        r["in_progress"] = True
+                        r["sessions_done"] = [s for s, key in (("sprint", "sprint_mae"), ("qualifying", "quali_mae"))
+                                              if r.get(key) is not None]
             units_out[unit_id] = {"fingerprint": fingerprint, "train_rows": int(len(train_df))}
             races_out.extend(scored)
 

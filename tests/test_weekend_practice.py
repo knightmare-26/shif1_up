@@ -106,7 +106,8 @@ async def test_finished_practice_is_stored_like_fastf1s():
 
 
 async def test_sessions_already_stored_are_left_alone():
-    db, calls = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3", "sprint_qualifying", "qualifying")]), []
+    db, calls = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3", "sprint_qualifying", "qualifying",
+                                                                 "sprint", "race")]), []
     assert await load_weekend_practice(db, client(calls), TEAMS, {}, now=NOW) == []
     assert calls == []
 
@@ -140,3 +141,30 @@ async def test_qualifying_is_stored_in_its_classified_order_for_the_race_predict
     assert [r["driver_id"] for r in rows[:2]] == ["ant", "ver"]                     # the classification, not lap order
     assert rows[0]["time"] == str(pd.Timedelta(seconds=90.1)) and rows[0]["constructor_id"] == "mercedes"
     assert rows[-1]["driver_id"] == "bea" and rows[-1]["status"] == "DNS"             # unclassified go last
+
+
+async def test_a_finished_race_is_stored_with_its_points_status_and_the_qualifying_order_as_grid():
+    sessions = SESSIONS + [{"session_key": 7, "session_name": "Race", "date_end": "2026-10-11T14:00:00+00:00"}]
+    later = datetime(2026, 10, 11, 15, 0, tzinfo=timezone.utc)
+    db = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3")])
+    db.results[("2026_Singapore", "qualifying")] = [{"driver_id": "ver", "position": 2}, {"driver_id": "ant", "position": 1}]
+    race = [{"position": 1, "driver_number": 1, "points": 25.0, "gap_to_leader": 0},
+            {"position": 2, "driver_number": 12, "points": 18.0, "gap_to_leader": "+5.1"},
+            {"position": 3, "driver_number": 100, "points": 15.0, "gap_to_leader": "+1 LAP"},
+            {"position": None, "driver_number": 87, "dnf": True}] + [
+           {"position": 4 + i, "driver_number": 101 + i, "points": 0.0} for i in range(9)]
+
+    def handler(request):
+        name = request.url.path.rsplit("/", 1)[-1]
+        if name == "session_result" and request.url.params.get("session_key") == "7":
+            return httpx.Response(200, json=race)
+        return openf1([], sessions=sessions).handle_request(request)
+
+    client = OpenF1Client(creds={}, per_minute=60000, transport=httpx.MockTransport(handler))
+    stored = await load_weekend_practice(db, client, TEAMS, {}, now=later)
+
+    assert {"race_id": "2026_Singapore", "session_type": "race"} in stored
+    rows = {r["driver_id"]: r for r in db.results[("2026_Singapore", "race")]}
+    assert rows["ver"]["points"] == 25 and rows["ver"]["status"] == "Finished" and rows["ver"]["grid"] == 2
+    assert rows["d00"]["status"] == "+1 Lap"                      # lapped: still a finisher
+    assert rows["bea"]["status"] == "Retired" and rows["bea"]["position"] == 13   # unclassified go last

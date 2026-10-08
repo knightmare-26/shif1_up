@@ -139,3 +139,12 @@ async def test_a_backtest_made_by_an_older_method_is_rebuilt_even_with_the_same_
     assert (await main.predict_backtest())["updating"] is True
     await main._walkforward_job
     assert len(runs) == 1
+
+
+async def test_the_fingerprint_changes_when_a_qualifying_or_sprint_is_stored():
+    """A weekend's qualifying moves it into Predicted vs Actual before its race, so it rebuilds."""
+    fp = PredictionService.data_fingerprint
+    quali = pd.DataFrame({"session_type": ["qualifying"] * 20, "year": [2026] * 20})
+    sprint = quali.assign(session_type="sprint")
+    assert fp(pd.concat([races(40), quali])) != fp(races(40))
+    assert fp(pd.concat([races(40), quali, sprint])) != fp(pd.concat([races(40), quali]))

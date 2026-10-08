@@ -10,7 +10,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import uvicorn
@@ -1454,10 +1454,32 @@ async def predict_status():
     return prediction_service.training_status()
 
 
+# A weekend's predicted sessions, in the order they run.
+PREDICTED_SESSIONS = ("sprint", "qualifying", "race")
+COMPLETED_LOOKAHEAD_DAYS = 4     # a weekend's sessions run in the 3 days before its race
+
+
+async def _completed_sessions(year: int, rounds: List[int]) -> Dict[int, List[str]]:
+    """round -> the predicted sessions of that weekend already stored (they've moved to Predicted
+    vs Actual). Empty while the database is unavailable."""
+    if not rounds or duckdb_service is None:
+        return {}
+    try:
+        race_ids = {int(r["round"]): r["race_id"] for r in await duckdb_service.get_races_by_year(year)
+                    if r.get("round") is not None and r.get("race_id")}
+        return {rnd: [s for s in PREDICTED_SESSIONS if await duckdb_service.get_race_results(race_ids[rnd], s)]
+                for rnd in rounds if rnd in race_ids}
+    except Exception as exc:
+        logger.warning("predict_circuits: couldn't check finished sessions: %s", exc)
+        return {}
+
+
 @app.get("/predict/circuits")
 async def predict_circuits():
     """List races on the current season calendar that haven't happened yet —
-    predicting an already-run race isn't useful, so past rounds are excluded."""
+    predicting an already-run race isn't useful, so past rounds are excluded. A weekend under way
+    lists its finished sessions (`completed_sessions`): they're scored in Predicted vs Actual, and
+    the weekend drops out once its race is stored."""
     if not prediction_service._trained:
         await prediction_service.train(duckdb_service)
 
@@ -1473,14 +1495,18 @@ async def predict_circuits():
         logger.error("❌ predict_circuits: failed to load %s schedule: %s", year, exc)
         return []
 
-    today = datetime.utcnow().date().isoformat()
-    upcoming = sorted((r for r in schedule if r.date >= today), key=lambda r: r.round)
+    today = datetime.utcnow().date()
+    upcoming = sorted((r for r in schedule if r.date >= today.isoformat()), key=lambda r: r.round)
+    soon = (today + timedelta(days=COMPLETED_LOOKAHEAD_DAYS)).isoformat()
+    completed = await _completed_sessions(year, [r.round for r in upcoming if r.date <= soon])
     return [
         {
             "round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name,
             "date": r.date, "is_sprint": r.is_sprint,
+            "completed_sessions": completed.get(r.round, []),
         }
         for r in upcoming
+        if "race" not in completed.get(r.round, [])
     ]
 
 

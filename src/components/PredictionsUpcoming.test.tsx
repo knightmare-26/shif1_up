@@ -22,11 +22,12 @@ const result = (driver: string) => ({
     predicted_position: 1, predicted_grid: 1 }],
 });
 
-function weekend(sprint: boolean) {
+function weekend(sprint: boolean, completed: string[] = []) {
   api.getPredictionStatus.mockResolvedValue({ trained: true, race_model_ready: true, quali_model_ready: true,
     sprint_model_ready: true, grid_data_available: true });
   api.getPredictionCircuits.mockResolvedValue([{ round: 17, race_name: 'Singapore Grand Prix', circuit_name: 'Marina Bay',
-    date: '2026-10-11', is_sprint: sprint }]);
+    date: '2026-10-11', is_sprint: sprint, completed_sessions: completed }]);
+  api.getPredictionBacktest.mockResolvedValue({ races: [] });
   api.predictQualifying.mockResolvedValue(result('Quali Driver'));
   api.predictRace.mockResolvedValue(result('Race Driver'));
   api.predictSprint.mockResolvedValue(result('Sprint Driver'));
@@ -71,4 +72,18 @@ test('a weekend without a sprint has no sprint option, and a sprint link falls b
   expect(Array.from(sessionSelect().options, (o) => o.text)).toEqual(['Qualifying', 'Race']);
   expect(screen.getByText('Race Prediction')).toBeInTheDocument();
   expect(api.predictSprint).not.toHaveBeenCalled();
+});
+
+test('a finished session leaves the dropdown and points to Predicted vs Actual', async () => {
+  weekend(true, ['sprint', 'qualifying']);
+  await open('/predictions?session=qualifying');
+
+  expect(Array.from(sessionSelect().options, (o) => o.text)).toEqual(['Race']);
+  expect(screen.getByText('Race Prediction')).toBeInTheDocument();       // the link's session is done: the race
+  expect(api.predictQualifying).not.toHaveBeenCalled();
+  expect(api.predictSprint).not.toHaveBeenCalled();
+  expect(screen.getByText(/Sprint and Qualifying are done/)).toBeInTheDocument();
+
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Predicted vs Actual' })); });
+  expect(api.getPredictionBacktest).toHaveBeenCalled();
 });

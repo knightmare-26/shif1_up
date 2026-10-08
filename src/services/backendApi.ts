@@ -150,6 +150,8 @@ export interface PredictableRace {
   circuit_name: string;
   date: string;
   is_sprint: boolean;
+  /** This weekend's finished sessions ('sprint', 'qualifying'): they've moved to Predicted vs Actual. */
+  completed_sessions?: string[];
 }
 
 export interface BacktestDriverRow {
@@ -161,6 +163,8 @@ export interface BacktestDriverRow {
   actual_grid?: number | null;
   predicted_position?: number | null;
   actual_position?: number | null;
+  predicted_sprint?: number | null;
+  actual_sprint?: number | null;
   /** Chances from the held-out model (absent for the first races: nothing to calibrate on yet). */
   pole_probability?: number;
   win_probability?: number;
@@ -175,6 +179,10 @@ export interface BacktestRace {
   circuit_name: string;
   quali_mae: number | null;
   race_mae: number | null;
+  sprint_mae?: number | null;
+  /** The race is still to run: the weekend's finished sessions (`sessions_done`) are scored already. */
+  in_progress?: boolean;
+  sessions_done?: string[];
   /** false: no practice stored for this weekend, so it was predicted without practice pace
    *  (like an upcoming race). Absent/null when practice pace isn't a model input. */
   practice_data?: boolean | null;

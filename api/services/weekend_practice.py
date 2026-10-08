@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 PRACTICE = {"FP1": "fp1", "FP2": "fp2", "FP3": "fp3"}
 QUALIFYING = {"SQ": "sprint_qualifying", "Q": "qualifying"}
+# Races too, so a finished session moves to Predicted vs Actual straight away; the starting order
+# is the session that set it (OpenF1 has no grid), until FastF1's official results replace it.
+RACES = {"S": ("sprint", "sprint_qualifying"), "R": ("race", "qualifying")}
 DAYS_BEFORE_RACE = 4          # FP1 is two days before the race; a little slack for odd calendars
 DAYS_AFTER_RACE = 14          # and fill in a recent weekend that was missed
 SETTLE_MINUTES = 15           # let OpenF1 finish publishing a session's laps
@@ -111,7 +114,7 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
 
     try:
         for race in weekends_to_check(races, today):
-            for code, session_type in {**PRACTICE, **QUALIFYING}.items():
+            for code, session_type in {**PRACTICE, **QUALIFYING, **{c: t for c, (t, _) in RACES.items()}}.items():
                 if await db.get_race_results(race["race_id"], session_type):
                     continue
                 session = await find_session(client, int(race["year"]), race.get("gp") or race["race_id"], code)
@@ -123,6 +126,12 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
                 if code in QUALIFYING:
                     teams = {**last_teams, **await weekend_teams(db, race["race_id"])}
                     rows, people = await classified_rows(client, session["session_key"], teams, constructor_names)
+                elif code in RACES:
+                    teams = {**last_teams, **await weekend_teams(db, race["race_id"])}
+                    grid = {r["driver_id"]: int(r["position"])
+                            for r in await db.get_race_results(race["race_id"], RACES[code][1])}
+                    rows, people = await classified_rows(client, session["session_key"], teams, constructor_names,
+                                                         race=True, grid=grid)
                 else:
                     rows, people = await session_rows(client, session["session_key"], constructor_names, last_teams)
                 if len(rows) < MIN_DRIVERS:

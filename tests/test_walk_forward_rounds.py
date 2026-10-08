@@ -153,3 +153,70 @@ async def test_the_championship_order_going_into_a_race_counts_only_earlier_race
 async def test_auc_is_the_chance_a_hit_ranks_above_a_miss():
     assert backtest_scores._auc(np.array([0.9, 0.8, 0.1, 0.2]), np.array([1, 1, 0, 0])) == 1.0
     assert backtest_scores._auc(np.array([0.5, 0.5]), np.array([1, 0])) == 0.5
+
+
+# --- a weekend still in progress ----------------------------------------------------------------
+
+def with_session(raw, year, rnd, session_type, order, grid=None):
+    """`raw` plus one finished session of round `rnd` (drivers in `order`, first = P1)."""
+    import pandas as pd
+    rows = [{"race_id": f"{year}_{rnd}", "driver_id": d, "constructor_id": f"c{int(d[1:]) % 2}",
+             "position": i, "grid": (grid or {}).get(d, float("nan")), "points": 0.0, "status": "", "session_type": session_type,
+             "circuit_name": f"circuit{rnd}", "year": year, "round": rnd, "race_name": f"GP{rnd}",
+             "driver_name": d, "constructor_name": "Team"} for i, d in enumerate(order, start=1)]
+    return pd.concat([raw, pd.DataFrame(rows)], ignore_index=True)
+
+
+async def test_a_finished_qualifying_is_scored_before_its_race_is_run():
+    raw = with_session(synthetic_raw(years=[2024, 2025], rounds_per_year=6), 2025, 7, "qualifying",
+                       ["d3", "d1", "d4", "d2"])
+
+    out = PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)
+
+    weekend = next(r for r in out["races"] if r["round"] == 7)
+    assert weekend["in_progress"] and weekend["sessions_done"] == ["qualifying"]
+    assert weekend["unit"] == "2025-r7" and weekend["race_mae"] is None and weekend["quali_mae"] is not None
+    assert [d["actual_quali"] for d in weekend["drivers"]] == [1, 2, 3, 4]       # in qualifying order
+    assert all(d.get("predicted_position") is None for d in weekend["drivers"])
+    assert not any(r.get("in_progress") for r in out["races"] if r["round"] != 7)
+
+
+async def test_a_finished_sprint_is_scored_from_its_sprint_qualifying_grid():
+    raw = synthetic_raw(years=[2024, 2025], rounds_per_year=6)
+    raw = with_session(raw, 2025, 7, "sprint_qualifying", ["d1", "d2", "d3", "d4"])
+    raw = with_session(raw, 2025, 7, "sprint", ["d2", "d1", "d3", "d4"], grid={"d1": 1, "d2": 2, "d3": 3, "d4": 4})
+    # sprints earlier in the data, so there's a sprint model to score it with
+    for year, rnd in [(2024, r) for r in range(1, 7)] + [(2025, 3), (2025, 5)]:
+        raw = with_session(raw, year, rnd, "sprint", ["d1", "d2", "d3", "d4"], grid={"d1": 1, "d2": 2, "d3": 3, "d4": 4})
+
+    weekend = next(r for r in PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)["races"]
+                   if r["round"] == 7)
+
+    assert weekend["in_progress"] and weekend["sessions_done"] == ["sprint"]
+    assert [d["actual_sprint"] for d in weekend["drivers"]] == [1, 2, 3, 4]
+    assert {d["driver_id"]: d["sprint_grid"] for d in weekend["drivers"]} == {"d1": 1, "d2": 2, "d3": 3, "d4": 4}
+
+
+async def test_once_the_race_is_run_the_weekend_is_scored_like_any_other():
+    svc = PredictionService(model_dir="unused")
+    full = synthetic_raw(years=[2024, 2025], rounds_per_year=7)
+    before_race = with_session(full[~((full["year"] == 2025) & (full["round"] == 7))], 2025, 7, "qualifying",
+                               ["d1", "d2", "d3", "d4"])
+    before = svc._walk_forward_fit(before_race, FakeLgb(), years_back=3)
+
+    after = svc._walk_forward_fit(with_session(full, 2025, 7, "qualifying", ["d1", "d2", "d3", "d4"]), FakeLgb(),
+                                  years_back=3, previous=copy.deepcopy(before))
+
+    weekend = [r for r in after["races"] if r["round"] == 7 and r["year"] == 2025]
+    assert len(weekend) == 1 and not weekend[0].get("in_progress") and weekend[0]["race_mae"] is not None
+    assert after["refits"] == 1
+
+
+async def test_an_old_weekend_missing_its_race_is_not_treated_as_under_way():
+    """Only weekends after the latest race are in progress; an older gap is data upkeep's job."""
+    full = synthetic_raw(years=[2024, 2025], rounds_per_year=6)
+    raw = with_session(full[~((full["year"] == 2025) & (full["round"] == 3))], 2025, 3, "qualifying", ["d1", "d2", "d3", "d4"])
+
+    out = PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)
+
+    assert not any(r.get("in_progress") for r in out["races"])
