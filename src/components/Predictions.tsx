@@ -523,10 +523,12 @@ const BacktestTab: React.FC = () => {
           </p>
           {scores && (
             <p>
-              <strong className="text-gray-200">Chances</strong> come from playing each session out thousands of times, with
-              the model's spread fitted only on earlier races. They're compared with two simple guesses: every driver equally
-              likely, and how often a car starting from that grid slot has won, podiumed or scored before (the race
-              predictions know the grid too). "Better" means a lower Brier score: the chances sat closer to what happened.
+              <strong className="text-gray-200">Chances</strong> come from playing each session out thousands of times, as
+              on the Upcoming tab: each driver's strength is the model's score — and in a race their starting position — fitted
+              on the front of earlier races' results, with retirements drawn from each driver's recent record. A race's
+              predicted order is that strength, so it can differ from the model's raw order. They're compared with two
+              simple guesses: every driver equally likely, and how often a car starting from that grid slot has won,
+              podiumed or scored before. "Better" means a lower Brier score: the chances sat closer to what happened.
             </p>
           )}
           {quali != null && race != null && (
@@ -718,8 +720,11 @@ const Predictions: React.FC = () => {
                   {(raceResult?.odds_available || qualiResult?.odds_available) && (
                     <p>
                       <strong className="text-gray-200">avg and the win / pole and podium chances</strong> come from
-                      playing the session out 20,000 times with the same model, tuned on real races it hadn't seen, so a
-                      favourite's chance reflects how often favourites really do win. Sprints show the order only.
+                      playing the session out 20,000 times. Each driver's strength is the model's score — in a race also
+                      their starting position (the predicted one until qualifying, then the real one, which counts for
+                      more) — with retirements drawn from their recent record, all tuned on how the front of real races
+                      it hadn't seen turned out. The race order follows that strength, so it always agrees with the
+                      chances. Sprints show the order only.
                     </p>
                   )}
                   <p>

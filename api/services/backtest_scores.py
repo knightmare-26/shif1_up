@@ -2,9 +2,10 @@
 How good the finish odds were, race by race (Predictions → Predicted vs Actual).
 
 The backtest's held-out models give every driver a score per session. Here each scored session is
-played out with the same Plackett-Luce simulation the Predictions page uses, with its strength
-(beta) fitted only on sessions that came **before** it — so a race's chances never learn from that
-race or anything later. The chances are then scored against what happened:
+played out the way the Predictions page does it (services/finish_odds.py — a strength per driver
+from the model score, and in a race the grid and retirements), fitted only on sessions that came
+**before** it — so a race's chances never learn from that race or anything later. A race's order is
+that strength's, as on the page. The chances are then scored against what happened:
 
 - Brier score (mean squared error of the probability; lower is better) and log loss;
 - the same for two baselines: *uniform* (everyone equal) and, for the race, *starting slot* — how
@@ -20,10 +21,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from services.championship_service import BETA_GRID, pl_log_likelihood, sample_orders
+from services.finish_odds import MIN_HISTORY, FinishOdds, in_strength_order
 
 SIMULATIONS = 5000
-MIN_HISTORY = 10                 # sessions needed before beta is fitted (and chances are given)
 # (market, top-n, the driver-row key that carries the chance)
 MARKETS = {
     "race": [("win", 1, "win_probability"), ("podium", 3, "podium_probability"), ("points", 10, "points_probability")],
@@ -37,10 +37,6 @@ EPS = 1e-4
 def _scored(race: Dict[str, Any], kind: str) -> List[Dict[str, Any]]:
     score, actual = FIELDS[kind]
     return [d for d in race["drivers"] if d.get(score) is not None and d.get(actual) is not None]
-
-
-def _ll_curve(scores_in_finish_order: np.ndarray) -> np.ndarray:
-    return np.array([pl_log_likelihood(scores_in_finish_order, b) for b in BETA_GRID])
 
 
 def _metrics(p: np.ndarray, y: np.ndarray) -> Dict[str, float]:
@@ -100,10 +96,10 @@ class _SlotHistory:
 
 def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, Any]:
     """Give each driver row in `races` its chances (keys in MARKETS) and return the scores.
-    Sessions are processed in date order; each one's beta comes from the sessions before it."""
-    rng = np.random.default_rng(seed)
-    curves = {kind: np.zeros(len(BETA_GRID)) for kind in MARKETS}
-    seen = {kind: 0 for kind in MARKETS}
+    Sessions are processed in date order, each predicted by a services/finish_odds.FinishOdds fitted
+    on the sessions before it — the same method the Predictions page uses. A race is also re-ranked
+    by that strength (the page's order); the model's own order is kept as `model_position`."""
+    models = {kind: FinishOdds(kind) for kind in MARKETS}
     slots = _SlotHistory()
     pairs: Dict[str, Dict[str, Dict[str, list]]] = {
         kind: {m: {"model": [], "uniform": [], "slot": [], "y": []} for m, _, _ in markets}
@@ -111,11 +107,13 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
     }
     scored_races = 0
 
-    for race in sorted(races, key=lambda r: (r["year"], r["round"])):
+    for n_race, race in enumerate(sorted(races, key=lambda r: (r["year"], r["round"]))):
         for d in race["drivers"]:
             for markets in MARKETS.values():
                 for _, _, key in markets:
                     d.pop(key, None)
+            if "model_position" in d:
+                d["predicted_position"] = d["model_position"]
         given = False
         for kind, markets in MARKETS.items():
             rows = _scored(race, kind)
@@ -125,13 +123,23 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
             scores = np.array([float(d[score_key]) for d in rows])
             actual = np.array([int(d[actual_key]) for d in rows])
             field = len(rows)
+            is_race = kind == "race"
+            grid = [d.get("actual_grid") for d in rows] if is_race else None
+            model = models[kind]
 
-            if seen[kind] >= MIN_HISTORY:
-                beta = float(BETA_GRID[int(np.argmax(curves[kind]))])
-                pos = sample_orders(scores, beta, SIMULATIONS, rng)
+            if model.ready:
+                pred = model.predict(scores, grid, [d.get("dnf_rate") for d in rows] if is_race else None,
+                                     seed=seed + n_race, sims=SIMULATIONS)
                 given = True
+                if is_race:
+                    ranks = np.argsort(-pred["strength"], kind="stable").argsort() + 1
+                    for d, rank in zip(rows, ranks):
+                        d["model_position"] = d.get("model_position", d.get("predicted_position"))
+                        d["predicted_position"] = int(rank)
+                    errs = [abs(d["predicted_position"] - d["actual_position"]) for d in rows]
+                    race["race_mae"] = round(sum(errs) / len(errs), 2)
                 for market, top, key in markets:
-                    chance = (pos < top).mean(axis=0)
+                    chance = in_strength_order(pred[market], pred["strength"])
                     hit = (actual <= top).astype(float)
                     for d, c in zip(rows, chance):
                         d[key] = round(float(c), 4)
@@ -139,19 +147,20 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                     bucket["model"].extend(chance)
                     bucket["uniform"].extend([min(1.0, top / field)] * field)
                     bucket["y"].extend(hit)
-                    if kind == "race":
+                    if is_race:
                         bucket["slot"].extend(slots.chance(int(d["actual_grid"] or field), top, field) if d.get("actual_grid")
                                               else min(1.0, top / field) for d in rows)
+                model.record(pred["raw"], actual)
 
-            curves[kind] += _ll_curve(scores[np.argsort(actual, kind="stable")])
-            seen[kind] += 1
+            model.add(scores, actual, grid, [d.get("status") for d in rows] if is_race else None)
 
         for d in _scored(race, "race"):
             if d.get("actual_grid"):
                 slots.add(int(d["actual_grid"]), int(d["actual_position"]), [t for _, t, _ in MARKETS["race"]])
         scored_races += given
 
-    out: Dict[str, Any] = {"races_scored": scored_races, "simulations": SIMULATIONS, "min_history": MIN_HISTORY}
+    out: Dict[str, Any] = {"races_scored": scored_races, "simulations": SIMULATIONS, "min_history": MIN_HISTORY,
+                           "method": {kind: m.params for kind, m in models.items() if m.ready}}
     for kind, markets in MARKETS.items():
         out[kind] = {}
         for market, top, _ in markets:

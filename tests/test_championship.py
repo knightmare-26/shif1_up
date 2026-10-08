@@ -215,11 +215,24 @@ class StubPrediction:
     _df = pd.DataFrame({"x": range(5)})
 
 
+def fitted(kind, beta, gamma=0.0):
+    """A services/finish_odds.FinishOdds whose fit lands on (beta, gamma)."""
+    from services import finish_odds as fo
+    model = fo.FinishOdds(kind)
+    i = int(np.argmin(np.abs(fo.BETAS - beta)))
+    j = int(np.argmin(np.abs(model._gammas - gamma)))
+    model._ll[i, j] = 1.0
+    model.sessions = fo.MIN_HISTORY
+    return model
+
+
 def odds_service(ready=True):
     from services.championship_service import ChampionshipService
     svc = ChampionshipService(StubPrediction())
     if ready:
-        svc._held_out = {"fingerprint": ("t1", 5), "beta": 1.0, "beta_qualifying": 0.8}
+        svc._held_out = {"fingerprint": ("t1", 5), "beta": 1.0, "beta_qualifying": 0.8, "odds": {
+            "race_pre": fitted("race", 1.0), "race_post": fitted("race", 1.0, gamma=1.1),
+            "quali_pre": fitted("qualifying", 0.8), "quali_post": fitted("qualifying", 2.0)}}
     return svc
 
 
@@ -248,6 +261,26 @@ def test_qualifying_uses_its_own_calibration_and_has_no_points_chance():
     assert "points_probability" not in rows[0]
     # beta 0.8: P(first) = e^1.6 / (e^1.6 + 1) ~ 0.83
     assert rows[0]["win_probability"] == pytest.approx(0.832, abs=0.02)
+
+
+def test_after_qualifying_the_race_order_and_chances_count_the_real_grid():
+    pred = {"success": True, "grid_source": "this weekend's qualifying", "predictions": [
+        {"predicted_rank": 1, "predicted_position": 1, "driver_id": "back", "score": 1.05, "predicted_grid": 15},
+        {"predicted_rank": 2, "predicted_position": 2, "driver_id": "pole", "score": 1.0, "predicted_grid": 1}]}
+    out = odds_service().with_finish_odds(pred, "race")
+
+    assert [r["driver_id"] for r in out["predictions"]] == ["pole", "back"]       # the grid outweighs a hair of score
+    assert [r["predicted_rank"] for r in out["predictions"]] == [1, 2]
+    assert out["predictions"][0]["win_probability"] > out["predictions"][1]["win_probability"]
+    assert out["odds_method"]["gamma"] > 0
+
+    before = odds_service().with_finish_odds({**pred, "grid_source": "predicted qualifying"}, "race")
+    assert [r["driver_id"] for r in before["predictions"]] == ["back", "pole"]   # no grid term before qualifying
+
+
+def test_qualifying_after_practice_uses_its_own_fit():
+    svc = odds_service()
+    assert svc.odds_model({"practice_used": True}, "qualifying").params["beta"] >         svc.odds_model({"practice_used": False}, "qualifying").params["beta"]
 
 
 def test_without_the_calibration_or_scores_the_prediction_goes_out_unchanged():

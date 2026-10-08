@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 import numpy as np
 import pandas as pd
 
+from services.finish_odds import FinishOdds, in_strength_order
 from services.practice_features import COLUMNS as PRACTICE_COLUMNS
 from services.season_form import team_points_after
 
@@ -304,15 +305,22 @@ class ChampionshipService:
         return (p._fit_ranker(lgb, train, p._quali_features, "grid"),
                 p._fit_ranker(lgb, train, p._race_features, "position"))
 
-    def _score_rows(self, rows: pd.DataFrame, quali_model, race_model) -> np.ndarray:
-        """Race scores for one race's feature rows, the way a future race is predicted: the grid
-        input is the qualifying model's predicted rank and there's no practice pace yet."""
+    def _score_rows(self, rows: pd.DataFrame, quali_model, race_model, known: bool = False,
+                    with_grid: bool = False):
+        """Race scores for one race's feature rows. By default the way a future race is predicted:
+        the grid input is the qualifying model's predicted rank and there's no practice pace yet.
+        `known`: after qualifying — the real grid and the weekend's practice. `with_grid` also
+        returns the grid used."""
         p = self.pred
         rows = rows.copy()
-        rows = p._fill_practice(rows.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
-        if quali_model is not None:
-            rows["grid"] = p._ranks_from_scores(quali_model.predict(rows[p._quali_features].astype(float).fillna(10)))
-        return race_model.predict(rows[p._race_features].astype(float).fillna(10))
+        if known:
+            rows = p._fill_practice(rows, p._practice_medians)
+        else:
+            rows = p._fill_practice(rows.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
+            if quali_model is not None:
+                rows["grid"] = p._ranks_from_scores(quali_model.predict(rows[p._quali_features].astype(float).fillna(10)))
+        scores = race_model.predict(rows[p._race_features].astype(float).fillna(10))
+        return (scores, rows["grid"].to_numpy(dtype=float)) if with_grid else scores
 
     def _build_held_out(self) -> Dict[str, Any]:
         """For every season with earlier data to learn from: a model trained only on the seasons
@@ -325,6 +333,11 @@ class ChampionshipService:
         models: Dict[int, Tuple[Any, Any]] = {}
         races: Dict[int, List[np.ndarray]] = {}
         qualifyings: List[np.ndarray] = []
+        # The Predictions page's odds (services/finish_odds.py), one fit per situation a prediction
+        # can be made in: a race before qualifying (predicted grid, no practice) or after it (the
+        # real grid and practice); qualifying before or after the weekend's practice.
+        odds = {"race_pre": FinishOdds("race"), "race_post": FinishOdds("race"),
+                "quali_pre": FinishOdds("qualifying"), "quali_post": FinishOdds("qualifying")}
         for year in years[1:]:
             quali_model, race_model = self._season_models(lgb, year)
             if race_model is None:
@@ -332,22 +345,38 @@ class ChampionshipService:
             models[year] = (quali_model, race_model)
             season = df[(df["year"] == year) & df["position"].notna()]
             races[year] = []
-            for _, rows in season.groupby("race_id"):
+            for _, rows in sorted(season.groupby("race_id"), key=lambda g: int(g[1]["round"].iloc[0])):
                 rows = rows.sort_values("position")
-                races[year].append(np.asarray(self._score_rows(rows, quali_model, race_model)))
+                pre, pre_grid = self._score_rows(rows, quali_model, race_model, with_grid=True)
+                races[year].append(np.asarray(pre))
+                actual, statuses = rows["position"].to_numpy(dtype=float), rows.get("status")
+                statuses = list(statuses) if statuses is not None else None
+                odds["race_pre"].add(pre, actual, pre_grid, statuses)
+                post, post_grid = self._score_rows(rows, quali_model, race_model, known=True, with_grid=True)
+                odds["race_post"].add(post, actual, post_grid, statuses)
+
                 target = "quali_target" if "quali_target" in rows else "grid"   # the qualifying result
                 graded = rows.dropna(subset=[target]).sort_values(target)
                 if quali_model is not None and len(graded) >= 2:
-                    graded = p._fill_practice(graded.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
-                    qualifyings.append(np.asarray(quali_model.predict(graded[p._quali_features].astype(float).fillna(10))))
+                    q_actual = graded[target].to_numpy(dtype=float)
+                    blank = p._fill_practice(graded.assign(**{c: np.nan for c in PRACTICE_COLUMNS}), p._practice_medians)
+                    q_pre = np.asarray(quali_model.predict(blank[p._quali_features].astype(float).fillna(10)))
+                    qualifyings.append(q_pre)
+                    with_practice = p._fill_practice(graded, p._practice_medians)
+                    q_post = np.asarray(quali_model.predict(with_practice[p._quali_features].astype(float).fillna(10)))
+                    for key, scores in (("quali_pre", q_pre), ("quali_post", q_post)):
+                        if odds[key].ready:      # out-of-sample (chance, outcome) pairs for the correction curves
+                            odds[key].record(odds[key].predict(scores, sims=2000)["raw"], q_actual)
+                        odds[key].add(scores, q_actual)
         all_races = [r for rs in races.values() for r in rs]
         return {
             "fingerprint": (p._meta.get("trained_at"), len(df)),
             "models": models,
             "races": races,
-            "beta": fit_beta(all_races),
+            "beta": fit_beta(all_races),                 # the title simulation's (whole order)
             "races_used": len(all_races),
             "beta_qualifying": fit_beta(qualifyings) if qualifyings else None,
+            "odds": odds,
         }
 
     def _held_out_state(self) -> Dict[str, Any]:
@@ -373,41 +402,48 @@ class ChampionshipService:
             if not self.odds_ready():
                 await asyncio.to_thread(self._held_out_state)
 
+    def odds_model(self, result: Dict[str, Any], kind: str) -> Optional[FinishOdds]:
+        """The odds fit for the situation the prediction was made in (see _build_held_out)."""
+        odds = (self._held_out or {}).get("odds") or {}
+        if kind == "race":
+            after_qualifying = str(result.get("grid_source") or "").startswith("this weekend's")
+            model = odds.get("race_post" if after_qualifying else "race_pre")
+        else:
+            model = odds.get("quali_post" if result.get("practice_used") else "quali_pre")
+        return model if model is not None and model.ready else None
+
     def with_finish_odds(self, result: Dict[str, Any], kind: str) -> Dict[str, Any]:
-        """Add expected position and win/podium chances to a race or qualifying prediction,
-        by playing the session out with the same calibrated Plackett-Luce model as the title
-        outlook. Expected position follows the predicted order (a higher score is always a
-        better expected finish), so it can sit next to the rank without contradicting it.
-        Needs the calibration (warm()); without it the result is returned unchanged."""
+        """Add expected position and win/podium (and points) chances to a race or qualifying
+        prediction (services/finish_odds.py). In a race each driver's strength also counts the
+        grid they start from, so the race is re-ordered by it — the order and the chances always
+        agree. Needs the calibration (warm()); without it the result is returned unchanged."""
         preds = result.get("predictions") or []
         if kind not in ("race", "qualifying") or not preds or any("score" not in r for r in preds) or not self.odds_ready():
             return {**result, "odds_available": False}
-        beta = self._held_out["beta"] if kind == "race" else self._held_out.get("beta_qualifying")
-        if not beta:
+        model = self.odds_model(result, kind)
+        if model is None:
             return {**result, "odds_available": False}
         scores = np.array([float(r["score"]) for r in preds])
-        pos = sample_orders(scores, beta, ODDS_SIMULATIONS, np.random.default_rng(0))
-        stats = {
-            "expected_position": pos.mean(axis=0) + 1,
-            "win_probability": (pos == 0).mean(axis=0),
-            "podium_probability": (pos < 3).mean(axis=0),
-        }
+        grid = [r.get("predicted_grid") for r in preds] if kind == "race" else None
+        dnf = [r.get("dnf_rate") for r in preds] if kind == "race" else None
+        sim = model.predict(scores, grid, dnf, seed=0, sims=ODDS_SIMULATIONS)
+        strength = sim["strength"]
+        markets = (("win_probability", "win"), ("podium_probability", "podium"), ("points_probability", "points"))             if kind == "race" else (("win_probability", "pole"), ("podium_probability", "top3"))
+        # Kept in strength order: near-equal drivers can otherwise swap through simulation noise or
+        # their own retirement chances, and a stronger driver would show a worse number.
+        stats = {"expected_position": in_strength_order(sim["expected_position"], strength, higher_is_better=False)}
+        for key, market in markets:
+            stats[key] = in_strength_order(sim[market], strength)
+        enriched = [{**r, **{k: round(float(v[i]), 1 if k == "expected_position" else 4) for k, v in stats.items()}}
+                    for i, r in enumerate(preds)]
         if kind == "race":
-            stats["points_probability"] = (pos < 10).mean(axis=0)
-        # Under Plackett-Luce a higher score is always at least as good on every one of these,
-        # so drivers with near-equal scores can only swap through sampling noise: put the
-        # estimates back in score order.
-        by_score = np.argsort(-scores, kind="stable")
-        for key, values in stats.items():
-            ordered = np.sort(values) if key == "expected_position" else np.sort(values)[::-1]
-            fixed = np.empty_like(values)
-            fixed[by_score] = ordered
-            stats[key] = fixed
-        enriched = []
-        for i, r in enumerate(preds):
-            extra = {k: round(float(v[i]), 1 if k == "expected_position" else 4) for k, v in stats.items()}
-            enriched.append({**r, **extra})
-        return {**result, "predictions": enriched, "odds_available": True}
+            enriched = [enriched[i] for i in np.argsort(-strength, kind="stable")]
+            for rank, r in enumerate(enriched, start=1):
+                r["predicted_rank"] = r["predicted_position"] = rank
+        params = model.params
+        return {**result, "predictions": enriched, "odds_available": True,
+                "odds_method": {"strength": "model score" + (" and grid" if kind == "race" and params["gamma"] else ""),
+                                **{k: round(v, 3) for k, v in params.items()}}}
 
     # ---- scores for the rounds still to run ----------------------------------------------
 

@@ -845,6 +845,7 @@ class PredictionService:
                 "circuit_avg_finish": round(float(row["driver_circuit_avg"]), 2)      if pd.notna(row.get("driver_circuit_avg"))      else None,
                 "rolling_avg_finish": round(float(row["driver_rolling_finish"]), 2)   if pd.notna(row.get("driver_rolling_finish"))   else None,
                 "predicted_grid":     int(row["grid"]),
+                "dnf_rate":           round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None,
             })
 
         result = {
@@ -972,6 +973,8 @@ class PredictionService:
                     d["predicted_position"] = int(rank)
                     d["race_score"] = round(float(score), 5)
                     d["actual_position"] = int(row["position"]) if pd.notna(row["position"]) else None
+                    d["status"] = str(row["status"]) if pd.notna(row.get("status")) else None   # retirements, for the odds
+                    d["dnf_rate"] = round(float(row["driver_dnf_rate"]), 4) if pd.notna(row.get("driver_dnf_rate")) else None
                     d.setdefault("actual_grid", int(row["grid"]) if pd.notna(row["grid"]) else None)
 
         if not drivers:
@@ -1053,7 +1056,7 @@ class PredictionService:
     # ------------------------------------------------------------------
 
     # Bump when the backtest's method changes, so every cached unit is recomputed.
-    WALK_FORWARD_VERSION = "7"
+    WALK_FORWARD_VERSION = "8"
 
     async def walk_forward_backtest(self, duckdb_service, years_back: int = 3,
                                     previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
