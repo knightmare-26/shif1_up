@@ -29,10 +29,17 @@ MARKETS = {
     "race": [("win", 1, "win_probability"), ("podium", 3, "podium_probability"), ("points", 10, "points_probability")],
     "sprint": [("win", 1, "sprint_win_probability"), ("podium", 3, "sprint_podium_probability"),
                ("points", 8, "sprint_points_probability")],
+    # Sprint qualifying before qualifying: it's scored with the qualifying model's chances as they
+    # stood before the weekend (the Predictions page uses the same fit), so it mustn't see this
+    # weekend's qualifying.
+    "sprint_qualifying": [("pole", 1, "sq_pole_probability"), ("top3", 3, "sq_top3_probability"),
+                          ("q3", 10, "sq3_probability")],
     "qualifying": [("pole", 1, "pole_probability"), ("top3", 3, "quali_top3_probability"), ("q3", 10, "q3_probability")],
 }
+# Sessions predicted by another session's model and odds: scored with them, never fitted on.
+BORROWED_ODDS = {"sprint_qualifying": "qualifying"}
 FIELDS = {"race": ("race_score", "actual_position"), "sprint": ("sprint_score", "actual_sprint"),
-          "qualifying": ("quali_score", "actual_quali")}
+          "qualifying": ("quali_score", "actual_quali"), "sprint_qualifying": ("sq_score", "actual_sq")}
 GRID = {"race": "actual_grid", "sprint": "sprint_grid"}                 # the starting slot, for races
 ORDER = {"race": "predicted_position", "sprint": "predicted_sprint"}     # re-ordered by strength
 MAE = {"race": "race_mae", "sprint": "sprint_mae"}
@@ -105,7 +112,7 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
     Sessions are processed in date order, each predicted by a services/finish_odds.FinishOdds fitted
     on the sessions before it — the same method the Predictions page uses. A race is also re-ranked
     by that strength (the page's order); the model's own order is kept as `model_position`."""
-    models = {kind: FinishOdds(kind) for kind in MARKETS}
+    models = {kind: FinishOdds(kind) for kind in MARKETS if kind not in BORROWED_ODDS}
     slots = {kind: _SlotHistory() for kind in GRID}
     pairs: Dict[str, Dict[str, Dict[str, list]]] = {
         kind: {m: {"model": [], "uniform": [], "slot": [], "y": []} for m, _, _ in markets}
@@ -133,7 +140,8 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
             field = len(rows)
             is_race = kind in GRID
             grid = [d.get(GRID[kind]) for d in rows] if is_race else None
-            model = models[kind]
+            borrowed = kind in BORROWED_ODDS
+            model = models[BORROWED_ODDS.get(kind, kind)]
 
             if model.ready:
                 pred = model.predict(scores, grid, [d.get("dnf_rate") for d in rows] if is_race else None,
@@ -159,9 +167,11 @@ def add_probabilities(races: List[Dict[str, Any]], seed: int = 0) -> Dict[str, A
                     if is_race:
                         bucket["slot"].extend(slots[kind].chance(int(d[GRID[kind]]), top, field) if d.get(GRID[kind])
                                               else min(1.0, top / field) for d in rows)
-                model.record(pred["raw"], actual)
+                if not borrowed:
+                    model.record(pred["raw"], actual)
 
-            model.add(scores, actual, grid, [d.get("status") for d in rows] if kind == "race" else None)
+            if not borrowed:
+                model.add(scores, actual, grid, [d.get("status") for d in rows] if kind == "race" else None)
 
         for kind in GRID:
             for d in _scored(race, kind):
@@ -199,6 +209,7 @@ ORDERS = {
     "race": ("actual_position", {"model": "predicted_position", "grid": "actual_grid", "standings": "standings_rank"}),
     "sprint": ("actual_sprint", {"model": "predicted_sprint", "grid": "sprint_grid", "standings": "standings_rank"}),
     "qualifying": ("actual_quali", {"model": "predicted_grid", "standings": "standings_rank"}),
+    "sprint_qualifying": ("actual_sq", {"model": "predicted_sq", "standings": "standings_rank"}),
 }
 
 
