@@ -106,7 +106,7 @@ API docs are at `http://localhost:8000/docs` once it's running.
 
 **Tests**
 ```bash
-venv\Scripts\python -m pytest tests --ignore=tests/test_api.py   # backend
+venv\Scripts\python -m pytest tests                              # backend
 npx react-scripts test --watchAll=false src/components           # frontend
 ```
 The test suite never touches real services: it runs on an in-memory Redis and a throwaway local database.

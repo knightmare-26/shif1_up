@@ -20,6 +20,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from services.driver_names import tidy_full_name
 from services.openf1_live import OpenF1Client, OpenF1Locked, parse_time
+from services.weekend_practice import team_id_for
 
 logger = logging.getLogger(__name__)
 
@@ -121,8 +122,8 @@ class EntryListService:
             return None
         if len(drivers) < MIN_FIELD:
             return None
-        team_ids = {_norm(name): cid for cid, name in constructor_names.items()}
-        teams = {d["name_acronym"].lower(): team_ids.get(_norm(d.get("team_name"))) for d in drivers if d.get("name_acronym")}
+        teams = {d["name_acronym"].lower(): team_id_for(d.get("team_name"), constructor_names)
+                 for d in drivers if d.get("name_acronym")}
         names = {d["name_acronym"].lower(): tidy_full_name(d["full_name"]) for d in drivers
                  if d.get("name_acronym") and d.get("full_name")}
         return Field(teams, f"the {session.get('session_name', 'session').lower()} entry list", names)
