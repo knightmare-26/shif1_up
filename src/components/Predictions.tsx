@@ -12,6 +12,19 @@ import {
 } from './ui';
 import { formatChance } from '../utils/probability';
 
+/** One session at a time, chosen from a dropdown (?session=, Race by default) on both the Upcoming
+ *  and the Predicted vs Actual tabs. */
+type PredictedSession = 'sprint_qualifying' | 'sprint' | 'qualifying' | 'race';
+const SESSION_LABELS: Record<PredictedSession, string> = {
+  sprint_qualifying: 'Sprint Qualifying', sprint: 'Sprint', qualifying: 'Qualifying', race: 'Race',
+};
+/** Weekend order: a sprint weekend runs sprint qualifying on Friday, the sprint before qualifying on Saturday. */
+const SESSION_ORDER: PredictedSession[] = ['sprint_qualifying', 'sprint', 'qualifying', 'race'];
+const sessionsFor = (sprintWeekend: boolean): PredictedSession[] => (sprintWeekend ? SESSION_ORDER : ['qualifying', 'race']);
+/** Sprint qualifying is predicted by the qualifying model (one of its own did worse: too few sprint
+ *  weekends), so it gets the qualifying table and chances (pole, top 3). */
+const isQualifying = (s: PredictedSession) => s === 'qualifying' || s === 'sprint_qualifying';
+
 interface PredictionRow {
   predicted_rank: number;
   driver_id: string;
@@ -100,7 +113,8 @@ const PredictionTable: React.FC<{
           <Th>Driver</Th>
           <Th className="hidden sm:table-cell">Team</Th>
           <Th align="right">Predicted</Th>
-          {odds && <Th align="right">{qualifying ? 'Pole' : 'Win'}</Th>}
+          {odds && <Th align="right">{qualifying ? 'Pole chance' : 'Win chance'}</Th>}
+          {odds && <Th align="right">{qualifying ? 'Top 3 chance' : 'Podium chance'}</Th>}
           <Th align="right" className="hidden md:table-cell">Circuit Avg</Th>
           <Th align="right" className="hidden md:table-cell">Form (5R)</Th>
         </tr>
@@ -122,9 +136,11 @@ const PredictionTable: React.FC<{
             {odds && (
               <Td align="right" className="tabular-nums text-gray-200">
                 {row.win_probability != null ? formatChance(row.win_probability) : '—'}
-                {row.podium_probability != null && (
-                  <span className="block text-xs text-gray-500">{qualifying ? 'top 3' : 'podium'} {formatChance(row.podium_probability)}</span>
-                )}
+              </Td>
+            )}
+            {odds && (
+              <Td align="right" className="tabular-nums text-gray-400">
+                {row.podium_probability != null ? formatChance(row.podium_probability) : '—'}
               </Td>
             )}
             <Td align="right" className="hidden text-xs text-gray-400 md:table-cell">
@@ -167,10 +183,56 @@ const errorTone = (err: number | null | undefined): 'good' | 'warn' | 'bad' | 'n
   return 'bad';
 };
 
-type SortKey = 'driver_name' | 'predicted_grid' | 'actual_quali' | 'actual_grid' | 'predicted_position' | 'actual_position'
-  | 'predicted_sprint' | 'actual_sprint' | 'pole_probability' | 'win_probability' | 'podium_probability';
-const CHANCE_KEYS: SortKey[] = ['pole_probability', 'win_probability', 'podium_probability'];
+type SortKey = keyof BacktestDriverRow;
 type SortDir = 'asc' | 'desc';
+
+/** A column of the Predicted vs Actual table. */
+interface ResultColumn { label: string; key: SortKey; kind: 'grid' | 'predicted' | 'actual' | 'chance' }
+
+/** What each session's table shows: where they started, the prediction, the result, and the chances
+ *  given before the session. */
+const SESSION_COLUMNS: Record<PredictedSession, ResultColumn[]> = {
+  sprint_qualifying: [
+    { label: 'Predicted', key: 'predicted_sq', kind: 'predicted' },
+    { label: 'Actual', key: 'actual_sq', kind: 'actual' },
+    { label: 'Pole chance', key: 'sq_pole_probability', kind: 'chance' },
+    { label: 'Top 3 chance', key: 'sq_top3_probability', kind: 'chance' },
+  ],
+  sprint: [
+    { label: 'Grid', key: 'sprint_grid', kind: 'grid' },
+    { label: 'Predicted', key: 'predicted_sprint', kind: 'predicted' },
+    { label: 'Actual', key: 'actual_sprint', kind: 'actual' },
+    { label: 'Win chance', key: 'sprint_win_probability', kind: 'chance' },
+    { label: 'Podium chance', key: 'sprint_podium_probability', kind: 'chance' },
+  ],
+  qualifying: [
+    { label: 'Predicted', key: 'predicted_grid', kind: 'predicted' },
+    { label: 'Actual', key: 'actual_quali', kind: 'actual' },
+    { label: 'Pole chance', key: 'pole_probability', kind: 'chance' },
+    { label: 'Top 3 chance', key: 'quali_top3_probability', kind: 'chance' },
+  ],
+  race: [
+    { label: 'Grid', key: 'actual_grid', kind: 'grid' },
+    { label: 'Predicted', key: 'predicted_position', kind: 'predicted' },
+    { label: 'Actual', key: 'actual_position', kind: 'actual' },
+    { label: 'Win chance', key: 'win_probability', kind: 'chance' },
+    { label: 'Podium chance', key: 'podium_probability', kind: 'chance' },
+  ],
+};
+const SESSION_MAE: Record<PredictedSession, 'sq_mae' | 'sprint_mae' | 'quali_mae' | 'race_mae'> = {
+  sprint_qualifying: 'sq_mae', sprint: 'sprint_mae', qualifying: 'quali_mae', race: 'race_mae',
+};
+
+/** A row's value (qualifying falls back to the grid in rows scored before qualifying was stored). */
+const cellValue = (d: BacktestDriverRow, key: SortKey) =>
+  d[key] ?? (key === 'actual_quali' ? d.actual_grid : undefined);
+
+/** A weekend's sessions that have a result to compare with, in weekend order. */
+const sessionsScored = (race: BacktestRace): PredictedSession[] =>
+  SESSION_ORDER.filter((session) => {
+    const actual = SESSION_COLUMNS[session].find((c) => c.kind === 'actual')!.key;
+    return !(session === 'race' && race.in_progress) && race.drivers.some((d) => cellValue(d, actual) != null);
+  });
 
 const SortableHeader: React.FC<{
   label: string;
@@ -200,13 +262,16 @@ const SortableHeader: React.FC<{
 };
 
 const sortValue = (d: BacktestDriverRow, key: SortKey): number | string => {
-  const v = d[key];
+  const v = cellValue(d, key);
   if (key === 'driver_name') return (v as string) ?? '';
   return v == null ? Number.POSITIVE_INFINITY : (v as number);
 };
 
-const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
-  const [sortKey, setSortKey] = useState<SortKey>('actual_position');
+/** One weekend's chosen session: each driver's prediction against the result. */
+const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSession }> = ({ race, session }) => {
+  const columns = SESSION_COLUMNS[session];
+  const actualKey = columns.find((c) => c.kind === 'actual')!.key;
+  const [sortKey, setSortKey] = useState<SortKey>(actualKey);
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   const onSort = (col: SortKey) => {
@@ -214,12 +279,14 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortKey(col);
-      setSortDir(CHANCE_KEYS.includes(col) ? 'desc' : 'asc');   // biggest chance first
+      setSortDir(columns.find((c) => c.key === col)?.kind === 'chance' ? 'desc' : 'asc');   // biggest chance first
     }
   };
 
-  const sortedDrivers = useMemo(() => {
-    const rows = [...race.drivers];
+  // The drivers who took part in this session, and the columns this weekend has values for (the
+  // first races of the backtest have no chances: nothing earlier to calibrate on).
+  const shown = useMemo(() => {
+    const rows = race.drivers.filter((d) => columns.some((c) => (c.kind === 'actual' || c.kind === 'predicted') && cellValue(d, c.key) != null));
     rows.sort((a, b) => {
       const av = sortValue(a, sortKey);
       const bv = sortValue(b, sortKey);
@@ -227,60 +294,44 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return rows;
-  }, [race.drivers, sortKey, sortDir]);
+  }, [race.drivers, columns, sortKey, sortDir]);
+  const visible = columns.filter((c) => shown.some((d) => cellValue(d, c.key) != null));
+  const mae = race[SESSION_MAE[session]];
 
-  const hasChances = race.drivers.some((d) => d.win_probability != null || d.pole_probability != null);
-  const hasSprint = race.drivers.some((d) => d.actual_sprint != null);
-  const raceRun = !race.in_progress;
-  const chance = (p: number | undefined) => (p != null ? formatChance(p) : '—');
-  const place = (p: number | null | undefined) => (p != null ? `P${p}` : '—');
   const facts = [race.circuit_name, String(race.year)];
   if (race.in_progress) facts.push('race still to run');
   if (race.practice_data === false) facts.push('no practice data stored, so predicted without practice pace');
+  if (session === 'sprint_qualifying') facts.push('predicted by the qualifying model');
 
   return (
     <Card>
       <CardHeader
-        title={`Round ${race.round} — ${race.race_name}`}
+        title={`Round ${race.round} — ${race.race_name}: ${SESSION_LABELS[session]}`}
         subtitle={facts.join(' · ')}
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            {hasSprint && <Pill tone={errorTone(race.sprint_mae)}>Sprint off by {race.sprint_mae != null ? race.sprint_mae.toFixed(1) : '—'}</Pill>}
-            <Pill tone={errorTone(race.quali_mae)}>Qualifying off by {race.quali_mae != null ? race.quali_mae.toFixed(1) : '—'}</Pill>
-            {raceRun
-              ? <Pill tone={errorTone(race.race_mae)}>Race off by {race.race_mae != null ? race.race_mae.toFixed(1) : '—'}</Pill>
-              : <Pill tone="neutral">Race still to run</Pill>}
-          </div>
-        }
+        action={<Pill tone={errorTone(mae)}>Off by {mae != null ? mae.toFixed(1) : '—'}</Pill>}
       />
       <TableWrap>
         <thead>
           <tr className="border-b border-gray-800">
-            <SortableHeader label="Driver"       col="driver_name"        align="left" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            {hasSprint && <SortableHeader label="Pred. Sprint"  col="predicted_sprint" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            {hasSprint && <SortableHeader label="Actual Sprint" col="actual_sprint"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            <SortableHeader label="Pred. Quali"  col="predicted_grid"     sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            <SortableHeader label="Actual Quali" col="actual_quali"       sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-            {hasChances && <SortableHeader label="Pole chance" col="pole_probability" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            {raceRun && <SortableHeader label="Pred. Finish" col="predicted_position" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            {raceRun && <SortableHeader label="Actual Finish" col="actual_position"   sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            {raceRun && hasChances && <SortableHeader label="Win chance"    col="win_probability"    sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
-            {raceRun && hasChances && <SortableHeader label="Podium chance" col="podium_probability" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />}
+            <SortableHeader label="Driver" col="driver_name" align="left" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            {visible.map((c) => (
+              <SortableHeader key={c.key} label={c.label} col={c.key} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            ))}
           </tr>
         </thead>
         <tbody>
-          {sortedDrivers.map((d) => (
+          {shown.map((d) => (
             <Tr key={d.driver_id}>
               <Td className="font-medium text-white">{d.driver_name}</Td>
-              {hasSprint && <Td align="right" className="tabular-nums text-gray-400">{place(d.predicted_sprint)}</Td>}
-              {hasSprint && <Td align="right" className="tabular-nums text-white">{place(d.actual_sprint)}</Td>}
-              <Td align="right" className="tabular-nums text-gray-400">{place(d.predicted_grid)}</Td>
-              <Td align="right" className="tabular-nums text-white">{(d.actual_quali ?? d.actual_grid) != null ? `P${d.actual_quali ?? d.actual_grid}` : '—'}</Td>
-              {hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.pole_probability)}</Td>}
-              {raceRun && <Td align="right" className="tabular-nums text-gray-400">{place(d.predicted_position)}</Td>}
-              {raceRun && <Td align="right" className="tabular-nums text-white">{place(d.actual_position)}</Td>}
-              {raceRun && hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.win_probability)}</Td>}
-              {raceRun && hasChances && <Td align="right" className="tabular-nums text-gray-400">{chance(d.podium_probability)}</Td>}
+              {visible.map((c) => {
+                const v = cellValue(d, c.key) as number | null | undefined;
+                return (
+                  <Td key={c.key} align="right"
+                    className={`tabular-nums ${c.kind === 'actual' ? 'text-white' : 'text-gray-400'}`}>
+                    {v == null ? '—' : c.kind === 'chance' ? formatChance(v) : `P${v}`}
+                  </Td>
+                );
+              })}
             </Tr>
           ))}
         </tbody>
@@ -289,14 +340,19 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace }> = ({ race }) => {
   );
 };
 
-const MARKET_LABELS: { kind: 'race' | 'sprint' | 'qualifying'; key: string; label: string }[] = [
+const MARKET_LABELS: { kind: PredictedSession; key: string; label: string }[] = [
+  { kind: 'sprint_qualifying', key: 'pole', label: 'Pole' },
+  { kind: 'sprint_qualifying', key: 'top3', label: 'Top 3' },
+  { kind: 'sprint_qualifying', key: 'q3', label: 'SQ3 (top 10)' },
+  { kind: 'sprint', key: 'win', label: 'Win' },
+  { kind: 'sprint', key: 'podium', label: 'Podium' },
+  { kind: 'sprint', key: 'points', label: 'Points (top 8)' },
   { kind: 'qualifying', key: 'pole', label: 'Pole' },
-  { kind: 'race', key: 'win', label: 'Race win' },
+  { kind: 'qualifying', key: 'top3', label: 'Top 3' },
+  { kind: 'qualifying', key: 'q3', label: 'Q3 (top 10)' },
+  { kind: 'race', key: 'win', label: 'Win' },
   { kind: 'race', key: 'podium', label: 'Podium' },
   { kind: 'race', key: 'points', label: 'Points (top 10)' },
-  { kind: 'sprint', key: 'win', label: 'Sprint win' },
-  { kind: 'sprint', key: 'podium', label: 'Sprint podium' },
-  { kind: 'sprint', key: 'points', label: 'Sprint points (top 8)' },
 ];
 
 /** "18% better" / "24% worse" — Brier skill against a baseline. */
@@ -309,13 +365,14 @@ const skillTone = (skill: number | undefined): 'good' | 'bad' | 'neutral' =>
   skill == null || Math.abs(skill) < 0.02 ? 'neutral' : skill > 0 ? 'good' : 'bad';
 
 /** How good the chances were: each market against two baselines, plus the clearest calibration gap. */
-const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores }) => {
+const ChanceScores: React.FC<{ scores: BacktestProbabilityScores; session: PredictedSession }> = ({ scores, session }) => {
   const rows = MARKET_LABELS
+    .filter((m) => m.kind === session)
     .map((m) => ({ ...m, score: ((scores[m.kind] ?? {}) as Record<string, ProbabilityScore | undefined>)[m.key] }))
     .filter((m): m is typeof m & { score: ProbabilityScore } => m.score != null);
   if (!rows.length) return null;
   // The band of win chances furthest from what happened (with enough drivers in it to mean something).
-  const win = scores.race.win;
+  const win = session === 'race' ? scores.race.win : undefined;
   const gap = win?.reliability
     .filter((b) => b.n >= 20)
     .sort((a, b) => Math.abs(b.observed - b.predicted) - Math.abs(a.observed - a.predicted))[0];
@@ -324,7 +381,7 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
     <Card className="mt-6">
       <CardHeader
         title="How good the chances were"
-        subtitle={`Pole, win, podium and points chances for ${scores.races_scored} races, each worked out before the race from earlier races only`}
+        subtitle={`${SESSION_LABELS[session]} chances, each worked out before the session from earlier sessions only${session === 'sprint_qualifying' ? " — the qualifying model's" : ''}`}
       />
       <TableWrap>
         <thead>
@@ -336,7 +393,7 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
         </thead>
         <tbody>
           {rows.map(({ kind, key, label, score }) => (
-            <Tr key={`${kind}-${key}`}>{/* race and sprint share market names */}
+            <Tr key={`${kind}-${key}`}>
               <Td className="font-medium text-white">{label}</Td>
               <Td align="right"><Pill tone={skillTone(score.skill_vs_uniform)}>{skillLabel(score.skill_vs_uniform)}</Pill></Td>
               <Td align="right">
@@ -359,24 +416,25 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
   );
 };
 
-const HIT_ROWS: { key: keyof HitRate; race: string; sprint: string; qualifying: string }[] = [
-  { key: 'top1', race: 'Picked the winner', sprint: 'Picked the winner', qualifying: 'Picked pole' },
-  { key: 'top3', race: 'Podium named', sprint: 'Podium named', qualifying: 'Top 3 named' },
-  { key: 'top10', race: 'Top 10 named', sprint: 'Top 10 named', qualifying: 'Q3 (top 10) named' },
-  { key: 'mae', race: 'Places off (avg)', sprint: 'Places off (avg)', qualifying: 'Places off (avg)' },
+const HIT_ROWS: { key: keyof HitRate; labels: Record<PredictedSession, string> }[] = [
+  { key: 'top1', labels: { race: 'Picked the winner', sprint: 'Picked the winner', qualifying: 'Picked pole', sprint_qualifying: 'Picked pole' } },
+  { key: 'top3', labels: { race: 'Podium named', sprint: 'Podium named', qualifying: 'Top 3 named', sprint_qualifying: 'Top 3 named' } },
+  { key: 'top10', labels: { race: 'Top 10 named', sprint: 'Top 10 named', qualifying: 'Q3 (top 10) named', sprint_qualifying: 'SQ3 (top 10) named' } },
+  { key: 'mae', labels: { race: 'Places off (avg)', sprint: 'Places off (avg)', qualifying: 'Places off (avg)', sprint_qualifying: 'Places off (avg)' } },
 ];
 
 /** The predicted order against simple guesses: the starting grid and the championship order. */
-const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
-  const sections = ([
-    rates.qualifying && { kind: 'qualifying' as const, title: 'Qualifying', races: rates.qualifying.races,
-      columns: [['Model', rates.qualifying.model], ['Championship order', rates.qualifying.standings]] as [string, HitRate][] },
-    rates.race && { kind: 'race' as const, title: 'Race (with the grid known)', races: rates.race.races,
-      columns: [['Model', rates.race.model], ['Starting grid', rates.race.grid], ['Championship order', rates.race.standings]] as [string, HitRate][] },
-    rates.sprint && { kind: 'sprint' as const, title: 'Sprint (with the grid known)', races: rates.sprint.races,
-      columns: [['Model', rates.sprint.model], ['Starting grid', rates.sprint.grid], ['Championship order', rates.sprint.standings]] as [string, HitRate][] },
-  ]).filter(Boolean) as { kind: 'race' | 'sprint' | 'qualifying'; title: string; races: number; columns: [string, HitRate][] }[];
-  if (!sections.length) return null;
+const HitRates: React.FC<{ rates: BacktestHitRates; session: PredictedSession }> = ({ rates, session }) => {
+  const guesses: Record<PredictedSession, [string, HitRate | undefined][]> = {
+    qualifying: [['Model', rates.qualifying?.model], ['Championship order', rates.qualifying?.standings]],
+    sprint_qualifying: [['Model', rates.sprint_qualifying?.model], ['Championship order', rates.sprint_qualifying?.standings]],
+    race: [['Model', rates.race?.model], ['Starting grid', rates.race?.grid], ['Championship order', rates.race?.standings]],
+    sprint: [['Model', rates.sprint?.model], ['Starting grid', rates.sprint?.grid], ['Championship order', rates.sprint?.standings]],
+  };
+  const races = rates[session]?.races;
+  const columns = guesses[session].filter((c): c is [string, HitRate] => c[1] != null);
+  if (!races || !columns.length) return null;
+  const title = session === 'race' || session === 'sprint' ? `${SESSION_LABELS[session]} (with the grid known)` : SESSION_LABELS[session];
 
   const format = (key: keyof HitRate, v: number) => (key === 'mae' ? v.toFixed(2) : `${Math.round(v * 100)}%`);
   const best = (key: keyof HitRate, cols: [string, HitRate][]) =>
@@ -388,9 +446,7 @@ const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
         title="Against simple guesses"
         subtitle="The predicted order next to two guesses anyone could make: the starting grid, and the championship order going into the weekend"
       />
-      <div className="grid gap-0 lg:grid-cols-2">
-        {sections.map(({ kind, title, races, columns }) => (
-          <div key={kind} className="min-w-0">{/* lets the table scroll inside its column instead of widening the page */}
+      <div className="min-w-0">{/* lets the table scroll inside the card instead of widening the page */}
           <TableWrap>
             <thead>
               <tr className="border-b border-gray-800">
@@ -399,11 +455,11 @@ const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
               </tr>
             </thead>
             <tbody>
-              {HIT_ROWS.map(({ key, ...labels }) => {
+              {HIT_ROWS.map(({ key, labels }) => {
                 const top = best(key, columns);
                 return (
                   <Tr key={key}>
-                    <Td className="text-gray-300">{labels[kind]}</Td>
+                    <Td className="text-gray-300">{labels[session]}</Td>
                     {columns.map(([label, r]) => (
                       <Td key={label} align="right" className={`tabular-nums ${r[key] === top ? 'font-semibold text-white' : 'text-gray-400'}`}>
                         {format(key, r[key])}
@@ -414,14 +470,13 @@ const HitRates: React.FC<{ rates: BacktestHitRates }> = ({ rates }) => {
               })}
             </tbody>
           </TableWrap>
-          </div>
-        ))}
       </div>
     </Card>
   );
 };
 
 const BacktestTab: React.FC = () => {
+  const [params, setParams] = useSearchParams();
   const [races, setRaces]                   = useState<BacktestRace[] | null>(null);
   const [error, setError]                   = useState<string | null>(null);
   const [yearFilter, setYearFilter]         = useState<number | null>(null);
@@ -500,6 +555,14 @@ const BacktestTab: React.FC = () => {
     [races, selectedRaceId]
   );
 
+  // One session at a time, as on the Upcoming tab: the race by default, or the latest one with a
+  // result on a weekend whose race is still to run.
+  const sessionsHere = selectedRace ? sessionsScored(selectedRace) : [];
+  const rawSession = params.get('session') as PredictedSession | null;
+  const session: PredictedSession = rawSession && sessionsHere.includes(rawSession) ? rawSession
+    : sessionsHere.includes('race') ? 'race' : sessionsHere[sessionsHere.length - 1] ?? 'race';
+  const setSession = (s: PredictedSession) => setParams(s === 'race' ? { tab: 'backtest' } : { tab: 'backtest', session: s });
+
   if (error) return <Card><ErrorState title="Couldn't load past predictions" message={error} onRetry={load} /></Card>;
   if (!races) return <Card><LoadingState label="Loading past seasons…" /></Card>;
   if (races.length === 0) {
@@ -532,6 +595,10 @@ const BacktestTab: React.FC = () => {
             </option>
           ))}
         </SelectField>
+        <SelectField label="Session" value={session} onChange={(v) => setSession(v as PredictedSession)}
+          className="min-w-[180px]" disabled={sessionsHere.length === 0}>
+          {sessionsHere.map((x) => <option key={x} value={x}>{SESSION_LABELS[x]}</option>)}
+        </SelectField>
         <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
 
@@ -543,13 +610,13 @@ const BacktestTab: React.FC = () => {
       )}
 
       {selectedRace ? (
-        <BacktestRaceDetail race={selectedRace} />
+        <BacktestRaceDetail key={`${selectedRace.race_id}-${session}`} race={selectedRace} session={session} />
       ) : (
         <Card><EmptyState title="No race matches the selected filters" /></Card>
       )}
 
-      {hitRates && <HitRates rates={hitRates} />}
-      {scores && <ChanceScores scores={scores} />}
+      {hitRates && <HitRates rates={hitRates} session={session} />}
+      {scores && <ChanceScores scores={scores} session={session} />}
 
       <div className="mt-6">
         <HowItWorksCard>
@@ -559,8 +626,9 @@ const BacktestTab: React.FC = () => {
               ? `In ${latestSeason} each race is predicted by a model trained on everything up to the race before (as the site does, since it retrains after every race); earlier seasons by one model trained on the seasons before them.`
               : 'Each season is predicted by a model trained only on earlier seasons.'}{' '}
             "Off by" is how many places a prediction missed by, averaged over the drivers in that session: lower is better.
-            A weekend shows up here as soon as its first predicted session (sprint or qualifying) is done, with the race
-            added once it's run.
+            A weekend shows up here as soon as its first predicted session (sprint qualifying, the sprint or
+            qualifying) is done, with each later one added once it's run. Sprint qualifying is predicted by the
+            qualifying model: a model of its own did worse, with so few sprint weekends to learn from.
           </p>
           {scores && (
             <p>
@@ -588,12 +656,6 @@ const BacktestTab: React.FC = () => {
 
 type PredictionTab = 'upcoming' | 'title' | 'backtest';
 
-/** One session's prediction at a time, chosen from a dropdown (?session=, Race by default). */
-type PredictedSession = 'sprint' | 'qualifying' | 'race';
-const SESSION_LABELS: Record<PredictedSession, string> = { sprint: 'Sprint', qualifying: 'Qualifying', race: 'Race' };
-/** In weekend order: a sprint weekend runs the sprint on Saturday before qualifying. */
-const sessionsFor = (sprintWeekend: boolean): PredictedSession[] =>
-  sprintWeekend ? ['sprint', 'qualifying', 'race'] : ['qualifying', 'race'];
 const PREDICTION_TABS: { id: PredictionTab; label: string }[] = [
   { id: 'upcoming', label: 'Upcoming Predictions' },
   { id: 'title', label: 'Title Race' },
@@ -621,6 +683,7 @@ const Predictions: React.FC = () => {
   const setTab = (t: PredictionTab) => setParams(t === 'upcoming' ? {} : { tab: t });
   const rawSession = params.get('session') as PredictedSession | null;
   const setSession = (s: PredictedSession) => setParams(s === 'race' ? {} : { session: s });
+  const oddsTries = useRef(0);
   const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
@@ -646,19 +709,24 @@ const Predictions: React.FC = () => {
   // A sprint picked for one weekend falls back to the race on a weekend without one.
   const session: PredictedSession = rawSession && sessionOptions.includes(rawSession) ? rawSession : 'race';
 
-  const runPredictions = useCallback(async () => {
+  /** `quiet`: fetch again behind what's shown (chances arriving), without clearing it or showing errors. */
+  const runPredictions = useCallback(async (quiet = false) => {
     if (!selected) return;
     const id = ++requestId.current;
-    setLoading(true);
-    setError(null);
-    setQualiResult(null);
-    setRaceResult(null);
-    setSprintResult(null);
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+      setQualiResult(null);
+      setRaceResult(null);
+      setSprintResult(null);
+    }
     try {
       const race = circuits.find((c) => c.circuit_name === selected);
       const done = race?.completed_sessions ?? [];
+      // Qualifying and sprint qualifying share one prediction (the qualifying model).
+      const needQuali = sessionsFor(!!race?.is_sprint).some((x) => isQualifying(x) && !done.includes(x));
       const [q, r, s] = await Promise.all([
-        done.includes('qualifying') ? Promise.resolve(null) : backendApi.predictQualifying(selected),
+        needQuali ? backendApi.predictQualifying(selected) : Promise.resolve(null),
         backendApi.predictRace(selected),
         race?.is_sprint && !done.includes('sprint') ? backendApi.predictSprint(selected) : Promise.resolve(null),
       ]);
@@ -667,9 +735,9 @@ const Predictions: React.FC = () => {
       setRaceResult(r);
       if (s) setSprintResult(s);
     } catch (e: any) {
-      if (id === requestId.current) setError(e.message || 'Predictions are unavailable right now. Try again in a moment.');
+      if (id === requestId.current && !quiet) setError(e.message || 'Predictions are unavailable right now. Try again in a moment.');
     } finally {
-      if (id === requestId.current) setLoading(false);
+      if (id === requestId.current && !quiet) setLoading(false);
       // The first prediction after a restart is what trains the models, so the status
       // fetched when the page opened ("not trained") is stale by now.
       refreshStatus(true);
@@ -678,7 +746,17 @@ const Predictions: React.FC = () => {
 
   // Predictions are cheap (cached server-side), so generate them as soon as a
   // circuit is chosen instead of making the user click a second time.
-  useEffect(() => { if (selected) runPredictions(); }, [selected, runPredictions]);
+  useEffect(() => { oddsTries.current = 0; if (selected) runPredictions(); }, [selected, runPredictions]);
+
+  // Right after the models train, predictions go out before their chances are worked out (a minute
+  // or two): fetch again by itself until they arrive.
+  const waitingForOdds = [qualiResult, raceResult, sprintResult]
+    .some((r) => !!r?.predictions?.length && r.odds_available === false);
+  useEffect(() => {
+    if (!waitingForOdds || loading || oddsTries.current >= 9) return undefined;
+    const timer = setTimeout(() => { oddsTries.current += 1; runPredictions(true); }, 20000);
+    return () => clearTimeout(timer);
+  }, [waitingForOdds, loading, runPredictions, qualiResult, raceResult, sprintResult]);
 
   // A freshly started server has no models yet and reports every flag as false. That isn't
   // "grid data missing" — only say so once the models are trained and still report no grid.
@@ -686,7 +764,7 @@ const Predictions: React.FC = () => {
   const warmingUp = !!status && !status.trained && (loading || !!selected);
   const gridMissing = !!status?.trained && !status.grid_data_available;
   const hasResults = !!(qualiResult || raceResult || sprintResult);
-  const shown = { qualifying: qualiResult, sprint: sprintResult, race: raceResult }[session];
+  const shown = { sprint_qualifying: qualiResult, qualifying: qualiResult, sprint: sprintResult, race: raceResult }[session];
 
   return (
     <PageShell>
@@ -726,7 +804,7 @@ const Predictions: React.FC = () => {
               <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
 
               <Button
-                variant="secondary" onClick={runPredictions} loading={loading} disabled={!selected}
+                variant="secondary" onClick={() => runPredictions()} loading={loading} disabled={!selected}
                 icon={<RefreshCw className="h-4 w-4" />}
               >
                 {loading ? 'Predicting…' : 'Refresh'}
@@ -757,7 +835,8 @@ const Predictions: React.FC = () => {
                 <span>
                   {listOf(doneSessions.map((s) => SESSION_LABELS[s]))} {doneSessions.length > 1 ? 'are' : 'is'} done
                   — see how {doneSessions.length > 1 ? 'they' : 'it'} compared with the prediction in{' '}
-                  <button type="button" className="font-semibold underline hover:text-white" onClick={() => setTab('backtest')}>
+                  <button type="button" className="font-semibold underline hover:text-white"
+                    onClick={() => setParams({ tab: 'backtest', session: doneSessions[doneSessions.length - 1] })}>
                     Predicted vs Actual
                   </button>.
                 </span>
@@ -765,14 +844,23 @@ const Predictions: React.FC = () => {
             )}
 
             {error ? (
-              <Card><ErrorState title="Couldn't generate predictions" message={error} onRetry={runPredictions} /></Card>
+              <Card><ErrorState title="Couldn't generate predictions" message={error} onRetry={() => runPredictions()} /></Card>
             ) : loading && !hasResults ? (
               <Card><LoadingState label={warmingUp ? "Training the models — the first run after a restart takes a little longer…" : "Generating predictions…"} /></Card>
             ) : hasResults ? (
               <FadeIn key={session}>
+                {shown?.predictions.length && shown.odds_available === false && (
+                  <Notice tone="info">
+                    The chances are still being worked out after the models were trained; they appear here by
+                    themselves in a minute or two.
+                  </Notice>
+                )}
                 {shown?.predictions.length ? (
-                  session === 'qualifying' ? (
-                    <PredictionTable title="Qualifying Prediction" subtitle={predictionSubtitle(shown)} data={shown.predictions}
+                  isQualifying(session) ? (
+                    <PredictionTable title={`${SESSION_LABELS[session]} Prediction`}
+                      subtitle={[predictionSubtitle(shown), session === 'sprint_qualifying' && 'the qualifying model, so the same order as qualifying']
+                        .filter(Boolean).join(' · ')}
+                      data={shown.predictions}
                       valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />
                   ) : (
                     <PredictionTable title={`${SESSION_LABELS[session]} Prediction`} subtitle={predictionSubtitle(shown)}
