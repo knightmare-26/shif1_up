@@ -192,8 +192,11 @@ async def test_a_finished_sprint_is_scored_from_its_sprint_qualifying_grid():
     weekend = next(r for r in PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)["races"]
                    if r["round"] == 7)
 
-    assert weekend["in_progress"] and weekend["sessions_done"] == ["sprint"]
-    assert [d["actual_sprint"] for d in weekend["drivers"]] == [1, 2, 3, 4]
+    assert weekend["in_progress"] and weekend["sessions_done"] == ["sprint_qualifying", "sprint"]
+    assert sorted(d["actual_sprint"] for d in weekend["drivers"]) == [1, 2, 3, 4]
+    # sprint qualifying is scored too, by the qualifying model
+    assert {d["driver_id"]: d["actual_sq"] for d in weekend["drivers"]} == {"d1": 1, "d2": 2, "d3": 3, "d4": 4}
+    assert all(d.get("predicted_sq") for d in weekend["drivers"]) and weekend["sq_mae"] is not None
     assert {d["driver_id"]: d["sprint_grid"] for d in weekend["drivers"]} == {"d1": 1, "d2": 2, "d3": 3, "d4": 4}
 
 
@@ -220,3 +223,31 @@ async def test_an_old_weekend_missing_its_race_is_not_treated_as_under_way():
     out = PredictionService(model_dir="unused")._walk_forward_fit(raw, FakeLgb(), years_back=3)
 
     assert not any(r.get("in_progress") for r in out["races"])
+
+
+def sq_race(n, rng):
+    """A weekend with qualifying and sprint qualifying, higher scores ahead in both."""
+    drivers = []
+    for i in range(10):
+        score = float(10 - i + rng.normal(0, 1))
+        drivers.append({"driver_id": f"d{i}", "quali_score": score, "actual_quali": i + 1,
+                        "sq_score": score, "actual_sq": i + 1,
+                        "predicted_grid": i + 1, "predicted_sq": i + 1, "standings_rank": i + 1})
+    return {"year": 2025, "round": n, "race_id": f"r{n}", "drivers": drivers}
+
+
+async def test_sprint_qualifying_is_scored_with_the_qualifying_odds_but_never_fitted_on():
+    rng = np.random.default_rng(3)
+    races = [sq_race(n, rng) for n in range(1, 16)]
+    only_quali = [{**r, "drivers": [{k: v for k, v in d.items() if k not in ("sq_score", "actual_sq")} for d in r["drivers"]]}
+                  for r in copy.deepcopy(races)]
+
+    scores = backtest_scores.add_probabilities(races)
+    without = backtest_scores.add_probabilities(only_quali)
+
+    assert "sprint_qualifying" in scores and scores["sprint_qualifying"]["pole"]["n"] > 0
+    assert "sprint_qualifying" not in scores["method"]                       # no fit of its own
+    assert scores["qualifying"] == without["qualifying"]                     # and it didn't train the qualifying one
+    last = races[-1]["drivers"]
+    assert all(d["sq_pole_probability"] == d["pole_probability"] for d in last)   # same scores, same chances
+    assert "sprint_qualifying" in backtest_scores.hit_rates(races)

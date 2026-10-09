@@ -1455,7 +1455,7 @@ async def predict_status():
 
 
 # A weekend's predicted sessions, in the order they run.
-PREDICTED_SESSIONS = ("sprint", "qualifying", "race")
+PREDICTED_SESSIONS = ("sprint_qualifying", "sprint", "qualifying", "race")
 COMPLETED_LOOKAHEAD_DAYS = 4     # a weekend's sessions run in the 3 days before its race
 
 

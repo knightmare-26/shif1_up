@@ -150,7 +150,7 @@ export interface PredictableRace {
   circuit_name: string;
   date: string;
   is_sprint: boolean;
-  /** This weekend's finished sessions ('sprint', 'qualifying'): they've moved to Predicted vs Actual. */
+  /** This weekend's finished sessions ('sprint_qualifying', 'sprint', 'qualifying'): they've moved to Predicted vs Actual. */
   completed_sessions?: string[];
 }
 
@@ -165,10 +165,19 @@ export interface BacktestDriverRow {
   actual_position?: number | null;
   predicted_sprint?: number | null;
   actual_sprint?: number | null;
+  sprint_grid?: number | null;
+  /** Sprint qualifying, predicted by the qualifying model. */
+  predicted_sq?: number | null;
+  actual_sq?: number | null;
   /** Chances from the held-out model (absent for the first races: nothing to calibrate on yet). */
   pole_probability?: number;
+  quali_top3_probability?: number;
   win_probability?: number;
   podium_probability?: number;
+  sprint_win_probability?: number;
+  sprint_podium_probability?: number;
+  sq_pole_probability?: number;
+  sq_top3_probability?: number;
 }
 
 export interface BacktestRace {
@@ -180,6 +189,7 @@ export interface BacktestRace {
   quali_mae: number | null;
   race_mae: number | null;
   sprint_mae?: number | null;
+  sq_mae?: number | null;
   /** The race is still to run: the weekend's finished sessions (`sessions_done`) are scored already. */
   in_progress?: boolean;
   sessions_done?: string[];
@@ -210,6 +220,7 @@ export interface BacktestProbabilityScores {
   race: Partial<Record<'win' | 'podium' | 'points', ProbabilityScore>>;
   sprint?: Partial<Record<'win' | 'podium' | 'points', ProbabilityScore>>;
   qualifying: Partial<Record<'pole' | 'top3' | 'q3', ProbabilityScore>>;
+  sprint_qualifying?: Partial<Record<'pole' | 'top3' | 'q3', ProbabilityScore>>;
 }
 
 /** Share of the top n named correctly (top1 = picked the winner), and position error. */
@@ -226,6 +237,7 @@ export interface BacktestHitRates {
   race?: { races: number; model: HitRate; grid: HitRate; standings: HitRate };
   sprint?: { races: number; model: HitRate; grid: HitRate; standings: HitRate };
   qualifying?: { races: number; model: HitRate; standings: HitRate };
+  sprint_qualifying?: { races: number; model: HitRate; standings: HitRate };
 }
 
 export interface BacktestResult {
@@ -765,7 +777,8 @@ class BackendApiService {
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
     const data = await response.json();
-    this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
+    // Without its chances (the odds are still being worked out after training) it's about to change.
+    if (data?.odds_available !== false) this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
     return data;
   }
 
@@ -779,7 +792,8 @@ class BackendApiService {
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
     const data = await response.json();
-    this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
+    // Without its chances (the odds are still being worked out after training) it's about to change.
+    if (data?.odds_available !== false) this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
     return data;
   }
 
@@ -793,7 +807,8 @@ class BackendApiService {
       throw new Error(err.detail || `HTTP ${response.status}`);
     }
     const data = await response.json();
-    this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
+    // Without its chances (the odds are still being worked out after training) it's about to change.
+    if (data?.odds_available !== false) this.cache.set(key, { data, timestamp: Date.now(), ttl: 300 });
     return data;
   }
 

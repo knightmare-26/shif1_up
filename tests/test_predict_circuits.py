@@ -42,9 +42,10 @@ def circuits(monkeypatch):
 
 
 async def test_a_weekend_under_way_lists_its_finished_sessions(circuits):
-    out = await circuits({"r18": {"fp1", "sprint", "qualifying"}}, [event(18, 1, sprint=True), event(19, 8)])
+    out = await circuits({"r18": {"fp1", "sprint_qualifying", "sprint", "qualifying"}}, [event(18, 1, sprint=True), event(19, 8)])
 
-    assert [(c["round"], c["completed_sessions"]) for c in out] == [(18, ["sprint", "qualifying"]), (19, [])]
+    assert [(c["round"], c["completed_sessions"]) for c in out] == [
+        (18, ["sprint_qualifying", "sprint", "qualifying"]), (19, [])]
 
 
 async def test_the_weekend_drops_out_once_its_race_is_stored(circuits):
