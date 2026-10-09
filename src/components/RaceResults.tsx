@@ -10,15 +10,19 @@ import {
   SelectField, TableWrap, TeamChip, Td, Th, Tr,
 } from './ui';
 
-const SESSIONS: { id: string; label: string }[] = [
-  { id: 'R',   label: 'Race' },
-  { id: 'Q',   label: 'Qualifying' },
-  { id: 'S',   label: 'Sprint' },
-  { id: 'SQ',  label: 'Sprint Qualifying' },
-  { id: 'FP1', label: 'Practice 1' },
-  { id: 'FP2', label: 'Practice 2' },
-  { id: 'FP3', label: 'Practice 3' },
-];
+const SESSION_LABELS: Record<string, string> = {
+  FP1: 'Practice 1', FP2: 'Practice 2', FP3: 'Practice 3', SQ: 'Sprint Qualifying', S: 'Sprint', Q: 'Qualifying', R: 'Race',
+};
+
+/** A weekend's sessions in the order they're run. Sprints only on a sprint weekend, whose format
+ *  changed over the years. */
+export function weekendSessions(year: number, sprint: boolean): { id: string; label: string }[] {
+  const ids = !sprint ? ['FP1', 'FP2', 'FP3', 'Q', 'R']
+    : year >= 2024 ? ['FP1', 'SQ', 'S', 'Q', 'R']      // sprint qualifying on Friday; the sprint, then qualifying on Saturday
+    : year === 2023 ? ['FP1', 'Q', 'SQ', 'S', 'R']     // qualifying on Friday; the sprint shootout and the sprint on Saturday
+    : ['FP1', 'Q', 'FP2', 'S', 'R'];                    // 2021-22: qualifying on Friday; FP2 and the sprint on Saturday
+  return ids.map((id) => ({ id, label: id === 'SQ' && year === 2023 ? 'Sprint Shootout' : SESSION_LABELS[id] }));
+}
 
 interface RaceResult {
   DriverNumber: string;
@@ -69,10 +73,16 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const [scheduleFailed, setScheduleFailed] = useState(false);
   const [scheduleTry, setScheduleTry] = useState(0);
   const [selectedGP, setSelectedGP] = useState('');
-  const [selectedSession, setSelectedSession] = useState('R');
+  const [chosenSession, setSelectedSession] = useState('R');
   const [showCircuitName, setShowCircuitName] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const requestId = useRef(0);
+
+  // The chosen weekend's sessions; a session it doesn't have (a sprint, picked on another weekend)
+  // falls back to the race.
+  const weekend = schedule.find((r) => gpToken(r.race_name) === selectedGP);
+  const sessionOptions = weekendSessions(year, !!weekend?.is_sprint);
+  const selectedSession = sessionOptions.some((s) => s.id === chosenSession) ? chosenSession : 'R';
 
   // Pick the weekend to show first: a deep-linked one, else the latest that has
   // actually been run (never "pre-season testing", never a future race).
@@ -138,7 +148,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   // The stewards' decisions for this session (badges next to the drivers, and a card under the results).
   const [penalties, setPenalties] = useState<SessionPenalties | null>(null);
   const penaltyRequest = useRef(0);
-  const scheduleEntry = schedule.find((r) => gpToken(r.race_name) === selectedGP);
+  const scheduleEntry = weekend;
   useEffect(() => {
     const id = ++penaltyRequest.current;
     setPenalties(null);
@@ -151,7 +161,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const selectedScheduleEntry = schedule.find((r) => gpToken(r.race_name) === selectedGP);
   const raceName = selectedScheduleEntry?.race_name ?? `${selectedGP} Grand Prix`;
   const raceDate = selectedScheduleEntry ? formatDate(selectedScheduleEntry.date) : '';
-  const sessionLabel = SESSIONS.find((s) => s.id === selectedSession)?.label ?? selectedSession;
+  const sessionLabel = sessionOptions.find((s) => s.id === selectedSession)?.label ?? selectedSession;
 
   return (
     <FadeIn>
@@ -166,7 +176,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
           ))}
         </SelectField>
         <SelectField label="Session" value={selectedSession} onChange={setSelectedSession} className="min-w-[200px]">
-          {SESSIONS.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
+          {sessionOptions.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
         </SelectField>
         <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>

@@ -1,8 +1,8 @@
 import React from 'react';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import RaceResults from './RaceResults';
-import { penaltyBadges, StewardsCard } from './Penalties';
+import RaceResults, { weekendSessions } from './RaceResults';
+import { penaltyBadges, PenaltyBadges, StewardsCard } from './Penalties';
 import { backendApi, SessionPenalties, StewardsDecision } from '../services/backendApi';
 
 jest.mock('../services/backendApi', () => ({
@@ -52,7 +52,12 @@ test('badges: time added after the race, time served in the pits, and the rest',
   expect(labels('SAI')).toEqual([]);                       // a warning is listed, not badged
   expect(labels('STR')).toEqual([]);                       // a deleted lap only matters in qualifying...
   expect(labels('STR', 'Q')).toEqual(['1 lap deleted']);  // ...where it decides the result
-  expect(penaltyBadges('GAS', DATA, 'R')[0].title).toMatch(/Lap 52 · 5s time penalty: Speeding in the pit lane/);
+  const gas = penaltyBadges('GAS', DATA, 'R')[0];
+  expect(gas.heading).toBe('2 time penalties');
+  expect(gas.lines).toEqual(['Lap 52 · 5s · Speeding in the pit lane', 'Lap 68 · 5s · Speeding in the pit lane']);
+  expect(gas.note).toBe('10s added to the race time.');
+  expect(penaltyBadges('HAM', DATA, 'R')[0].note).toBe('5s served at a pit stop.');
+  expect(penaltyBadges('HAD', DATA, 'R')[0].lines).toEqual(['Qualified P3, started P8: 5 places back']);
 });
 
 test("the stewards' card lists every decision with its lap, and who started behind where they qualified", () => {
@@ -86,4 +91,64 @@ test('the results page shows the badges next to the drivers and the card under t
   expect(api.getSessionPenalties).toHaveBeenCalledWith(2026, 'Monaco Grand Prix', 'R');
   expect(screen.getByText('+10s')).toBeInTheDocument();
   expect(screen.getByText("Stewards' decisions")).toBeInTheDocument();
+});
+
+test('a badge explains itself in a tooltip: on hover, on keyboard focus and on tap', async () => {
+  render(<PenaltyBadges code="GAS" data={DATA} session="R" />);
+  const badge = screen.getByRole('button', { name: /\+10s/ });
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+  fireEvent.mouseEnter(badge);
+  const tip = screen.getByRole('tooltip');
+  expect(tip).toHaveTextContent('2 time penalties');
+  expect(tip).toHaveTextContent('Lap 52 · 5s · Speeding in the pit lane');
+  expect(tip).toHaveTextContent('10s added to the race time.');
+  expect(badge).toHaveAttribute('aria-describedby', tip.id);
+  fireEvent.mouseLeave(badge);
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+  fireEvent.focus(badge);                                   // keyboard
+  expect(screen.getByRole('tooltip')).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+  fireEvent.click(badge);                                   // a tap on a phone
+  expect(screen.getByRole('tooltip')).toBeInTheDocument();
+  fireEvent.pointerDown(document.body);                     // a tap elsewhere closes it
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+});
+
+test("each weekend's sessions, in the order they're run", () => {
+  const ids = (year: number, sprint: boolean) => weekendSessions(year, sprint).map((s) => s.id);
+  expect(ids(2026, false)).toEqual(['FP1', 'FP2', 'FP3', 'Q', 'R']);
+  expect(ids(2026, true)).toEqual(['FP1', 'SQ', 'S', 'Q', 'R']);
+  expect(ids(2023, true)).toEqual(['FP1', 'Q', 'SQ', 'S', 'R']);
+  expect(weekendSessions(2023, true)[2].label).toBe('Sprint Shootout');
+  expect(ids(2022, true)).toEqual(['FP1', 'Q', 'FP2', 'S', 'R']);
+});
+
+test('the session dropdown shows only the weekend\'s sessions: no sprint on a normal weekend', async () => {
+  api.getRaceSchedule.mockResolvedValue([
+    { round: 6, race_name: 'Monaco Grand Prix', circuit_name: 'Monaco', date: '2026-06-07', is_sprint: false } as any,
+    { round: 12, race_name: 'Dutch Grand Prix', circuit_name: 'Zandvoort', date: '2026-08-23', is_sprint: true } as any,
+  ]);
+  api.getRaceResults.mockResolvedValue([]);
+  api.getSessionPenalties.mockResolvedValue({ ...DATA, decisions: [], drivers: {}, grid: {} });
+  await act(async () => {
+    render(<MemoryRouter><RaceResults year={2026} initialGp="Monaco" /></MemoryRouter>);
+  });
+  const sessionSelect = () => screen.getByText('Session').parentElement!.querySelector('select') as HTMLSelectElement;
+  const options = () => Array.from(sessionSelect().options, (o) => o.text);
+
+  expect(options()).toEqual(['Practice 1', 'Practice 2', 'Practice 3', 'Qualifying', 'Race']);
+  expect(sessionSelect().value).toBe('R');
+
+  const gpSelect = screen.getByText('Grand Prix').parentElement!.querySelector('select') as HTMLSelectElement;
+  await act(async () => { fireEvent.change(gpSelect, { target: { value: 'Dutch' } }); });
+  expect(options()).toEqual(['Practice 1', 'Sprint Qualifying', 'Sprint', 'Qualifying', 'Race']);
+
+  await act(async () => { fireEvent.change(sessionSelect(), { target: { value: 'S' } }); });
+  await act(async () => { fireEvent.change(gpSelect, { target: { value: 'Monaco' } }); });
+  expect(sessionSelect().value).toBe('R');                  // no sprint there: back to the race
+  expect(api.getRaceResults).not.toHaveBeenCalledWith(2026, 'Monaco', 'S');
 });

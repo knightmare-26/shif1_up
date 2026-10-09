@@ -29,6 +29,13 @@ const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2000 + 1 }, (_, i) => C
 
 const TOP_N = 5;
 
+/** "84 ahead of George Russell" (the gap to second place), "won by 84 over …" once the season is done. */
+export const leadOver = (points: number, secondPoints: number, second: string, done: boolean): string => {
+  const gap = Math.round((points - secondPoints) * 10) / 10;
+  if (gap === 0) return `level with ${second}`;
+  return done ? `won by ${gap} over ${second}` : `${gap} ahead of ${second}`;
+};
+
 const Dashboard: React.FC = () => {
   // Tab and year live in the URL so refresh, back/forward and shared links all
   // land where the user was.
@@ -123,13 +130,13 @@ const Dashboard: React.FC = () => {
                     label={seasonDone ? "Drivers' Champion" : "Drivers' Leader"} loading={loading}
                     icon={<Users className="h-6 w-6" />} accent="text-turbo-teal"
                     value={leader?.driver_name ?? '—'}
-                    sub={leader ? `${leader.points} pts${runnerUp ? ` · +${leader.points - runnerUp.points} on P2` : ''}` : undefined}
+                    sub={leader ? `${leader.points} pts${runnerUp ? ` · ${leadOver(leader.points, runnerUp.points, runnerUp.driver_name, seasonDone)}` : ''}` : undefined}
                   />
                   <StatCard
                     label={seasonDone ? "Constructors' Champion" : "Constructors' Leader"} loading={loading}
                     icon={<Flag className="h-6 w-6" />} accent="text-pit-stop-yellow"
                     value={teamLeader?.constructor_name ?? '—'}
-                    sub={teamLeader ? `${teamLeader.points} pts` : undefined}
+                    sub={teamLeader ? `${teamLeader.points} pts${teams[1] ? ` · ${leadOver(teamLeader.points, teams[1].points, teams[1].constructor_name, seasonDone)}` : ''}` : undefined}
                   />
                   <StatCard
                     label="Season Progress" loading={loading} icon={<TrendingUp className="h-6 w-6" />}
