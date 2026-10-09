@@ -61,11 +61,15 @@ async def test_a_training_run_tells_the_app_only_when_it_succeeded(monkeypatch, 
     assert fired == ([1, 1] if success else [])
 
 
+VERSION = PredictionService.WALK_FORWARD_VERSION
+
+
 class CacheDb:
-    def __init__(self, cached_fingerprint):
+    def __init__(self, cached_fingerprint, version=VERSION):
         self.cached = cached_fingerprint and {
             "model_trained_at": cached_fingerprint,
-            "result": {"races": [{"race_id": "2026_Spanish"}], "data_fingerprint": cached_fingerprint},
+            "result": {"races": [{"race_id": "2026_Spanish"}], "data_fingerprint": cached_fingerprint,
+                       "method_version": version},
         }
         self.stored = []
 
@@ -80,12 +84,13 @@ class CacheDb:
 def app_state(monkeypatch):
     runs = []
 
-    async def fake_walk_forward(db, years_back=3):
-        runs.append(years_back)
-        return {"races": [{"race_id": "2026_Bahrain"}, {"race_id": "2026_Spanish"}], "data_fingerprint": "60:2026"}
+    async def fake_walk_forward(db, years_back=3, previous=None):
+        runs.append(previous)
+        return {"races": [{"race_id": "2026_Bahrain"}, {"race_id": "2026_Spanish"}], "data_fingerprint": "60:2026",
+                "method_version": VERSION}
 
-    def setup(cached_fingerprint, trained_fingerprint="60:2026"):
-        db = CacheDb(cached_fingerprint)
+    def setup(cached_fingerprint, trained_fingerprint="60:2026", version=VERSION):
+        db = CacheDb(cached_fingerprint, version)
         monkeypatch.setattr(main, "duckdb_service", db)
         monkeypatch.setattr(main, "_walkforward_job", None)
         monkeypatch.setattr(main.prediction_service, "_meta", {"data_fingerprint": trained_fingerprint})
@@ -101,7 +106,7 @@ async def test_a_backtest_missing_new_races_is_served_and_rebuilt_in_the_backgro
     assert first["updating"] is True and [r["race_id"] for r in first["races"]] == ["2026_Spanish"]
 
     await main._walkforward_job
-    assert runs == [3] and db.stored[0][:3] == ("_walkforward", "v1", "60:2026")
+    assert runs == [db.cached["result"]] and db.stored[0][:3] == ("_walkforward", "v1", "60:2026")   # reuses what it can
 
 
 async def test_an_up_to_date_backtest_is_left_alone(app_state):
@@ -125,4 +130,21 @@ async def test_training_on_new_results_rebuilds_once_however_often_it_is_asked(a
     await asyncio.gather(main._keep_backtest_current(), main._keep_backtest_current(), main.predict_backtest())
     await main._walkforward_job
 
-    assert runs == [3]
+    assert len(runs) == 1
+
+
+async def test_a_backtest_made_by_an_older_method_is_rebuilt_even_with_the_same_data(app_state):
+    db, runs = app_state("60:2026", version="1")
+
+    assert (await main.predict_backtest())["updating"] is True
+    await main._walkforward_job
+    assert len(runs) == 1
+
+
+async def test_the_fingerprint_changes_when_a_qualifying_or_sprint_is_stored():
+    """A weekend's qualifying moves it into Predicted vs Actual before its race, so it rebuilds."""
+    fp = PredictionService.data_fingerprint
+    quali = pd.DataFrame({"session_type": ["qualifying"] * 20, "year": [2026] * 20})
+    sprint = quali.assign(session_type="sprint")
+    assert fp(pd.concat([races(40), quali])) != fp(races(40))
+    assert fp(pd.concat([races(40), quali, sprint])) != fp(pd.concat([races(40), quali]))

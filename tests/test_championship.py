@@ -215,11 +215,24 @@ class StubPrediction:
     _df = pd.DataFrame({"x": range(5)})
 
 
+def fitted(kind, beta, gamma=0.0):
+    """A services/finish_odds.FinishOdds whose fit lands on (beta, gamma)."""
+    from services import finish_odds as fo
+    model = fo.FinishOdds(kind)
+    i = int(np.argmin(np.abs(fo.BETAS - beta)))
+    j = int(np.argmin(np.abs(model._gammas - gamma)))
+    model._ll[i, j] = 1.0
+    model.sessions = fo.MIN_HISTORY
+    return model
+
+
 def odds_service(ready=True):
     from services.championship_service import ChampionshipService
     svc = ChampionshipService(StubPrediction())
     if ready:
-        svc._held_out = {"fingerprint": ("t1", 5), "beta": 1.0, "beta_qualifying": 0.8}
+        svc._held_out = {"fingerprint": ("t1", 5), "beta": 1.0, "beta_qualifying": 0.8, "odds": {
+            "race_pre": fitted("race", 1.0), "race_post": fitted("race", 1.0, gamma=1.1),
+            "quali_pre": fitted("qualifying", 0.8), "quali_post": fitted("qualifying", 2.0)}}
     return svc
 
 
@@ -250,6 +263,26 @@ def test_qualifying_uses_its_own_calibration_and_has_no_points_chance():
     assert rows[0]["win_probability"] == pytest.approx(0.832, abs=0.02)
 
 
+def test_after_qualifying_the_race_order_and_chances_count_the_real_grid():
+    pred = {"success": True, "grid_source": "this weekend's qualifying", "predictions": [
+        {"predicted_rank": 1, "predicted_position": 1, "driver_id": "back", "score": 1.05, "predicted_grid": 15},
+        {"predicted_rank": 2, "predicted_position": 2, "driver_id": "pole", "score": 1.0, "predicted_grid": 1}]}
+    out = odds_service().with_finish_odds(pred, "race")
+
+    assert [r["driver_id"] for r in out["predictions"]] == ["pole", "back"]       # the grid outweighs a hair of score
+    assert [r["predicted_rank"] for r in out["predictions"]] == [1, 2]
+    assert out["predictions"][0]["win_probability"] > out["predictions"][1]["win_probability"]
+    assert out["odds_method"]["gamma"] > 0
+
+    before = odds_service().with_finish_odds({**pred, "grid_source": "predicted qualifying"}, "race")
+    assert [r["driver_id"] for r in before["predictions"]] == ["back", "pole"]   # no grid term before qualifying
+
+
+def test_qualifying_after_practice_uses_its_own_fit():
+    svc = odds_service()
+    assert svc.odds_model({"practice_used": True}, "qualifying").params["beta"] >         svc.odds_model({"practice_used": False}, "qualifying").params["beta"]
+
+
 def test_without_the_calibration_or_scores_the_prediction_goes_out_unchanged():
     assert odds_service(ready=False).with_finish_odds(prediction([1.0, 0.0]), "race")["odds_available"] is False
     unscored = {"success": True, "predictions": [{"predicted_rank": 1}]}
@@ -273,3 +306,39 @@ def test_a_driver_who_missed_the_latest_race_is_still_in_contention_on_the_maths
 
     assert proj["drivers"][1]["alive"]["hurt"] is True        # 18 + 75 still beats 50
     assert "hurt" not in proj["entrants"] and "sub" in proj["entrants"]
+
+
+# --- the title simulation's draw (Phase 4, #33) ------------------------------------------------
+
+def test_a_retired_car_goes_to_the_back():
+    from services.championship_service import sample_orders
+    pos = sample_orders(np.array([5.0, 0.0, -5.0]), 1.0, 2000, np.random.default_rng(0), retire=np.array([1.0, 0.0, 0.0]))
+    assert (pos[:, 0] == 2).all()                       # the favourite always retires, so always last
+
+
+def test_a_shared_car_swing_spreads_the_constructors_title():
+    from services.championship_service import simulate_season
+    entrants = ["a1", "a2", "b1", "b2"]
+    team_of = {"a1": "a", "a2": "a", "b1": "b", "b2": "b"}
+    table = {d: {"points": 0.0, "countback": [0] * 30} for d in entrants}
+    teams = {t: {"points": 0.0, "countback": [0] * 30} for t in ("a", "b")}
+    rounds = [(np.array([1.0, 0.9, 0.0, -0.1]), False)] * 6
+
+    def team_a_title(team_sd):
+        sims = simulate_season(table, teams, entrants, team_of, rounds, 1.0, 4000, np.random.default_rng(1),
+                               form_sd=0.25, team_form_sd=team_sd)
+        return sims["teams"]["a"]["title_probability"]
+
+    assert team_a_title(0.0) > team_a_title(1.5) > 0.5        # still the favourite, but less certain
+
+
+def test_the_race_factors_add_the_grids_own_effect_and_come_biggest_first():
+    pred = {"success": True, "grid_source": "this weekend's qualifying", "predictions": [
+        {"predicted_rank": 1, "driver_id": "a", "score": 1.0, "predicted_grid": 1, "factors": {"Team": 0.4, "Practice": 0.1}},
+        {"predicted_rank": 2, "driver_id": "b", "score": -1.0, "predicted_grid": 10, "factors": {"Team": -0.4, "Practice": -0.1}}]}
+    rows = {r["driver_id"]: r for r in odds_service().with_finish_odds(pred, "race")["predictions"]}
+
+    a = rows["a"]["factors"]
+    assert a["Starting grid"] > 0 > rows["b"]["factors"]["Starting grid"]       # pole helps, P10 doesn't
+    assert list(a) == sorted(a, key=lambda k: -abs(a[k]))                      # biggest first
+    assert a["Team"] == pytest.approx(1.0 * 0.4, abs=1e-3)                     # beta 1.0 x the model's effect

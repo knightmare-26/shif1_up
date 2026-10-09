@@ -10,7 +10,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import uvicorn
@@ -42,10 +42,13 @@ from services.auth_service import (
 )
 from services import ingest_service
 from services.prediction_service import PredictionService
-from services.championship_service import ChampionshipService
+from services.championship_service import TITLE_BACKTEST_VERSION, ChampionshipService
 from services.live_relay import LiveRelayManager
 from services.session_replay import ReplayUnavailable, SessionReplayService
 from services.entry_list import EntryListService
+from services.weekend_practice import check_again_in, load_weekend_practice
+from services.data_upkeep import DataUpkeep
+from services import preseason_testing
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
@@ -212,6 +215,74 @@ async def _results_refresh_loop() -> None:
         await asyncio.sleep(RESULTS_REFRESH_INTERVAL)
 
 
+# The data keeps itself up to date (with Supabase only, like the results refresh; DATA_UPKEEP=0
+# turns it off): every 20 min over a race weekend, else every 6 h,
+#  - each weekend's practice, sprint qualifying and qualifying, from OpenF1 as they finish
+#    (services/weekend_practice.py), so live predictions use them;
+#  - preseason testing, February to the first race (services/preseason_testing.py);
+#  - everything else that's missing or wrong — older gaps, a race the server slept through, P99
+#    placeholders, sprint qualifying in feed order, weather, the title race's track record — a small
+#    batch at a time (services/data_upkeep.py).
+# Anything that changed the results retrains the models (which rebuilds the backtest).
+DATA_UPKEEP = os.getenv("DATA_UPKEEP", "1") != "0"
+DATA_UPKEEP_FIRST_DELAY = 120
+
+
+def _last_teams() -> Dict[str, str]:
+    """Each driver's team in their latest race — for a session row whose team name doesn't match."""
+    df = prediction_service._df
+    if df is None or df.empty:
+        return {}
+    latest = df.dropna(subset=["constructor_id"]).sort_values(["year", "round"]).groupby("driver_id")["constructor_id"].last()
+    return latest.to_dict()
+
+
+async def _rebuild_title_backtest(finished: List[int]) -> bool:
+    """Recompute the title race's track record and store it (with the seasons it was asked to
+    cover, so data upkeep only asks again when another season finishes)."""
+    result = await championship_service.backtest(duckdb_service)
+    result["seasons_considered"] = finished
+    await duckdb_service.set_prediction_cache("_championship", "backtest", result.get("computed_at") or "", result)
+    logger.info("Championship backtest cached: seasons %s", [s["year"] for s in result.get("seasons", [])])
+    return bool(result.get("seasons"))
+
+
+data_upkeep = DataUpkeep(
+    ingest_race=lambda db, year, rnd, session: ingest_service.ingest_single_race(db, year, rnd, False, session=session),
+    load_weather=lambda year, gp, code: session_replays.load_weather(year, gp, code),
+    rebuild_title_backtest=_rebuild_title_backtest,
+    title_backtest_version=TITLE_BACKTEST_VERSION,
+)
+
+
+async def _data_upkeep_loop() -> None:
+    await asyncio.sleep(DATA_UPKEEP_FIRST_DELAY)
+    while True:
+        delay = 3600
+        try:
+            ready = duckdb_service is not None and (database_guardian is None or database_guardian.ready)
+            if ready and not ingest_service.status.get("running"):
+                await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
+                changed = [f"{s['race_id']} {s['session_type']}" for s in await load_weekend_practice(
+                    duckdb_service, entry_lists.client, prediction_service._constructor_map, _last_teams())]
+                races = await duckdb_service.get_races_by_year(datetime.now().year)
+                first_race = min((str(r.get("date"))[:10] for r in races if r.get("date")), default=None)
+                if await preseason_testing.refresh(duckdb_service, entry_lists.client, datetime.now().year, first_race):
+                    changed.append("preseason testing")
+                report = await data_upkeep.run(duckdb_service, entry_lists.client,
+                                               prediction_service._constructor_map, _last_teams())
+                logger.info("Data upkeep: %s", report.summary())
+                if changed or report.needs_retrain:
+                    logger.info("New data (%s); retraining", ", ".join(changed) or report.summary())
+                    await prediction_service.train(duckdb_service)
+                delay = check_again_in(races, date.today())
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Data upkeep failed: %s", exc, exc_info=True)
+        await asyncio.sleep(delay)
+
+
 async def _ping_database() -> bool:
     pool = getattr(duckdb_service, "pool", None)
     if pool is None:
@@ -231,6 +302,7 @@ async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
     warmup_task = None
     refresh_task = None
+    practice_task = None
     live_schedule_task = None
 
     logger.info("🚀 Starting Shif1 UP API...")
@@ -255,6 +327,8 @@ async def lifespan(app: FastAPI):
         await database_guardian.start()
         if RESULTS_REFRESH_DAYS > 0:
             refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
+        if DATA_UPKEEP:
+            practice_task = asyncio.create_task(_data_upkeep_loop(), name="data-upkeep")
     else:
         logger.info("ℹ️  No DATABASE_URL — using local DuckDB, auth endpoints disabled")
         duckdb_service = SimpleDuckDBService(DUCKDB_PATH)
@@ -284,7 +358,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("🛑 Shutting down...")
-    for task in (warmup_task, refresh_task, live_schedule_task):
+    for task in (warmup_task, refresh_task, practice_task, live_schedule_task):
         if task:
             task.cancel()
     await live_relays.stop_all()
@@ -1380,10 +1454,32 @@ async def predict_status():
     return prediction_service.training_status()
 
 
+# A weekend's predicted sessions, in the order they run.
+PREDICTED_SESSIONS = ("sprint", "qualifying", "race")
+COMPLETED_LOOKAHEAD_DAYS = 4     # a weekend's sessions run in the 3 days before its race
+
+
+async def _completed_sessions(year: int, rounds: List[int]) -> Dict[int, List[str]]:
+    """round -> the predicted sessions of that weekend already stored (they've moved to Predicted
+    vs Actual). Empty while the database is unavailable."""
+    if not rounds or duckdb_service is None:
+        return {}
+    try:
+        race_ids = {int(r["round"]): r["race_id"] for r in await duckdb_service.get_races_by_year(year)
+                    if r.get("round") is not None and r.get("race_id")}
+        return {rnd: [s for s in PREDICTED_SESSIONS if await duckdb_service.get_race_results(race_ids[rnd], s)]
+                for rnd in rounds if rnd in race_ids}
+    except Exception as exc:
+        logger.warning("predict_circuits: couldn't check finished sessions: %s", exc)
+        return {}
+
+
 @app.get("/predict/circuits")
 async def predict_circuits():
     """List races on the current season calendar that haven't happened yet —
-    predicting an already-run race isn't useful, so past rounds are excluded."""
+    predicting an already-run race isn't useful, so past rounds are excluded. A weekend under way
+    lists its finished sessions (`completed_sessions`): they're scored in Predicted vs Actual, and
+    the weekend drops out once its race is stored."""
     if not prediction_service._trained:
         await prediction_service.train(duckdb_service)
 
@@ -1399,14 +1495,18 @@ async def predict_circuits():
         logger.error("❌ predict_circuits: failed to load %s schedule: %s", year, exc)
         return []
 
-    today = datetime.utcnow().date().isoformat()
-    upcoming = sorted((r for r in schedule if r.date >= today), key=lambda r: r.round)
+    today = datetime.utcnow().date()
+    upcoming = sorted((r for r in schedule if r.date >= today.isoformat()), key=lambda r: r.round)
+    soon = (today + timedelta(days=COMPLETED_LOOKAHEAD_DAYS)).isoformat()
+    completed = await _completed_sessions(year, [r.round for r in upcoming if r.date <= soon])
     return [
         {
             "round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name,
             "date": r.date, "is_sprint": r.is_sprint,
+            "completed_sessions": completed.get(r.round, []),
         }
         for r in upcoming
+        if "race" not in completed.get(r.round, [])
     ]
 
 
@@ -1433,6 +1533,21 @@ def _with_odds(result: Dict[str, Any], kind: str) -> Dict[str, Any]:
     return championship_service.with_finish_odds(result, kind)
 
 
+async def _calendar_round(circuit: str) -> Optional[int]:
+    """The coming race at `circuit`'s round on this season's calendar (a model input; None: unknown,
+    and the round this circuit usually is is used)."""
+    try:
+        schedule = await fastf1_service.get_race_schedule(datetime.now().year)
+    except Exception as exc:
+        logger.info("calendar round for %s: %s", circuit, exc)
+        return None
+    today = datetime.utcnow().date().isoformat()
+    here = [r for r in schedule if r.circuit_name == circuit]
+    coming = [r for r in here if r.date >= today]
+    race = min(coming, key=lambda r: r.date) if coming else max(here, key=lambda r: r.date, default=None)
+    return race.round if race else None
+
+
 async def _weekend_field(circuit: str):
     """Who's entered for the weekend at `circuit` (None: not known yet — the last race's line-up
     is used). See services/entry_list.py."""
@@ -1449,7 +1564,8 @@ async def predict_qualifying(circuit: str):
     """Predict qualifying grid positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_qualifying(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "qualifying")
@@ -1465,7 +1581,8 @@ async def predict_race(circuit: str):
     """Predict race finishing positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_race(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_race(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
         return _with_odds(result, "race")
@@ -1481,10 +1598,11 @@ async def predict_sprint(circuit: str):
     """Predict sprint race finishing positions for all drivers at a given circuit."""
     try:
         field, source = await _weekend_field(circuit)
-        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source)
+        result = await prediction_service.predict_sprint(circuit, duckdb_service, field, source,
+                                                         round_no=await _calendar_round(circuit))
         if not result.get("success"):
             raise HTTPException(status_code=422, detail=result.get("error"))
-        return result
+        return _with_odds(result, "sprint")
     except HTTPException:
         raise
     except Exception as exc:
@@ -1504,7 +1622,10 @@ def _walkforward_running() -> bool:
 
 async def _refresh_walkforward() -> None:
     try:
-        result = await prediction_service.walk_forward_backtest(duckdb_service, years_back=3)
+        # Units (a season, or a round of the latest one) whose inputs haven't changed are reused.
+        previous = await duckdb_service.get_prediction_cache("_walkforward", "v1")
+        result = await prediction_service.walk_forward_backtest(
+            duckdb_service, years_back=3, previous=(previous or {}).get("result"))
         if result.get("races"):
             await duckdb_service.set_prediction_cache(
                 "_walkforward", "v1", result.get("data_fingerprint", ""), result
@@ -1524,12 +1645,16 @@ def _start_walkforward_refresh() -> None:
 
 
 def _walkforward_stale(cached: Optional[Dict[str, Any]]) -> bool:
-    """The cached backtest misses race results the current models were trained on. Unknown
-    (models not trained yet, or loaded from an older save) counts as current."""
+    """The cached backtest was made by an older method, or misses race results the current models
+    were trained on. Unknown data (models not trained yet, or loaded from an older save) counts
+    as current."""
+    result = (cached or {}).get("result", {})
+    if result.get("races") and result.get("method_version") != prediction_service.WALK_FORWARD_VERSION:
+        return True
     current = prediction_service._meta.get("data_fingerprint")
     if not current:
         return False
-    return (cached or {}).get("result", {}).get("data_fingerprint") != current
+    return result.get("data_fingerprint") != current
 
 
 async def _keep_backtest_current() -> None:

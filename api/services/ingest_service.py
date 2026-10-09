@@ -158,8 +158,11 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
     is_practice = session in PRACTICE_SESSIONS
     loop = asyncio.get_event_loop()
 
+    # 2023's sprint qualifying was the "Sprint Shootout", which FastF1 only knows as "SS".
+    fastf1_code = "SS" if session == "SQ" and year == 2023 else session
+
     def _load():
-        s = fastf1.get_session(year, event, session)
+        s = fastf1.get_session(year, event, fastf1_code)
         # Practice needs lap data regardless of include_laps — that's the
         # only way to rank drivers when there's no classified session.results.
         s.load(laps=include_laps or is_practice, telemetry=False, weather=False, messages=False)
@@ -205,12 +208,20 @@ async def ingest_single_race(db, year: int, event: Union[int, str], include_laps
         results = _extract_practice_results(fastf1_session)
         if not results:
             return {"race_id": race_id, "stored": False, "reason": "no lap data available"}
+    elif session == "SQ":
+        # FastF1 has no sprint-qualifying classification (its positions and times are all empty,
+        # and the feed order isn't the result): take it from OpenF1 (services/openf1_results.py).
+        from services.openf1_results import openf1_session_rows
+        results = await openf1_session_rows(db, year, gp, "SQ", race_id)
+        if not results:
+            return {"race_id": race_id, "stored": False, "reason": "no sprint qualifying result on OpenF1"}
     else:
         results = _extract_classified_results(fastf1_session, session)
 
     await _fix_borrowed_names(db, drivers_seen)
     await db.store_drivers(list(drivers_seen.values()))
-    await db.store_constructors(list(constructors_seen.values()))
+    # FastF1 leaves TeamId empty in some sessions (sprint qualifying): don't store a team called "".
+    await db.store_constructors([c for k, c in constructors_seen.items() if k and k not in ("nan", "none")])
     await db.store_race_results(race_id, results, session_type=session_type)
 
     laps_stored = 0

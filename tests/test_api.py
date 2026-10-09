@@ -1,246 +1,138 @@
-"""
-Unit tests for F1 API endpoints
-"""
+"""The core read endpoints, end to end: the real app with its start-up, against the throwaway local DuckDB
+and in-memory Redis set up in conftest.py. Data is stored through the app's own database service rather
+than mocked, under ids no other test uses (the test database is shared by the whole run).
 
+(This file used to test the first version of the API — a `DuckDBService` that no longer exists — so it
+couldn't even be imported.)
+"""
 import pytest
-import asyncio
-import json
-from unittest.mock import Mock, patch, AsyncMock
 from fastapi.testclient import TestClient
-import sys
-import os
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
+import api.main as main
 from api.main import app
-from api.services.duckdb_service import DuckDBService
-from api.services.redis_service import RedisService
 
-class TestAPI:
-    """Test class for API endpoints"""
-    
-    @pytest.fixture
-    def client(self):
-        """Create test client"""
-        return TestClient(app)
-    
-    @pytest.fixture
-    def mock_duckdb_service(self):
-        """Mock DuckDB service"""
-        mock = Mock(spec=DuckDBService)
-        mock.initialize = AsyncMock()
-        mock.cleanup = AsyncMock()
-        return mock
-    
-    @pytest.fixture
-    def mock_redis_service(self):
-        """Mock Redis service"""
-        mock = Mock(spec=RedisService)
-        mock.initialize = AsyncMock()
-        mock.cleanup = AsyncMock()
-        return mock
-    
-    def test_health_endpoint(self, client):
-        """Test health check endpoint"""
-        response = client.get("/health")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data["status"] == "ok"
-        assert "timestamp" in data
-        assert "service" in data
-    
-    @patch('api.main.duckdb_service')
-    def test_get_drivers_no_year(self, mock_duckdb, client):
-        """Test get drivers endpoint without year parameter"""
-        # Mock DuckDB service
-        mock_duckdb.get_drivers_by_year.return_value = []
-        mock_duckdb.get_all_drivers.return_value = [
-            {
-                "driver_id": "verstappen",
-                "full_name": "Max Verstappen",
-                "nationality": "Dutch",
-                "number": 1
-            }
-        ]
-        
-        response = client.get("/drivers")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["driver_id"] == "verstappen"
-        assert data[0]["full_name"] == "Max Verstappen"
-    
-    @patch('api.main.duckdb_service')
-    def test_get_drivers_with_year(self, mock_duckdb, client):
-        """Test get drivers endpoint with year parameter"""
-        # Mock DuckDB service
-        mock_duckdb.get_drivers_by_year.return_value = [
-            {
-                "driver_id": "verstappen",
-                "full_name": "Max Verstappen",
-                "nationality": "Dutch",
-                "number": 1
-            }
-        ]
-        
-        response = client.get("/drivers?year=2024")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["driver_id"] == "verstappen"
-    
-    @patch('api.main.duckdb_service')
-    def test_get_races_with_year(self, mock_duckdb, client):
-        """Test get races endpoint with year parameter"""
-        # Mock DuckDB service
-        mock_duckdb.get_races_by_year.return_value = [
-            {
-                "race_id": "2024_Bahrain",
-                "year": 2024,
-                "round": 1,
-                "gp": "Bahrain",
-                "date": "2024-03-02",
-                "circuit_name": "Bahrain International Circuit",
-                "country": "Bahrain"
-            }
-        ]
-        
-        response = client.get("/races?year=2024")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["race_id"] == "2024_Bahrain"
-        assert data[0]["year"] == 2024
-    
-    @patch('api.main.duckdb_service')
-    def test_get_race_results(self, mock_duckdb, client):
-        """Test get race results endpoint"""
-        # Mock DuckDB service
-        mock_duckdb.get_race_results.return_value = [
-            {
-                "position": 1,
-                "driver_name": "Max Verstappen",
-                "constructor_name": "Red Bull Racing",
-                "points": 25,
-                "time": "1:31:44.742",
-                "fastest_lap": True,
-                "fastest_lap_time": "1:33.660",
-                "status": "Finished"
-            }
-        ]
-        
-        response = client.get("/race/2024_Bahrain/results")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["position"] == 1
-        assert data[0]["driver_name"] == "Max Verstappen"
-    
-    @patch('api.main.duckdb_service')
-    def test_get_race_laps(self, mock_duckdb, client):
-        """Test get race laps endpoint"""
-        # Mock DuckDB service
-        mock_duckdb.get_race_laps.return_value = [
-            {
-                "lap_number": 1,
-                "lap_time_ms": 93660,
-                "sector1_ms": 31220,
-                "sector2_ms": 31220,
-                "sector3_ms": 31220,
-                "tyre": "SOFT",
-                "pit": False,
-                "position": 1,
-                "driver_name": "Max Verstappen"
-            }
-        ]
-        
-        response = client.get("/race/2024_Bahrain/laps")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["lap_number"] == 1
-        assert data[0]["driver_name"] == "Max Verstappen"
-    
-    @patch('api.main.duckdb_service')
-    def test_get_race_laps_with_driver(self, mock_duckdb, client):
-        """Test get race laps endpoint with driver filter"""
-        # Mock DuckDB service
-        mock_duckdb.get_race_laps.return_value = [
-            {
-                "lap_number": 1,
-                "lap_time_ms": 93660,
-                "sector1_ms": 31220,
-                "sector2_ms": 31220,
-                "sector3_ms": 31220,
-                "tyre": "SOFT",
-                "pit": False,
-                "position": 1,
-                "driver_name": "Max Verstappen"
-            }
-        ]
-        
-        response = client.get("/race/2024_Bahrain/laps?driver=VER")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert len(data) == 1
-        assert data[0]["driver_name"] == "Max Verstappen"
-    
-    @patch('api.main.redis_service')
-    def test_get_live_state(self, mock_redis, client):
-        """Test get live state endpoint"""
-        # Mock Redis service
-        mock_redis.get_live_state.return_value = {
-            "race_id": "2024_Bahrain",
-            "timestamp": "2024-03-02T15:30:00Z",
-            "session_status": "live",
-            "current_lap": 15,
-            "leader": "VER",
-            "positions": [
-                {
-                    "driver": "VER",
-                    "position": 1,
-                    "lap_number": 15,
-                    "tyre": "SOFT",
-                    "gap": None,
-                    "last_lap_time": "1:33.660"
-                }
-            ]
-        }
-        
-        response = client.get("/live/2024_Bahrain/state")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert data["race_id"] == "2024_Bahrain"
-        assert data["session_status"] == "live"
-        assert data["current_lap"] == 15
-    
-    @patch('api.main.redis_service')
-    def test_get_live_state_not_found(self, mock_redis, client):
-        """Test get live state endpoint when no data available"""
-        # Mock Redis service
-        mock_redis.get_live_state.return_value = None
-        
-        response = client.get("/live/2024_Bahrain/state")
-        assert response.status_code == 200
-        
-        data = response.json()
-        assert "error" in data
-        assert "No live data available" in data["error"]
-    
-    def test_legacy_driver_standings_endpoint(self, client):
-        """Test legacy driver standings endpoint for backward compatibility"""
-        response = client.get("/api/drivers")
-        # This should work even if it returns empty data
-        assert response.status_code == 200
+RACE = "2032_Testland"
 
-if __name__ == "__main__":
-    pytest.main([__file__])
+
+def result(position, driver, team, points, status="Finished"):
+    return {"position": position, "driver_id": driver, "constructor_id": team, "grid": position + 1,
+            "points": points, "time": "0 days 01:31:44.742000" if position == 1 else "", "status": status,
+            "laps_completed": 57}
+
+
+def lap(driver, number, position):
+    return {"driver_id": driver, "lap_number": number, "lap_time_ms": 93660 + number, "sector1_ms": 31000,
+            "sector2_ms": 31000, "sector3_ms": 31660, "tyre": "SOFT", "pit": False, "position": position}
+
+
+@pytest.fixture(scope="module")
+def client():
+    with TestClient(app) as c:
+        db = main.duckdb_service
+        seed = [
+            (db.store_drivers, [[{"driver_id": "zza", "full_name": "Zed Alpha", "nationality": "Dutch", "number": 1},
+                                 {"driver_id": "zzb", "full_name": "Zed Beta", "nationality": "British", "number": 4}]]),
+            (db.store_races, [[{"race_id": RACE, "year": 2032, "round": 1, "gp": "Testland",
+                                "date": "2032-03-07", "circuit_name": "Testland Ring", "country": "Testland"}]]),
+            (db.store_race_results, [RACE, [result(1, "zza", "red_bull", 25.0),
+                                            result(2, "zzb", "mclaren", 18.0, status="Retired")]]),
+            (db.store_laps, [RACE, [lap("zza", 1, 1), lap("zzb", 1, 2), lap("zza", 2, 1), lap("zzb", 2, 2)]]),
+        ]
+        for fn, args in seed:
+            assert c.portal.call(fn, *args)
+        yield c
+
+
+def test_health_reports_the_app_and_its_stores(client):
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["service"] == "Shif1 UP API" and "timestamp" in body
+    assert body["checks"]["duckdb"]["status"] == "ok"
+    # The in-memory Redis stand-in is a working fallback, so at worst the app is "degraded", never down.
+    assert body["status"] in ("ok", "degraded")
+    assert "database" not in body["checks"]          # only reported when running against Supabase
+
+
+def test_drivers_who_raced_in_a_season(client):
+    body = client.get("/drivers?year=2032").json()
+
+    assert [d["driver_id"] for d in body] == ["zza", "zzb"]
+    assert body[0] == {"driver_id": "zza", "full_name": "Zed Alpha", "nationality": "Dutch", "number": 1}
+
+
+def test_all_drivers(client):
+    ids = {d["driver_id"] for d in client.get("/drivers").json()}
+    assert {"zza", "zzb"} <= ids
+
+
+def test_a_seasons_races(client):
+    body = client.get("/races?year=2032").json()
+
+    assert len(body) == 1
+    assert {k: body[0][k] for k in ("race_id", "year", "round", "gp", "circuit_name")} == {
+        "race_id": RACE, "year": 2032, "round": 1, "gp": "Testland", "circuit_name": "Testland Ring"}
+
+
+def test_race_results_come_back_in_the_shape_the_results_table_uses(client):
+    body = client.get(f"/race/{RACE}/results").json()
+
+    assert [r["Abbreviation"] for r in body] == ["ZZA", "ZZB"]
+    winner, retired = body
+    assert (winner["FullName"], winner["Position"], winner["ClassifiedPosition"], winner["GridPosition"]) == \
+        ("Zed Alpha", "1", "1", "2")
+    assert winner["Time"] == pytest.approx(5504.742)            # 1:31:44.742
+    assert winner["TeamColor"] == main.TEAM_COLORS["red_bull"] and winner["Points"] == "25.0"
+    assert (retired["Status"], retired["ClassifiedPosition"]) == ("Retired", "RET")
+
+
+def test_a_session_that_isnt_stored_or_available_is_a_404(client, monkeypatch):
+    async def no_such_session(*args, **kwargs):
+        raise ValueError("no sprint at this weekend")            # what FastF1 says for a missing session
+    monkeypatch.setattr(main.ingest_service, "ingest_single_race", no_such_session)
+
+    response = client.get(f"/race/{RACE}/results?session=S")
+
+    assert response.status_code == 404
+    assert "sprint" in response.json()["detail"]
+
+
+def test_race_laps_all_drivers_and_one(client):
+    every = client.get(f"/race/{RACE}/laps").json()
+    assert [(l["lap_number"], l["driver_name"]) for l in every] == [
+        (1, "Zed Alpha"), (1, "Zed Beta"), (2, "Zed Alpha"), (2, "Zed Beta")]
+
+    one = client.get(f"/race/{RACE}/laps?driver=zza").json()
+    assert [l["lap_number"] for l in one] == [1, 2] and {l["driver_name"] for l in one} == {"Zed Alpha"}
+    assert one[0]["lap_time_ms"] == 93661 and one[0]["tyre"] == "SOFT"
+
+
+def test_a_malformed_race_id_is_a_400(client):
+    response = client.get("/race/Testland/laps")
+    assert response.status_code == 400
+
+
+def test_live_state_flat_when_there_is_some_and_a_placeholder_when_not(client):
+    empty = client.get("/live/2032_Nowhere/state").json()
+    assert (empty["race_id"], empty["session_status"]) == ("2032_Nowhere", "no_data")
+
+    state = {"race_id": "2032_Testland", "session_status": "live", "current_lap": 15, "leader": "ZZA",
+             "positions": [{"driver": "ZZA", "position": 1}]}
+    assert client.portal.call(main.redis_service.set_live_state, "2032_Testland", state)
+
+    body = client.get("/live/2032_Testland/state").json()
+    assert (body["session_status"], body["current_lap"], body["leader"]) == ("live", 15, "ZZA")
+    assert "state" not in body                                    # the Redis envelope is flattened
+
+
+def test_legacy_driver_standings(client, monkeypatch):
+    async def standings(year, round=None):
+        return [{"position": 1, "driver_id": "zza", "driver_name": "Zed Alpha", "constructor": "Red Bull",
+                 "points": 25.0, "wins": 1, "podiums": 1, "nationality": "Dutch", "number": 1, "code": "ZZA"}]
+    monkeypatch.setattr(main.fastf1_service, "get_driver_standings", standings)
+
+    response = client.get("/api/drivers?year=2024&use_cache=false")
+
+    assert response.status_code == 200
+    assert [(d["driver_id"], d["points"], d["code"]) for d in response.json()] == [("zza", 25.0, "ZZA")]

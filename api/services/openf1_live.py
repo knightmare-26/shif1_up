@@ -134,10 +134,22 @@ class OpenF1Client:
         raise RuntimeError(f"OpenF1 kept rate-limiting {endpoint}")
 
 
-async def find_session(client: OpenF1Client, year: int, gp: str, code: str) -> Optional[Dict[str, Any]]:
+async def find_session(client: OpenF1Client, year: int, gp: str, code: str,
+                       memo: Optional[Dict[Any, Any]] = None) -> Optional[Dict[str, Any]]:
     """The OpenF1 session for one of our sessions. `gp` is the schedule's race name ("Spanish
-    Grand Prix", or the id form "Spanish_Grand_Prix"); OpenF1 uses the same meeting names."""
-    meetings = await client.get("meetings", year=year)
+    Grand Prix", or the id form "Spanish_Grand_Prix"); OpenF1 uses the same meeting names.
+    `memo` (any dict) keeps meeting and session lists between calls, for looking up many."""
+    async def cached(key, endpoint, **filters):
+        if memo is None:
+            return await client.get(endpoint, **filters)
+        if key not in memo:
+            memo[key] = await client.get(endpoint, **filters)
+        return memo[key]
+
+    meetings = await cached(("meetings", year), "meetings", year=year)
+    # A cancelled meeting stays listed: 2026's Bahrain GP was called off in April and a "Bahrain
+    # Grand Prix" held at Kuala Lumpur in October — the name alone found the cancelled one.
+    meetings = [m for m in meetings if not m.get("is_cancelled")] or meetings
     wanted = _norm(gp)
     meeting = next((m for m in meetings if _norm(m.get("meeting_name", "")) == wanted), None)
     if meeting is None:
@@ -145,7 +157,7 @@ async def find_session(client: OpenF1Client, year: int, gp: str, code: str) -> O
         meeting = next((m for m in meetings if token and token in _norm(m.get("meeting_name", ""))), None)
     if meeting is None:
         return None
-    sessions = await client.get("sessions", meeting_key=meeting["meeting_key"])
+    sessions = await cached(("sessions", meeting["meeting_key"]), "sessions", meeting_key=meeting["meeting_key"])
     names = SESSION_NAMES.get(code, ())
     session = next((s for s in sessions if s.get("session_name") in names), None)
     return {**session, "meeting_name": meeting.get("meeting_name")} if session else None
