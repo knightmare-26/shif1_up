@@ -8,8 +8,9 @@ import {
 } from '../services/backendApi';
 import {
   Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice,
-  PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tr,
+  PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tooltip, Tr,
 } from './ui';
+import { PenaltyTooltip } from './Penalties';
 import { formatChance } from '../utils/probability';
 
 /** One session at a time, chosen from a dropdown (?session=, Race by default) on both the Upcoming
@@ -274,13 +275,20 @@ const StartingGrid: React.FC<{ d: BacktestDriverRow; session: PredictedSession }
   const qualified = session === 'sprint' ? d.actual_sq : d.actual_quali;
   if (grid == null) return <>—</>;
   if (grid === 0) {
-    return <span title={qualified ? `Qualified P${qualified}, started from the pit lane` : 'Started from the pit lane'}>Pit lane</span>;
+    return (
+      <Tooltip label="Started from the pit lane" content={<PenaltyTooltip heading="Started from the pit lane"
+        lines={qualified ? [`Qualified P${qualified}`] : []} />}>
+        Pit lane
+      </Tooltip>
+    );
   }
   if (qualified == null || grid <= qualified) return <>P{grid}</>;
   return (
-    <span title={`Qualified P${qualified}, started P${grid}: a grid penalty`} className="cursor-help">
-      P{grid} <span className="text-xs text-yellow-400">↓{grid - qualified}</span>
-    </span>
+    <Tooltip label={`Started P${grid}, ${grid - qualified} places behind where they qualified`}
+      content={<PenaltyTooltip heading="Grid penalty" lines={[`Qualified P${qualified}, started P${grid}: ${grid - qualified} places back`]}
+        note="Grid penalties (new engine parts, or carried over from an earlier race) are announced in FIA documents." />}>
+      <span>P{grid} <span className="text-xs text-yellow-400">↓{grid - qualified}</span></span>
+    </Tooltip>
   );
 };
 

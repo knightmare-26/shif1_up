@@ -763,7 +763,37 @@ def _parse_timedelta_seconds(value: str) -> float:
     return total
 
 
-def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
+# A race (sprint) finisher's status: "Finished", "+1 Lap", "Lapped" (FastF1 2025+).
+_FINISHED = ("finished", "+", "lapped")
+
+
+def _classified_label(position: Any, status: str, session_type: str) -> str:
+    """What the results table shows in the position badge. A race or sprint: the position for a
+    finisher (lapped too), else why not — RET, DSQ, DNS, WD, NC. Qualifying and practice are
+    classified by lap time (they have no finishing status; the stored status is empty, or "DNF"
+    for a session cut short), so the position, unless disqualified or never started."""
+    s = (status or "").strip().lower()
+    placed = str(int(float(position))) if position not in (None, "") else ""
+    if session_type in ("race", "sprint"):
+        if not s or s.startswith(_FINISHED):
+            return placed or "NC"
+        if "disqualif" in s or s == "dsq":
+            return "DSQ"
+        if "did not start" in s or s == "dns":
+            return "DNS"
+        if "withdr" in s:
+            return "WD"
+        if "not classified" in s:
+            return "NC"
+        return "RET"                       # retired: accident, collision, power unit, ...
+    if "disqualif" in s or s == "dsq":
+        return "DSQ"
+    if "did not start" in s or s == "dns":
+        return "DNS"
+    return placed or "NC"
+
+
+def _normalize_db_results(rows: List[Dict], session_type: str = "race") -> List[Dict]:
     """DB rows are a reduced snake_case shape; the frontend table expects the
     same PascalCase fields FastF1's session.results DataFrame provides. This
     conforms DB-sourced rows to that shape so both data sources render the
@@ -776,8 +806,6 @@ def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
         status = row.get("status") or ""
         position = row.get("position")
         grid = row.get("grid")
-        unclassified_terms = ("retired", "did not finish", "disqualified", "did not start", "withdrawn")
-        is_unclassified = any(term in status.lower() for term in unclassified_terms)
         normalized.append({
             "DriverNumber": str(row.get("driver_number") or ""),
             "BroadcastName": "",
@@ -792,7 +820,7 @@ def _normalize_db_results(rows: List[Dict]) -> List[Dict]:
             "HeadshotUrl": DRIVER_HEADSHOTS.get(driver_id, ""),
             "CountryCode": row.get("country_code") or "",
             "Position": str(position) if position is not None else "",
-            "ClassifiedPosition": str(position) if "finish" in status.lower() else (status[:3].upper() or "NC"),
+            "ClassifiedPosition": _classified_label(position, status, session_type),
             "GridPosition": str(grid) if grid is not None else "",
             "Time": _parse_timedelta_seconds(row.get("time") or ""),
             "Status": status,
@@ -826,7 +854,7 @@ async def get_race_results(race_id: str, session: str = "R"):
             if ingested.get("stored"):
                 results = await duckdb_service.get_race_results(race_id, session_type=session_type)
         if results:
-            return _normalize_db_results(results)
+            return _normalize_db_results(results, session_type)
         raise HTTPException(status_code=404, detail=f"No {session_type} results found for {race_id}")
     except HTTPException:
         raise

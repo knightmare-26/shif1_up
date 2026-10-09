@@ -142,6 +142,9 @@ test('the starting grid is flagged when a driver started behind where they quali
     { driver_id: 'col', driver_name: 'Franco Colapinto', predicted_grid: 15, actual_quali: 15, actual_grid: 0, predicted_position: 18, actual_position: 16 },
   ] }] });
 
-  expect(screen.getByTitle('Qualified P3, started P8: a grid penalty')).toHaveTextContent('P8 ↓5');
-  expect(screen.getByTitle('Qualified P15, started from the pit lane')).toHaveTextContent('Pit lane');
+  const marker = screen.getByRole('button', { name: 'Started P8, 5 places behind where they qualified' });
+  expect(marker).toHaveTextContent('P8 ↓5');
+  fireEvent.mouseEnter(marker);
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Qualified P3, started P8: 5 places back');
+  expect(screen.getByRole('button', { name: 'Started from the pit lane' })).toHaveTextContent('Pit lane');
 });

@@ -37,6 +37,12 @@ def client():
             (db.store_race_results, [RACE, [result(1, "zza", "red_bull", 25.0),
                                             result(2, "zzb", "mclaren", 18.0, status="Retired")]]),
             (db.store_laps, [RACE, [lap("zza", 1, 1), lap("zzb", 1, 2), lap("zza", 2, 1), lap("zzb", 2, 2)]]),
+            # Qualifying has no finishing status (stored empty, or "DNF" when a session was cut short).
+            (db.store_race_results, [RACE, [{**result(1, "zzb", "mclaren", 0.0), "status": ""},
+                                            {**result(2, "zza", "red_bull", 0.0), "status": "DNF"}], "qualifying"]),
+            (db.store_race_results, ["2036_Lapland", [result(1, "zza", "red_bull", 25.0),
+                                                      result(2, "zzb", "mclaren", 18.0, status="Lapped")]]),
+            (db.store_races, [[{"race_id": "2036_Lapland", "year": 2036, "round": 1, "gp": "Lapland"}]]),
         ]
         for fn, args in seed:
             assert c.portal.call(fn, *args)
@@ -136,3 +142,25 @@ def test_legacy_driver_standings(client, monkeypatch):
 
     assert response.status_code == 200
     assert [(d["driver_id"], d["points"], d["code"]) for d in response.json()] == [("zza", 25.0, "ZZA")]
+
+
+def test_qualifying_shows_positions_not_nc(client):
+    """Qualifying and practice are classified by lap time: no finishing status, still a position."""
+    body = client.get(f"/race/{RACE}/results?session=Q").json()
+    assert [(r["Abbreviation"], r["ClassifiedPosition"]) for r in body] == [("ZZB", "1"), ("ZZA", "2")]
+
+
+def test_a_lapped_finisher_keeps_their_position(client):
+    body = client.get("/race/2036_Lapland/results").json()
+    assert [(r["Abbreviation"], r["ClassifiedPosition"]) for r in body] == [("ZZA", "1"), ("ZZB", "2")]
+
+
+@pytest.mark.parametrize("status,session,label", [
+    ("Finished", "race", "7"), ("+1 Lap", "race", "7"), ("Lapped", "sprint", "7"), ("", "race", "7"),
+    ("Retired", "race", "RET"), ("Collision", "race", "RET"), ("Disqualified", "race", "DSQ"),
+    ("Did not start", "race", "DNS"), ("Withdrew", "race", "WD"), ("Not classified", "race", "NC"),
+    ("", "qualifying", "7"), ("DNF", "sprint_qualifying", "7"), ("DSQ", "qualifying", "DSQ"),
+    ("DNS", "qualifying", "DNS"), ("", "fp1", "7"),
+])
+def test_position_labels(status, session, label):
+    assert main._classified_label(7, status, session) == label

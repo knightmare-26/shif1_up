@@ -6,7 +6,8 @@
     "country": "Bahrain",
     "location": "Sakhir",
     "date": "2024-03-02",
-    "time": "15:00:00Z"
+    "time": "15:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 2,
@@ -15,7 +16,8 @@
     "country": "Saudi Arabia",
     "location": "Jeddah",
     "date": "2024-03-09",
-    "time": "17:00:00Z"
+    "time": "17:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 3,
@@ -24,7 +26,8 @@
     "country": "Australia",
     "location": "Melbourne",
     "date": "2024-03-24",
-    "time": "04:00:00Z"
+    "time": "04:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 4,
@@ -33,7 +36,8 @@
     "country": "Japan",
     "location": "Suzuka",
     "date": "2024-04-07",
-    "time": "05:00:00Z"
+    "time": "05:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 5,
@@ -42,7 +46,8 @@
     "country": "China",
     "location": "Shanghai",
     "date": "2024-04-21",
-    "time": "07:00:00Z"
+    "time": "07:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 6,
@@ -51,7 +56,8 @@
     "country": "USA",
     "location": "Miami",
     "date": "2024-05-05",
-    "time": "20:00:00Z"
+    "time": "20:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 7,
@@ -60,7 +66,8 @@
     "country": "Italy",
     "location": "Imola",
     "date": "2024-05-19",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 8,
@@ -69,7 +76,8 @@
     "country": "Monaco",
     "location": "Monte Carlo",
     "date": "2024-05-26",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 9,
@@ -78,7 +86,8 @@
     "country": "Canada",
     "location": "Montreal",
     "date": "2024-06-09",
-    "time": "18:00:00Z"
+    "time": "18:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 10,
@@ -87,7 +96,8 @@
     "country": "Spain",
     "location": "Barcelona",
     "date": "2024-06-23",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 11,
@@ -96,7 +106,8 @@
     "country": "Austria",
     "location": "Spielberg",
     "date": "2024-06-30",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 12,
@@ -105,7 +116,8 @@
     "country": "UK",
     "location": "Silverstone",
     "date": "2024-07-07",
-    "time": "14:00:00Z"
+    "time": "14:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 13,
@@ -114,7 +126,8 @@
     "country": "Hungary",
     "location": "Budapest",
     "date": "2024-07-21",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 14,
@@ -123,7 +136,8 @@
     "country": "Belgium",
     "location": "Spa",
     "date": "2024-07-28",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 15,
@@ -132,7 +146,8 @@
     "country": "Netherlands",
     "location": "Zandvoort",
     "date": "2024-08-25",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 16,
@@ -141,7 +156,8 @@
     "country": "Italy",
     "location": "Monza",
     "date": "2024-09-01",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 17,
@@ -150,7 +166,8 @@
     "country": "Azerbaijan",
     "location": "Baku",
     "date": "2024-09-15",
-    "time": "11:00:00Z"
+    "time": "11:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 18,
@@ -159,7 +176,8 @@
     "country": "Singapore",
     "location": "Marina Bay",
     "date": "2024-09-22",
-    "time": "12:00:00Z"
+    "time": "12:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 19,
@@ -168,7 +186,8 @@
     "country": "USA",
     "location": "Austin",
     "date": "2024-10-20",
-    "time": "19:00:00Z"
+    "time": "19:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 20,
@@ -177,7 +196,8 @@
     "country": "Mexico",
     "location": "Mexico City",
     "date": "2024-10-27",
-    "time": "20:00:00Z"
+    "time": "20:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 21,
@@ -186,7 +206,8 @@
     "country": "Brazil",
     "location": "S\u00e3o Paulo",
     "date": "2024-11-03",
-    "time": "17:00:00Z"
+    "time": "17:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 22,
@@ -195,7 +216,8 @@
     "country": "USA",
     "location": "Las Vegas",
     "date": "2024-11-23",
-    "time": "06:00:00Z"
+    "time": "06:00:00Z",
+    "is_sprint": false
   },
   {
     "round": 23,
@@ -204,7 +226,8 @@
     "country": "Qatar",
     "location": "Lusail",
     "date": "2024-12-01",
-    "time": "16:00:00Z"
+    "time": "16:00:00Z",
+    "is_sprint": true
   },
   {
     "round": 24,
@@ -213,6 +236,7 @@
     "country": "UAE",
     "location": "Abu Dhabi",
     "date": "2024-12-08",
-    "time": "13:00:00Z"
+    "time": "13:00:00Z",
+    "is_sprint": false
   }
 ]

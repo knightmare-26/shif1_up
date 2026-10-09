@@ -116,6 +116,8 @@ async def fetch_schedule(session, year: int) -> list:
             "location":      location.get("locality", ""),
             "date":          r.get("date", ""),
             "time":          r.get("time", ""),
+            # Jolpica lists a weekend's sessions; a sprint weekend has a "Sprint" one (2021 on).
+            "is_sprint":     "Sprint" in r,
         })
     return races
 

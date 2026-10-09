@@ -5,5 +5,6 @@ export * from './Fields';
 export * from './States';
 export * from './Table';
 export * from './Pill';
+export * from './Tooltip';
 export { teamColor } from './teamColors';
 export * from './Logo';
