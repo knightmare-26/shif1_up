@@ -7,6 +7,8 @@ session is live, when OpenF1 shuts free access to everything, past sessions incl
 - **Weather** is kept in the database once fetched (prediction_cache, circuit_name "_weather";
   scripts/backfill_weather.py preloads every session), and served from there — the panel works
   during a live session too.
+- **Penalties** (the stewards' race-control messages, services/penalties.py) are kept the same way
+  (circuit_name "_penalties"), stored even when a session had none so they're fetched only once.
 - **Replays** need the whole session (laps, stints, pit stops, positions, gaps, race control,
   weather — a race's gap data alone is ~27k rows), so they're loaded when someone presses play and
   kept in memory only. During a live session they're unavailable (`OpenF1Locked`).
@@ -30,6 +32,7 @@ FIRST_OPENF1_SEASON = 2023
 MAX_FEEDS = 4                   # whole sessions kept in memory
 REPLAY_TAIL_SECONDS = 10 * 60   # keep playing a little past the scheduled end (the flag, the in-lap)
 WEATHER_CACHE = "_weather"      # prediction_cache.circuit_name for stored weather
+PENALTIES_CACHE = "_penalties"  # ... and for a session's stewards' messages
 WEATHER_FIELDS = ("date", "air_temperature", "track_temperature", "humidity", "wind_speed",
                   "wind_direction", "rainfall", "pressure")
 
@@ -59,6 +62,7 @@ class SessionReplayService:
         self._client_factory = client_factory
         self._sessions: Dict[Key, Dict[str, Any]] = {}
         self._weather: Dict[Key, List[Dict[str, Any]]] = {}
+        self._penalties: Dict[Key, List[Dict[str, Any]]] = {}
         self._feeds: "OrderedDict[Key, SessionFeed]" = OrderedDict()
         self._locks: Dict[tuple, asyncio.Lock] = {}
 
@@ -152,6 +156,39 @@ class SessionReplayService:
             "duration_seconds": int((end - start).total_seconds()) + REPLAY_TAIL_SECONDS,
             "weather": weather_summary(readings, start, end),
         }
+
+    # ---- penalties ----------------------------------------------------------------------
+
+    async def load_penalties(self, year: int, gp: str, code: str) -> List[Dict[str, Any]]:
+        """The session's stewards' messages (services/penalties.relevant): memory, then the database,
+        then OpenF1 — stored even when there were none, so a quiet session isn't fetched again."""
+        from services.penalties import relevant
+        key = session_key(year, gp, code)
+        if year < FIRST_OPENF1_SEASON:
+            raise ReplayUnavailable(f"Session data starts in {FIRST_OPENF1_SEASON}")
+        if key not in self._penalties:
+            async with self._lock("penalties", key):
+                if key not in self._penalties:
+                    db = self._db()
+                    stored = None
+                    if db is not None:
+                        try:
+                            stored = await db.get_prediction_cache(PENALTIES_CACHE, "|".join(map(str, key)))
+                        except Exception:
+                            stored = None
+                    if stored and "messages" in (stored.get("result") or {}):
+                        self._penalties[key] = stored["result"]["messages"]
+                    else:
+                        session = await self.session(year, gp, code)
+                        messages = relevant(await self.client.get("race_control", session_key=session["session_key"]))
+                        self._penalties[key] = messages
+                        if db is not None:
+                            try:
+                                await db.set_prediction_cache(PENALTIES_CACHE, "|".join(map(str, key)), "",
+                                                              {"messages": messages})
+                            except Exception as exc:
+                                logger.warning("couldn't store penalties for %s: %s", key, exc)
+        return self._penalties[key]
 
     # ---- replay -------------------------------------------------------------------------
 

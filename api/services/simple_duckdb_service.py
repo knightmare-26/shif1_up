@@ -595,7 +595,7 @@ class SimpleDuckDBService:
         than the live model, and are keyed to the training data, not the model."""
         try:
             if self.connection:
-                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing')")
+                self.connection.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing', '_penalties')")
             return True
         except Exception as e:
             logger.error(f"❌ Error clearing prediction cache: {str(e)}")

@@ -49,6 +49,7 @@ from services.entry_list import EntryListService
 from services.weekend_practice import check_again_in, load_weekend_practice
 from services.data_upkeep import DataUpkeep
 from services import preseason_testing
+from services import penalties
 from services.openf1_live import OpenF1Locked
 from services.timing_board import SESSIONS as LIVE_SESSION_CODES
 from models.f1_models import (
@@ -250,6 +251,7 @@ async def _rebuild_title_backtest(finished: List[int]) -> bool:
 data_upkeep = DataUpkeep(
     ingest_race=lambda db, year, rnd, session: ingest_service.ingest_single_race(db, year, rnd, False, session=session),
     load_weather=lambda year, gp, code: session_replays.load_weather(year, gp, code),
+    load_penalties=lambda year, gp, code: session_replays.load_penalties(year, gp, code),
     rebuild_title_backtest=_rebuild_title_backtest,
     title_backtest_version=TITLE_BACKTEST_VERSION,
 )
@@ -893,6 +895,49 @@ async def session_weather(year: int, session: str, gp: str):
         raise HTTPException(status_code=502, detail="Session data source didn't answer")
 
 
+async def _session_grid_changes(year: int, gp: str, code: str) -> Dict[str, Any]:
+    """Drivers who started this race (sprint) behind where they qualified, from the stored results:
+    grid penalties are published as FIA documents, not race control. From 2023 (on 2022's sprint
+    weekends the sprint set the grid)."""
+    if code not in ("R", "S") or year < 2023 or duckdb_service is None:
+        return {}
+    from services.session_replay import session_key
+    wanted = session_key(year, gp, code)[1]
+    races = await duckdb_service.get_races_by_year(year)
+    race = next((r for r in races if session_key(year, r.get("gp") or str(r["race_id"]).split("_", 1)[-1], code)[1] == wanted), None)
+    if race is None:
+        return {}
+    started, qualified = ("race", "qualifying") if code == "R" else ("sprint", "sprint_qualifying")
+    return penalties.grid_changes(await duckdb_service.get_race_results(race["race_id"], started),
+                                  await duckdb_service.get_race_results(race["race_id"], qualified))
+
+
+@app.get("/api/sessions/{year}/{session}/penalties")
+async def session_penalties(year: int, session: str, gp: str):
+    """A finished session's stewards' decisions (time penalties, drive-throughs, stop-and-gos,
+    disqualifications, black-and-white flags, reprimands, warnings, deleted lap times) from its
+    race-control messages (OpenF1, 2023+, stored once fetched), plus — for a race or sprint — who
+    started behind where they qualified. `stewards` says whether the decisions could be read:
+    "ok", "locked" (a live session has OpenF1 shut), "unavailable" or "error"."""
+    code = _replay_session_code(session)
+    status, messages = "ok", []
+    try:
+        messages = await session_replays.load_penalties(year, gp, code)
+    except ReplayUnavailable:
+        status = "unavailable"
+    except OpenF1Locked:
+        status = "locked"
+    except Exception as exc:
+        logger.warning("session penalties %s %s %s: %s", year, gp, session, exc)
+        status = "error"
+    try:
+        grid = await _session_grid_changes(year, gp, code)
+    except Exception as exc:
+        logger.warning("grid changes %s %s %s: %s", year, gp, session, exc)
+        grid = {}
+    return {"year": year, "gp": gp, "session": code, "stewards": status, **penalties.parse(messages), "grid": grid}
+
+
 @app.get("/api/sessions/{year}/{session}/replay")
 async def session_replay_frame(year: int, session: str, gp: str, t: float = 0.0):
     """The timing board (with weather) `t` seconds into a finished session — what the Race Results
@@ -1138,9 +1183,10 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
 
 @app.get("/api/driver-stats")
 async def driver_result_stats(year: int = None):
-    """Race and sprint wins/podiums per driver for a season, counted from the stored results (the
-    standings feed only has total wins). Keyed by the three-letter code the standings now carry;
-    a season that isn't in the database returns no drivers."""
+    """Race and sprint wins/podiums, pole positions (P1 in qualifying) and top-3 starts (Grand Prix
+    grid 1-3) per driver for a season, counted from the stored results (the standings feed only has
+    total wins). Keyed by the three-letter code the standings now carry; a season that isn't in the
+    database returns no drivers."""
     year = year or datetime.now().year
     try:
         rows = await duckdb_service.get_driver_result_counts(year)
@@ -1148,7 +1194,7 @@ async def driver_result_stats(year: int = None):
         logger.error("❌ driver_result_stats: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums", "poles", "top3_starts")
     drivers = [
         {
             "code": str(r["driver_id"]).upper(),
@@ -1169,8 +1215,9 @@ async def driver_result_stats(year: int = None):
 
 @app.get("/api/constructor-stats")
 async def constructor_result_stats(year: int = None):
-    """Race and sprint wins/podiums per team for a season, from the stored results. Keyed by
-    constructor_id, which matches the standings' ids. Podiums count every car on the podium."""
+    """Race and sprint wins/podiums, poles and top-3 starts per team for a season, from the stored
+    results. Keyed by constructor_id, which matches the standings' ids. Podiums and top-3 starts
+    count every car."""
     year = year or datetime.now().year
     try:
         rows = await duckdb_service.get_constructor_result_counts(year)
@@ -1178,7 +1225,7 @@ async def constructor_result_stats(year: int = None):
         logger.error("❌ constructor_result_stats: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums", "poles", "top3_starts")
     teams = [
         {"constructor_id": r["constructor_id"], "constructor_name": r.get("constructor_name"),
          **{k: int(r.get(k) or 0) for k in counts}}

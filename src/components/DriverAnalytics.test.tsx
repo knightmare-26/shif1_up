@@ -22,8 +22,10 @@ const STANDINGS = [
 const STATS: DriverStatsResponse = {
   year: 2026, races_counted: 14, sprints_counted: 5,
   drivers: [
-    { code: 'ANT', driver_name: 'Kimi Antonelli', race_wins: 8, race_podiums: 12, sprint_wins: 1, sprint_podiums: 2 },
-    { code: 'HUL', driver_name: 'Nico Hulkenberg', race_wins: 0, race_podiums: 1, sprint_wins: 0, sprint_podiums: 0 },
+    { code: 'ANT', driver_name: 'Kimi Antonelli', race_wins: 8, race_podiums: 12, sprint_wins: 1, sprint_podiums: 2,
+      poles: 6, top3_starts: 11 },
+    { code: 'HUL', driver_name: 'Nico Hulkenberg', race_wins: 0, race_podiums: 1, sprint_wins: 0, sprint_podiums: 0,
+      poles: 0, top3_starts: 1 },
   ],
 };
 
@@ -107,4 +109,17 @@ test('an ambiguous surname is not guessed', () => {
 
   expect(find(standing(1, 'Carl Smith'))).toBeUndefined();
   expect(find(standing(1, 'Bob Smith'))?.code).toBe('BBB');
+});
+
+test('pole positions and top-3 starts are columns too, after wins and podiums', async () => {
+  await renderAt('/dashboard?tab=drivers&cols=top3_starts,poles,race_wins');
+
+  expect(headers()).toEqual(['Pos', 'Driver', 'Team', 'Wins', 'Poles', 'Top-3 starts', 'Points']);
+  const rows = screen.getAllByRole('row').slice(1).map((r) => within(r).getAllByRole('cell').map((c) => c.textContent));
+  expect(rows[0].slice(3)).toEqual(['8', '6', '11', '99']);
+  expect(rows[1].slice(3)).toEqual(['0', '0', '1', '98']);
+
+  fireEvent.click(screen.getByRole('button', { name: /columns/i }));
+  expect(screen.getByLabelText('Pole positions')).toBeChecked();
+  expect(screen.getByLabelText('Top-3 starts')).toBeChecked();
 });

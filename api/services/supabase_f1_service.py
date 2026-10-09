@@ -27,16 +27,20 @@ DRIVER_RESULT_COUNTS_SQL = """
            COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id END) AS race_podiums,
            COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                      AS sprints,
            COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)  AS sprint_wins,
-           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id END) AS sprint_podiums
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id END) AS sprint_podiums,
+           -- Pole: P1 in qualifying (the official definition, whatever the grid after penalties).
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'qualifying' AND rr.position = 1 THEN rr.race_id END) AS poles,
+           -- A Grand Prix started from the top three of the grid (penalties applied; 0 = pit lane).
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race' AND rr.grid BETWEEN 1 AND 3 THEN rr.race_id END) AS top3_starts
     FROM race_results rr
     JOIN races r ON rr.race_id = r.race_id
     LEFT JOIN drivers d ON rr.driver_id = d.driver_id
-    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint') AND rr.driver_id IS NOT NULL
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint', 'qualifying') AND rr.driver_id IS NOT NULL
     GROUP BY rr.driver_id
 """
 
-# The same per team. Wins count once per race; podiums count every car on the podium (a one-two is
-# two podiums), the usual way team podiums are counted.
+# The same per team. Wins and poles count once per race; podiums and top-3 starts count every car
+# (a one-two is two podiums), the usual way team podiums are counted.
 CONSTRUCTOR_RESULT_COUNTS_SQL = """
     SELECT rr.constructor_id,
            MAX(c.constructor_name) AS constructor_name,
@@ -45,11 +49,13 @@ CONSTRUCTOR_RESULT_COUNTS_SQL = """
            COUNT(DISTINCT CASE WHEN rr.session_type = 'race'   AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END)   AS race_podiums,
            COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' THEN rr.race_id END)                                        AS sprints,
            COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position = 1 THEN rr.race_id END)                    AS sprint_wins,
-           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END) AS sprint_podiums
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'sprint' AND rr.position <= 3 THEN rr.race_id || ':' || rr.driver_id END) AS sprint_podiums,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'qualifying' AND rr.position = 1 THEN rr.race_id END)              AS poles,
+           COUNT(DISTINCT CASE WHEN rr.session_type = 'race' AND rr.grid BETWEEN 1 AND 3 THEN rr.race_id || ':' || rr.driver_id END) AS top3_starts
     FROM race_results rr
     JOIN races r ON rr.race_id = r.race_id
     LEFT JOIN constructors c ON rr.constructor_id = c.constructor_id
-    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint')
+    WHERE r.year = {year} AND rr.session_type IN ('race', 'sprint', 'qualifying')
       AND rr.constructor_id IS NOT NULL AND rr.constructor_id <> ''
     GROUP BY rr.constructor_id
 """
@@ -444,7 +450,7 @@ class SupabaseF1Service:
             return True
         try:
             async with self.pool.acquire() as conn:
-                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing')")
+                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing', '_penalties')")
             return True
         except Exception as exc:
             logger.error("❌ Error clearing prediction cache: %s", exc)

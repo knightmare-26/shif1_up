@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ListOrdered } from 'lucide-react';
-import { backendApi, RaceEvent } from '../services/backendApi';
+import { backendApi, RaceEvent, SessionPenalties } from '../services/backendApi';
 import { formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import SessionConditions from './SessionConditions';
+import { FIRST_PENALTY_SEASON, PENALTY_SESSIONS, PenaltyBadges, StewardsCard } from './Penalties';
 import {
   Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
   SelectField, TableWrap, TeamChip, Td, Th, Tr,
@@ -134,6 +135,19 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
 
   useEffect(() => { loadRaceResults(); }, [loadRaceResults]);
 
+  // The stewards' decisions for this session (badges next to the drivers, and a card under the results).
+  const [penalties, setPenalties] = useState<SessionPenalties | null>(null);
+  const penaltyRequest = useRef(0);
+  const scheduleEntry = schedule.find((r) => gpToken(r.race_name) === selectedGP);
+  useEffect(() => {
+    const id = ++penaltyRequest.current;
+    setPenalties(null);
+    if (!scheduleEntry || year < FIRST_PENALTY_SEASON || !PENALTY_SESSIONS.includes(selectedSession)) return;
+    backendApi.getSessionPenalties(year, scheduleEntry.race_name, selectedSession)
+      .then((p) => { if (id === penaltyRequest.current) setPenalties(p); })
+      .catch(() => { /* the results stand on their own */ });
+  }, [year, scheduleEntry, selectedSession]);
+
   const selectedScheduleEntry = schedule.find((r) => gpToken(r.race_name) === selectedGP);
   const raceName = selectedScheduleEntry?.race_name ?? `${selectedGP} Grand Prix`;
   const raceDate = selectedScheduleEntry ? formatDate(selectedScheduleEntry.date) : '';
@@ -213,6 +227,7 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
                         <span className="block text-xs text-gray-500">
                           #{result.DriverNumber}{result.CountryCode ? ` · ${result.CountryCode}` : ''}
                         </span>
+                        <PenaltyBadges code={result.Abbreviation} data={penalties} session={selectedSession} />
                       </span>
                     </span>
                   </Td>
@@ -234,6 +249,13 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
           <EmptyState icon={<ListOrdered className="h-10 w-10" />} title="Pick a Grand Prix to see its results" />
         )}
       </Card>
+
+      {penalties && raceData?.results.length && penalties.stewards !== 'unavailable' ? (
+        <div className="mt-6">
+          <StewardsCard data={penalties} sessionLabel={sessionLabel}
+            names={Object.fromEntries(raceData.results.map((r) => [r.Abbreviation.toUpperCase(), r.FullName]))} />
+        </div>
+      ) : null}
 
       {selectedGP && selectedScheduleEntry && !scheduleFailed && (
         <div className="mt-6">

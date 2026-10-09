@@ -46,6 +46,8 @@ class FakeDb:
                      "timed": sum(1 for x in v if x["time"])} for (r, s), v in self.results.items()]
         if "_weather" in query:
             return [{"session_type": s} for (c, s) in self.cache if c == "_weather"]
+        if "_penalties" in query:
+            return [{"session_type": s} for (c, s) in self.cache if c == "_penalties"]
         return []
 
 
@@ -170,3 +172,19 @@ async def test_a_title_track_record_from_an_older_method_is_rebuilt():
     job.title_backtest_version = "2"
     await job.run(db, openf1([]), {}, {}, now=NOW)
     assert title == [[2023, 2024, 2025]]
+
+
+
+async def test_the_stewards_decisions_are_stored_for_race_sprint_and_qualifying_sessions():
+    fetched = []
+
+    async def load_penalties(year, gp, code):
+        fetched.append(code)
+        return []                                   # a quiet session is still stored (by the loader)
+
+    keeper = upkeep()
+    keeper.load_penalties = load_penalties
+    report = await keeper.run(FakeDb([RACE], weekend()), openf1([]), {}, {}, now=NOW)
+
+    assert sorted(fetched) == ["Q", "R", "S", "SQ"]                    # not practice
+    assert len(report.penalties) == 4 and not report.needs_retrain

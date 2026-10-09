@@ -1,6 +1,6 @@
 import React from 'react';
 import { Check, RefreshCw } from 'lucide-react';
-import { ServiceStatus } from '../services/serviceStatus';
+import { ServiceStatus, SERVER_WAKING_MESSAGE } from '../services/serviceStatus';
 import { Button, Wordmark } from './ui';
 
 // Longer than a normal cold start, so the wait screen never reads as broken too early.
@@ -30,10 +30,10 @@ const Step: React.FC<{ label: string; state: StepState }> = ({ label, state }) =
 const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 /**
- * Full-screen blurred wait screen shown instead of the pages while the database is down
- * (a paused project being restored) — not for an ordinary cold start of the server. It
- * never traps the visitor: after a couple of minutes it offers to retry or to open the
- * site anyway.
+ * Full-screen blurred wait screen over the pages while the server wakes up (Render's free
+ * plan puts it to sleep after 15 minutes without visitors) or the database is down (a paused
+ * project being restored). It never traps the visitor: after a couple of minutes it offers to
+ * retry or to open the site anyway.
  */
 export const ServiceGate: React.FC<{
   status: ServiceStatus;
@@ -42,6 +42,14 @@ export const ServiceGate: React.FC<{
   onContinue: () => void;
 }> = ({ status, elapsed, onRetry, onContinue }) => {
   const stuck = elapsed >= ESCALATE_AFTER_S;
+  const databaseDown = status.state === 'database-waking';
+  const steps: [string, StepState][] = databaseDown
+    ? [['Server is up', 'done'], ['Restoring the database', 'active'], ['Loading the site', 'pending']]
+    : [
+        ['Waking the server', status.serverUp ? 'done' : 'active'],
+        ['Connecting to the database', status.serverUp ? 'active' : 'pending'],
+        ['Loading the site', 'pending'],
+      ];
 
   return (
     <div
@@ -57,22 +65,21 @@ export const ServiceGate: React.FC<{
 
       <div className="relative w-full max-w-md rounded-2xl border border-gray-800 bg-gray-900/80 p-8 shadow-2xl backdrop-blur">
         <h2 id="gate-title"><Wordmark className="text-3xl" /></h2>
-        <p className="mt-1 text-sm text-gray-400">The database is waking up</p>
+        <p className="mt-1 text-sm text-gray-400">{databaseDown ? 'The database is waking up' : 'The server is waking up'}</p>
 
         <ul className="mt-6 space-y-3" aria-label="Progress">
-          <Step label="Server is up" state="done" />
-          <Step label="Restoring the database" state="active" />
-          <Step label="Loading the site" state="pending" />
+          {steps.map(([label, state]) => <Step key={label} label={label} state={state} />)}
         </ul>
 
         <div aria-live="polite">
           <p id="gate-message" className="mt-6 text-sm leading-relaxed text-gray-300">
-            {status.message}
+            {status.message || SERVER_WAKING_MESSAGE}
           </p>
           <p className="mt-2 text-xs tabular-nums text-gray-500">Waiting {clock(elapsed)}</p>
           {elapsed >= HINT_AFTER_S && !stuck && (
             <p className="mt-3 text-sm text-gray-400">
-              Still working — a paused database can take a few minutes to restore. This page opens by itself when it's ready.
+              Still working — {databaseDown ? 'a paused database can take a few minutes to restore' : 'a cold start can take a little over a minute'}.
+              This page opens by itself when it's ready.
             </p>
           )}
         </div>

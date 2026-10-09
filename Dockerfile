@@ -23,6 +23,8 @@ RUN chmod +x /app/docker-entrypoint.sh
 RUN mkdir -p /app/data/fastf1_cache /app/data/models
 
 ENV PYTHONPATH=/app/api
+# Every log line reaches the host's log straight away (a stalled start shows where it stalled).
+ENV PYTHONUNBUFFERED=1
 ENV DUCKDB_PATH=/app/data/f1_history.duckdb
 ENV FASTF1_CACHE_DIR=/app/data/fastf1_cache
 ENV MODEL_DIR=/app/data/models
