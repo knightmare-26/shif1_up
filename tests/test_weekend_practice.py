@@ -168,3 +168,19 @@ async def test_a_finished_race_is_stored_with_its_points_status_and_the_qualifyi
     assert rows["ver"]["points"] == 25 and rows["ver"]["status"] == "Finished" and rows["ver"]["grid"] == 2
     assert rows["d00"]["status"] == "+1 Lap"                      # lapped: still a finisher
     assert rows["bea"]["status"] == "Retired" and rows["bea"]["position"] == 13   # unclassified go last
+
+
+async def test_an_openf1_failure_mid_check_still_reports_what_was_stored():
+    """Sessions stored before the failure must reach the caller, which retrains on them: the next check
+    skips stored sessions, so it would never report them again."""
+    def handler(request):
+        if request.url.path.endswith("/laps") and request.url.params.get("session_key") == "2":
+            return httpx.Response(503, json={"detail": "busy"})
+        return openf1([]).handle_request(request)
+
+    db = FakeDb()
+    stored = await load_weekend_practice(db, OpenF1Client(creds={}, per_minute=60000, transport=httpx.MockTransport(handler)),
+                                         TEAMS, {}, now=NOW)
+
+    assert stored == [{"race_id": "2026_Singapore", "session_type": "fp1"}]
+    assert ("2026_Singapore", "fp2") not in db.results

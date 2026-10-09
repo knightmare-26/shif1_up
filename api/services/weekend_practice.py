@@ -143,6 +143,10 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
                 stored.append({"race_id": race["race_id"], "session_type": session_type})
     except OpenF1Locked:
         logger.info("weekend practice: OpenF1 is locked while a session is live — trying again later")
+    except Exception as exc:
+        # Rate-limited, a timeout, a server error: what's already stored is still reported (so the
+        # models retrain on it — the next check skips stored sessions and wouldn't say so again).
+        logger.warning("weekend sessions: stopped after storing %d (%s); the rest at the next check", len(stored), exc)
     return stored
 
 
