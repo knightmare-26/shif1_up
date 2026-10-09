@@ -41,6 +41,10 @@ export interface DriverResultStats {
   race_podiums: number;
   sprint_wins: number;
   sprint_podiums: number;
+  /** P1 in qualifying. */
+  poles?: number;
+  /** Grand Prix starts from grid slots 1-3 (per car for a team). */
+  top3_starts?: number;
 }
 
 export interface DriverStatsResponse {
@@ -58,6 +62,10 @@ export interface ConstructorResultStats {
   race_podiums: number;
   sprint_wins: number;
   sprint_podiums: number;
+  /** P1 in qualifying. */
+  poles?: number;
+  /** Grand Prix starts from grid slots 1-3 (per car for a team). */
+  top3_starts?: number;
 }
 
 export interface ConstructorStatsResponse {

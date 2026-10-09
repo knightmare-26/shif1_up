@@ -177,7 +177,7 @@ Predictions page tab **Title Race** (`/predictions?tab=title`, `&view=constructo
 *             → redirect to /
 ```
 
-The Dashboard keeps its state in the URL: `?tab=overview|drivers|teams|tracks|results&year=YYYY&gp=<GP token>` (e.g. `/dashboard?tab=results&year=2026&gp=Spanish`), plus `cols=` for the optional win/podium columns shared by the Drivers and Teams tabs (`race_wins,race_podiums,sprint_wins,sprint_podiums`; off by default; `components/statColumns.tsx`).
+The Dashboard keeps its state in the URL: `?tab=overview|drivers|teams|tracks|results&year=YYYY&gp=<GP token>` (e.g. `/dashboard?tab=results&year=2026&gp=Spanish`), plus `cols=` for the optional result columns shared by the Drivers and Teams tabs (`race_wins,race_podiums,poles,top3_starts,sprint_wins,sprint_podiums`; off by default; `components/statColumns.tsx`). A pole is P1 in qualifying; a top-3 start is a Grand Prix started from grid slots 1-3 (penalties applied, a pit-lane start doesn't count).
 
 ### Frontend UI kit (`src/components/ui/`)
 
@@ -221,8 +221,8 @@ Frontend calls backend via `src/services/backendApi.ts` (base URL from `REACT_AP
 - `GET /live/{race_id}/state` — current live state from Redis
 - `WS /ws/live/{race_id}` — WebSocket live updates
 - `GET /api/drivers`, `/api/constructors`, `/api/races` — legacy endpoints (frontend uses these). Standings for years served by Jolpica (2025+) are fetched with `strict=True` and go through `_standings_or_stale`: up to 3 attempts within an 8s budget, then the last good copy, then `503 {"detail": "source_unavailable"}` — never a silent `200 []` (Jolpica rate-limits by IP and Render's free instances share one). A source that answers with no standings yet still returns `[]`. The frontend caches empty lists for ≤15s, not the full TTL
-- `GET /api/driver-stats?year=` — race and sprint wins/podiums per driver, counted from the stored `race_results` (2022 onwards; the standings feed has no podiums and doesn't split sprint wins). Keyed by the three-letter `code` that `/api/drivers` rows now carry; the frontend falls back to matching by name for the committed snapshots, which lack it
-- `GET /api/constructor-stats?year=` — the same per team, keyed by `constructor_id` (identical in standings and results); wins once per race, podiums per car (a one-two is two)
+- `GET /api/driver-stats?year=` — race and sprint wins/podiums, pole positions (qualifying P1) and top-3 starts (Grand Prix grid 1-3) per driver, counted from the stored `race_results` (2022 onwards; the standings feed has no podiums, poles or grids and doesn't split sprint wins). Keyed by the three-letter `code` that `/api/drivers` rows now carry; the frontend falls back to matching by name for the committed snapshots, which lack it
+- `GET /api/constructor-stats?year=` — the same per team, keyed by `constructor_id` (identical in standings and results); wins and poles once per race, podiums and top-3 starts per car (a one-two is two)
 - `GET /live/status` — whether the Live pages are on (`live_available`: OpenF1 credentials set; `enabled`: that or a relay running) and the running relays
 - `POST /admin/live/relay` `{year, gp, session, replay_speed?}`, `GET /admin/live/relays`, `DELETE /admin/live/relay/{race_id}` — start/list/stop OpenF1 relays (admin JWT or internal key); without credentials only replays
 - `GET /api/sessions/{year}/{session}/weather?gp=`, `GET /api/sessions/{year}/{session}/replay?gp=&t=` — a finished session's weather and replay frames (see Session weather and replays)

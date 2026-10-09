@@ -1138,9 +1138,10 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
 
 @app.get("/api/driver-stats")
 async def driver_result_stats(year: int = None):
-    """Race and sprint wins/podiums per driver for a season, counted from the stored results (the
-    standings feed only has total wins). Keyed by the three-letter code the standings now carry;
-    a season that isn't in the database returns no drivers."""
+    """Race and sprint wins/podiums, pole positions (P1 in qualifying) and top-3 starts (Grand Prix
+    grid 1-3) per driver for a season, counted from the stored results (the standings feed only has
+    total wins). Keyed by the three-letter code the standings now carry; a season that isn't in the
+    database returns no drivers."""
     year = year or datetime.now().year
     try:
         rows = await duckdb_service.get_driver_result_counts(year)
@@ -1148,7 +1149,7 @@ async def driver_result_stats(year: int = None):
         logger.error("❌ driver_result_stats: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums", "poles", "top3_starts")
     drivers = [
         {
             "code": str(r["driver_id"]).upper(),
@@ -1169,8 +1170,9 @@ async def driver_result_stats(year: int = None):
 
 @app.get("/api/constructor-stats")
 async def constructor_result_stats(year: int = None):
-    """Race and sprint wins/podiums per team for a season, from the stored results. Keyed by
-    constructor_id, which matches the standings' ids. Podiums count every car on the podium."""
+    """Race and sprint wins/podiums, poles and top-3 starts per team for a season, from the stored
+    results. Keyed by constructor_id, which matches the standings' ids. Podiums and top-3 starts
+    count every car."""
     year = year or datetime.now().year
     try:
         rows = await duckdb_service.get_constructor_result_counts(year)
@@ -1178,7 +1180,7 @@ async def constructor_result_stats(year: int = None):
         logger.error("❌ constructor_result_stats: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
 
-    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums")
+    counts = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums", "poles", "top3_starts")
     teams = [
         {"constructor_id": r["constructor_id"], "constructor_name": r.get("constructor_name"),
          **{k: int(r.get(k) or 0) for k in counts}}

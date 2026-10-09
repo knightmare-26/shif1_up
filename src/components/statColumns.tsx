@@ -3,13 +3,16 @@ import { useSearchParams } from 'react-router-dom';
 import { Columns3 } from 'lucide-react';
 import { CheckboxMenu } from './ui';
 
-// Optional win/podium columns shared by the Drivers and Teams tabs. Off by default; the choice is
-// kept in the URL (?cols=race_wins,sprint_podiums) and applies to both tabs. The standings feed has
-// no podiums and doesn't split sprint from race wins, so these are counted from the stored results
-// (2022 onwards) — GET /api/driver-stats and /api/constructor-stats.
+// Optional result columns shared by the Drivers and Teams tabs. Off by default; the choice is kept
+// in the URL (?cols=race_wins,poles) and applies to both tabs. The standings feed has no podiums,
+// poles or grids and doesn't split sprint from race wins, so these are counted from the stored
+// results (2022 onwards) — GET /api/driver-stats and /api/constructor-stats. A pole is P1 in
+// qualifying; a top-3 start is a Grand Prix started from grid slots 1-3.
 export const STAT_COLUMNS = [
   { id: 'race_wins', label: 'Race wins', short: 'Wins' },
   { id: 'race_podiums', label: 'Race podiums', short: 'Podiums' },
+  { id: 'poles', label: 'Pole positions', short: 'Poles' },
+  { id: 'top3_starts', label: 'Top-3 starts', short: 'Top-3 starts' },
   { id: 'sprint_wins', label: 'Sprint wins', short: 'Sprint wins' },
   { id: 'sprint_podiums', label: 'Sprint podiums', short: 'Sprint podiums' },
 ] as const;
@@ -78,13 +81,13 @@ export function statsNote(
 ): React.ReactNode {
   if (!wanted) return null;
   if (state === 'error') {
-    return <>Couldn't load wins and podiums. <button type="button" onClick={reload} className="text-racing-red underline">Try again</button></>;
+    return <>Couldn't load these columns. <button type="button" onClick={reload} className="text-racing-red underline">Try again</button></>;
   }
   if (stats && empty) {
-    return `Wins and podiums are counted from stored race results, which start in 2022 — not available for ${year}.`;
+    return `These columns are counted from stored results, which start in 2022 — not available for ${year}.`;
   }
   if (stats) {
-    return `Wins and podiums counted from ${stats.races_counted} ${stats.races_counted === 1 ? 'race' : 'races'}`
+    return `Counted from ${stats.races_counted} ${stats.races_counted === 1 ? 'race' : 'races'}`
       + `${stats.sprints_counted ? ` and ${stats.sprints_counted} ${stats.sprints_counted === 1 ? 'sprint' : 'sprints'}` : ''}.${extra}`;
   }
   return null;
