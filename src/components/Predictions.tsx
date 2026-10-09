@@ -199,7 +199,7 @@ const SESSION_COLUMNS: Record<PredictedSession, ResultColumn[]> = {
     { label: 'Top 3 chance', key: 'sq_top3_probability', kind: 'chance' },
   ],
   sprint: [
-    { label: 'Grid', key: 'sprint_grid', kind: 'grid' },
+    { label: 'Starting grid', key: 'sprint_grid', kind: 'grid' },
     { label: 'Predicted', key: 'predicted_sprint', kind: 'predicted' },
     { label: 'Actual', key: 'actual_sprint', kind: 'actual' },
     { label: 'Win chance', key: 'sprint_win_probability', kind: 'chance' },
@@ -212,7 +212,7 @@ const SESSION_COLUMNS: Record<PredictedSession, ResultColumn[]> = {
     { label: 'Top 3 chance', key: 'quali_top3_probability', kind: 'chance' },
   ],
   race: [
-    { label: 'Grid', key: 'actual_grid', kind: 'grid' },
+    { label: 'Starting grid', key: 'actual_grid', kind: 'grid' },
     { label: 'Predicted', key: 'predicted_position', kind: 'predicted' },
     { label: 'Actual', key: 'actual_position', kind: 'actual' },
     { label: 'Win chance', key: 'win_probability', kind: 'chance' },
@@ -267,6 +267,23 @@ const sortValue = (d: BacktestDriverRow, key: SortKey): number | string => {
   return v == null ? Number.POSITIVE_INFINITY : (v as number);
 };
 
+/** The starting grid, flagged when a driver started behind where they qualified (a grid penalty)
+ *  or from the pit lane (grid 0). */
+const StartingGrid: React.FC<{ d: BacktestDriverRow; session: PredictedSession }> = ({ d, session }) => {
+  const grid = session === 'sprint' ? d.sprint_grid : d.actual_grid;
+  const qualified = session === 'sprint' ? d.actual_sq : d.actual_quali;
+  if (grid == null) return <>—</>;
+  if (grid === 0) {
+    return <span title={qualified ? `Qualified P${qualified}, started from the pit lane` : 'Started from the pit lane'}>Pit lane</span>;
+  }
+  if (qualified == null || grid <= qualified) return <>P{grid}</>;
+  return (
+    <span title={`Qualified P${qualified}, started P${grid}: a grid penalty`} className="cursor-help">
+      P{grid} <span className="text-xs text-yellow-400">↓{grid - qualified}</span>
+    </span>
+  );
+};
+
 /** One weekend's chosen session: each driver's prediction against the result. */
 const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSession }> = ({ race, session }) => {
   const columns = SESSION_COLUMNS[session];
@@ -308,7 +325,11 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSessi
       <CardHeader
         title={`Round ${race.round} — ${race.race_name}: ${SESSION_LABELS[session]}`}
         subtitle={facts.join(' · ')}
-        action={<Pill tone={errorTone(mae)}>Off by {mae != null ? mae.toFixed(1) : '—'}</Pill>}
+        action={
+          <span title="How many places each driver's prediction missed by, on average: lower is better">
+            <Pill tone={errorTone(mae)}>Prediction error: {mae != null ? `${mae.toFixed(1)} places` : '—'}</Pill>
+          </span>
+        }
       />
       <TableWrap>
         <thead>
@@ -325,6 +346,7 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSessi
               <Td className="font-medium text-white">{d.driver_name}</Td>
               {visible.map((c) => {
                 const v = cellValue(d, c.key) as number | null | undefined;
+                if (c.kind === 'grid') return <Td key={c.key} align="right" className="tabular-nums text-gray-400"><StartingGrid d={d} session={session} /></Td>;
                 return (
                   <Td key={c.key} align="right"
                     className={`tabular-nums ${c.kind === 'actual' ? 'text-white' : 'text-gray-400'}`}>
@@ -420,7 +442,7 @@ const HIT_ROWS: { key: keyof HitRate; labels: Record<PredictedSession, string> }
   { key: 'top1', labels: { race: 'Picked the winner', sprint: 'Picked the winner', qualifying: 'Picked pole', sprint_qualifying: 'Picked pole' } },
   { key: 'top3', labels: { race: 'Podium named', sprint: 'Podium named', qualifying: 'Top 3 named', sprint_qualifying: 'Top 3 named' } },
   { key: 'top10', labels: { race: 'Top 10 named', sprint: 'Top 10 named', qualifying: 'Q3 (top 10) named', sprint_qualifying: 'SQ3 (top 10) named' } },
-  { key: 'mae', labels: { race: 'Places off (avg)', sprint: 'Places off (avg)', qualifying: 'Places off (avg)', sprint_qualifying: 'Places off (avg)' } },
+  { key: 'mae', labels: { race: 'Prediction error (places)', sprint: 'Prediction error (places)', qualifying: 'Prediction error (places)', sprint_qualifying: 'Prediction error (places)' } },
 ];
 
 /** The predicted order against simple guesses: the starting grid and the championship order. */
@@ -625,7 +647,8 @@ const BacktestTab: React.FC = () => {
             it. {latestSeason
               ? `In ${latestSeason} each race is predicted by a model trained on everything up to the race before (as the site does, since it retrains after every race); earlier seasons by one model trained on the seasons before them.`
               : 'Each season is predicted by a model trained only on earlier seasons.'}{' '}
-            "Off by" is how many places a prediction missed by, averaged over the drivers in that session: lower is better.
+            "Prediction error" is how many places a prediction missed by, averaged over the drivers in that session: lower
+            is better.
             A weekend shows up here as soon as its first predicted session (sprint qualifying, the sprint or
             qualifying) is done, with each later one added once it's run. Sprint qualifying is predicted by the
             qualifying model: a model of its own did worse, with so few sprint weekends to learn from.
@@ -643,8 +666,8 @@ const BacktestTab: React.FC = () => {
           {quali != null && race != null && (
             <p>
               <strong className="text-gray-200">Overall:</strong> across {raced} races
-              ({seasons[0]}–{seasons[seasons.length - 1]}), qualifying was off by {quali.toFixed(1)} places on average and
-              the race by {race.toFixed(1)}. F1 is unpredictable (retirements, strategy, weather), so a few places is
+              ({seasons[0]}–{seasons[seasons.length - 1]}), the average prediction error was {quali.toFixed(1)} places for
+              qualifying and {race.toFixed(1)} for the race. F1 is unpredictable (retirements, strategy, weather), so a few places is
               normal for any model.
             </p>
           )}

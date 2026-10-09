@@ -106,11 +106,11 @@ test('a weekend whose race is still to run offers the sessions it has, latest fi
   expect(options()).toEqual(['Sprint Qualifying', 'Sprint', 'Qualifying']);
   expect(screen.getByText('Round 17 — Singapore Grand Prix: Qualifying')).toBeInTheDocument();
   expect(screen.getByText(/race still to run/)).toBeInTheDocument();
-  expect(screen.getByText('Off by 2.0')).toBeInTheDocument();
+  expect(screen.getByText('Prediction error: 2.0 places')).toBeInTheDocument();
 
   await pick('sprint');
-  expect(screen.getByText('Off by 1.5')).toBeInTheDocument();
-  expect(screen.getByText('Grid')).toBeInTheDocument();
+  expect(screen.getByText('Prediction error: 1.5 places')).toBeInTheDocument();
+  expect(screen.getByText('Starting grid')).toBeInTheDocument();
   expect(screen.getByText('27%')).toBeInTheDocument();                     // sprint win chance
   expect(screen.getByText(/across 1 races/)).toBeInTheDocument();         // only races that have been run
 });
@@ -124,7 +124,7 @@ test('sprint qualifying is scored, by the qualifying model', async () => {
 
   expect(screen.getByText('Round 17 — Singapore Grand Prix: Sprint Qualifying')).toBeInTheDocument();
   expect(screen.getByText('Marina Bay · 2026 · race still to run · predicted by the qualifying model')).toBeInTheDocument();
-  expect(screen.getByText('Off by 0.5')).toBeInTheDocument();
+  expect(screen.getByText('Prediction error: 0.5 places')).toBeInTheDocument();
   expect(screen.getByText('31%')).toBeInTheDocument();
   expect(screen.getByText('11% better')).toBeInTheDocument();
   expect(screen.getByText('SQ3 (top 10) named')).toBeInTheDocument();
@@ -133,4 +133,15 @@ test('sprint qualifying is scored, by the qualifying model', async () => {
 test('the race is offered again once the session in the link has no result for the weekend', async () => {
   await open(RESULT, '/predictions?tab=backtest&session=sprint');
   expect(sessionSelect().value).toBe('race');
+});
+
+test('the starting grid is flagged when a driver started behind where they qualified', async () => {
+  await open({ ...RESULT, races: [{ ...BAHRAIN, drivers: [
+    { ...BAHRAIN.drivers[0] },
+    { driver_id: 'had', driver_name: 'Isack Hadjar', predicted_grid: 4, actual_quali: 3, actual_grid: 8, predicted_position: 6, actual_position: 5 },
+    { driver_id: 'col', driver_name: 'Franco Colapinto', predicted_grid: 15, actual_quali: 15, actual_grid: 0, predicted_position: 18, actual_position: 16 },
+  ] }] });
+
+  expect(screen.getByTitle('Qualified P3, started P8: a grid penalty')).toHaveTextContent('P8 ↓5');
+  expect(screen.getByTitle('Qualified P15, started from the pit lane')).toHaveTextContent('Pit lane');
 });

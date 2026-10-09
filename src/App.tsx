@@ -16,11 +16,10 @@ import { ServiceGate } from './components/ServiceGate';
 import './App.css';
 
 const AppContent: React.FC = () => {
-  // Wakes a sleeping API host on load. The pages render straight away (a cold start just
-  // makes the first load slower, with a slim banner if it takes a while); only when the
-  // database itself is down — a paused Supabase project being restored — does the visitor
-  // get the blurred wait screen instead of pages that would only fail. `epoch` remounts
-  // the routes after a recovery so failed loads retry.
+  // Wakes a sleeping API host on load. The pages mount straight away: an awake server answers
+  // within a few seconds and nothing else shows. A sleeping one (Render's free plan sleeps after
+  // 15 minutes without visitors) or a database that's down gets the blurred wake-up screen over
+  // the pages until it's ready. `epoch` remounts the routes after a recovery so failed loads retry.
   const { status, slow, epoch, gated, elapsed, retry, dismiss } = useServiceStatus();
 
   return (
@@ -29,7 +28,7 @@ const AppContent: React.FC = () => {
       {gated && <ServiceGate status={status} elapsed={elapsed} onRetry={retry} onContinue={dismiss} />}
       <main className="pt-16">
         {!gated && <ServiceStatusBanner status={status} slow={slow} />}
-        {!gated && <div key={epoch}>
+        <div key={epoch} aria-hidden={gated || undefined}>
         <Routes>
           <Route path="/"             element={<MainPage />} />
           <Route path="/dashboard"    element={<Dashboard />} />
@@ -45,7 +44,7 @@ const AppContent: React.FC = () => {
           <Route path="/signup"       element={<SignupPage />} />
           <Route path="*"             element={<Navigate to="/" replace />} />
         </Routes>
-        </div>}
+        </div>
       </main>
     </div>
   );

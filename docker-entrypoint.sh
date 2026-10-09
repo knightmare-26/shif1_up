@@ -15,4 +15,7 @@ fi
 
 mkdir -p "${DATA_DIR}/fastf1_cache" "${DATA_DIR}/models"
 
-exec uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 1
+# Render tells the service which port to listen on ($PORT); docker-compose maps 8000.
+PORT="${PORT:-8000}"
+echo "Starting the API on port ${PORT}..."
+exec uvicorn api.main:app --host 0.0.0.0 --port "${PORT}" --workers 1

@@ -41,6 +41,10 @@ export interface DriverResultStats {
   race_podiums: number;
   sprint_wins: number;
   sprint_podiums: number;
+  /** P1 in qualifying. */
+  poles?: number;
+  /** Grand Prix starts from grid slots 1-3 (per car for a team). */
+  top3_starts?: number;
 }
 
 export interface DriverStatsResponse {
@@ -58,6 +62,10 @@ export interface ConstructorResultStats {
   race_podiums: number;
   sprint_wins: number;
   sprint_podiums: number;
+  /** P1 in qualifying. */
+  poles?: number;
+  /** Grand Prix starts from grid slots 1-3 (per car for a team). */
+  top3_starts?: number;
 }
 
 export interface ConstructorStatsResponse {
@@ -197,6 +205,50 @@ export interface BacktestRace {
    *  (like an upcoming race). Absent/null when practice pace isn't a model input. */
   practice_data?: boolean | null;
   drivers: BacktestDriverRow[];
+}
+
+export type PenaltyKind = 'time' | 'stop_go' | 'drive_through' | 'grid' | 'disqualified' | 'black_and_white'
+  | 'reprimand' | 'warning';
+
+/** One stewards' decision from race control (GET /api/sessions/{year}/{session}/penalties). */
+export interface StewardsDecision {
+  driver: string;            // three-letter code
+  number: number;
+  kind: PenaltyKind;
+  seconds: number | null;    // a time (or stop-and-go) penalty's length
+  places: number | null;     // a grid penalty's places
+  reason: string;
+  lap: number | null;
+  date?: string | null;
+  served: boolean;
+  message: string;
+}
+
+export interface DeletedLap { driver: string; number: number; time: string; lap: number | null; reason: string }
+
+export interface DriverPenalties {
+  time_penalty_seconds: number;
+  penalties: PenaltyKind[];
+  warnings: number;
+  reprimands: number;
+  black_and_white: boolean;
+  disqualified: boolean;
+  deleted_laps: number;
+}
+
+/** A driver who started behind where they qualified (a grid penalty), or from the pit lane. */
+export interface GridChange { qualified: number; started: number | null; pit_lane: boolean }
+
+export interface SessionPenalties {
+  year: number;
+  gp: string;
+  session: string;
+  /** Whether the decisions could be read: "locked" while a live session has the source shut. */
+  stewards: 'ok' | 'locked' | 'unavailable' | 'error';
+  decisions: StewardsDecision[];
+  deleted_laps: DeletedLap[];
+  drivers: Record<string, DriverPenalties>;
+  grid: Record<string, GridChange>;
 }
 
 export interface ProbabilityScore {
@@ -633,6 +685,12 @@ class BackendApiService {
       throw new SessionDataError('locked', 'Paused while an F1 session is live');
     }
     throw new SessionDataError('failed', body.detail || `Request failed (${response.status})`);
+  }
+
+  /** A finished session's stewards' decisions and grid changes (2023 onwards; never throws for a
+   *  session without them: `stewards` says whether the decisions could be read). */
+  async getSessionPenalties(year: number, raceName: string, session: string): Promise<SessionPenalties> {
+    return this.sessionData(`/api/sessions/${year}/${session}/penalties`, { gp: raceName });
   }
 
   /** A finished session's weather (2023 onwards). `raceName` is the schedule's, e.g. "Spanish Grand Prix". */

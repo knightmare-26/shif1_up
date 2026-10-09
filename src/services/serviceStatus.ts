@@ -18,7 +18,7 @@ export interface ServiceStatus {
 }
 
 export const SERVER_WAKING_MESSAGE =
-  'Waking up the server — the first visit after a quiet period can take up to a minute.';
+  'Waking up the server — it sleeps after 15 minutes without visitors, and starting it again takes up to a minute.';
 export const DATABASE_WAKING_MESSAGE =
   'Waking up the database — it was paused after a period of inactivity, and restoring it takes a few minutes.';
 // The server has nothing to wake it with, so waiting won't help until someone resumes it by hand.

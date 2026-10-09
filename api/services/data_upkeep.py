@@ -13,7 +13,7 @@ so it never strains OpenF1's free tier (30 requests a minute) or the free instan
 3. weekend sessions (2023 on) — practice, sprint qualifying and qualifying a raced weekend should
    have but doesn't, and sprint qualifying stored without times (FastF1's feed order), from OpenF1;
 4. preseason testing (2023 on) for seasons that don't have it, once their testing is over;
-5. weather (2023 on) for stored sessions that don't have it;
+5. weather (2023 on) for stored sessions that don't have it, and the stewards' decisions (penalties);
 6. the title race's track record, once a season has finished and isn't in it, or when the title
    simulation's method changed (championship_service.TITLE_BACKTEST_VERSION).
 
@@ -36,6 +36,8 @@ logger = logging.getLogger(__name__)
 FIRST_OPENF1 = 2023
 SESSION_BATCH = 8           # OpenF1 sessions fetched per run
 WEATHER_BATCH = 8
+# Sessions whose stewards' decisions are kept (the ones shown with penalties on the results).
+PENALTY_SESSIONS = ("race", "sprint", "qualifying", "sprint_qualifying")
 RACE_BATCH = 2              # FastF1 loads per run
 RETRY_AFTER = 6 * 3600      # a failed FastF1 load is tried again after this (in-process)
 P99_SLACK = 5               # positions this far past the number of drivers are an old placeholder
@@ -58,6 +60,7 @@ class Report:
     sessions: List[str] = field(default_factory=list)
     testing: List[int] = field(default_factory=list)
     weather: List[str] = field(default_factory=list)
+    penalties: List[str] = field(default_factory=list)
     title_backtest: bool = False
 
     @property
@@ -67,18 +70,20 @@ class Report:
     def summary(self) -> str:
         parts = [f"{len(v)} {k}" for k, v in (("renumbered", self.renumbered), ("races", self.races),
                                                ("sessions", self.sessions), ("testing", self.testing),
-                                               ("weather", self.weather)) if v]
+                                               ("weather", self.weather), ("penalties", self.penalties)) if v]
         return ", ".join(parts + (["title backtest"] if self.title_backtest else [])) or "nothing to do"
 
 
 class DataUpkeep:
     def __init__(self, ingest_race: Callable, load_weather: Callable, rebuild_title_backtest: Callable,
-                 title_backtest_version: Optional[str] = None):
+                 title_backtest_version: Optional[str] = None, load_penalties: Optional[Callable] = None):
         """`ingest_race(db, year, round, session)` stores a session from FastF1 (ingest_service);
         `load_weather(year, gp, code)` fetches and stores a session's weather (SessionReplayService);
-        `rebuild_title_backtest()` recomputes and stores the title race's track record."""
+        `rebuild_title_backtest()` recomputes and stores the title race's track record;
+        `load_penalties(year, gp, code)` fetches and stores a session's stewards' messages."""
         self.ingest_race = ingest_race
         self.load_weather = load_weather
+        self.load_penalties = load_penalties
         self.rebuild_title_backtest = rebuild_title_backtest
         self.title_backtest_version = title_backtest_version
         self._unavailable: Set[Tuple] = set()       # (race_id, session_type) OpenF1 doesn't have
@@ -102,6 +107,7 @@ class DataUpkeep:
             await self._weekend_sessions(db, client, races, stored, constructor_names, last_teams, memo, report)
             await self._testing(db, client, races, now, report)
             await self._weather(db, races, stored, report)
+            await self._penalties(db, races, stored, report)
         except OpenF1Locked:
             logger.info("data upkeep: OpenF1 is locked while a session is live — the rest waits for the next run")
         await self._title_backtest(db, races, today, report)
@@ -248,6 +254,33 @@ class DataUpkeep:
                 report.weather.append(f"{race['race_id']} {session_type}")
             else:
                 self._unavailable.add((race["race_id"], f"weather {session_type}"))
+
+    # ---- 5b. penalties (the stewards' messages) -----------------------------------------------
+
+    async def _penalties(self, db, races, stored, report: Report) -> None:
+        if self.load_penalties is None:
+            return
+        from services.session_replay import session_key
+        have = {r["session_type"] for r in await db._run_query(
+            "SELECT session_type FROM prediction_cache WHERE circuit_name = '_penalties'")}
+        todo = []
+        for (race_id, session_type) in stored:
+            race = races.get(race_id)
+            if race is None or race["year"] < FIRST_OPENF1 or session_type not in PENALTY_SESSIONS:
+                continue
+            gp = race.get("gp") or race_id
+            if "|".join(map(str, session_key(race["year"], gp, CODES[session_type]))) in have:
+                continue
+            if (race_id, f"penalties {session_type}") not in self._unavailable:
+                todo.append((race, gp, session_type))
+        for race, gp, session_type in sorted(todo, key=lambda t: (-t[0]["year"], -int(t[0]["round"])))[:WEATHER_BATCH]:
+            try:
+                await self.load_penalties(race["year"], gp, CODES[session_type])
+                report.penalties.append(f"{race['race_id']} {session_type}")
+            except OpenF1Locked:
+                raise
+            except Exception:
+                self._unavailable.add((race["race_id"], f"penalties {session_type}"))
 
     # ---- 6. the title race's track record -----------------------------------------------------
 
