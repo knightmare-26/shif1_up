@@ -134,3 +134,14 @@ test('the race is offered again once the session in the link has no result for t
   await open(RESULT, '/predictions?tab=backtest&session=sprint');
   expect(sessionSelect().value).toBe('race');
 });
+
+test('the starting grid is flagged when a driver started behind where they qualified', async () => {
+  await open({ ...RESULT, races: [{ ...BAHRAIN, drivers: [
+    { ...BAHRAIN.drivers[0] },
+    { driver_id: 'had', driver_name: 'Isack Hadjar', predicted_grid: 4, actual_quali: 3, actual_grid: 8, predicted_position: 6, actual_position: 5 },
+    { driver_id: 'col', driver_name: 'Franco Colapinto', predicted_grid: 15, actual_quali: 15, actual_grid: 0, predicted_position: 18, actual_position: 16 },
+  ] }] });
+
+  expect(screen.getByTitle('Qualified P3, started P8: a grid penalty')).toHaveTextContent('P8 ↓5');
+  expect(screen.getByTitle('Qualified P15, started from the pit lane')).toHaveTextContent('Pit lane');
+});

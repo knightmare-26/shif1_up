@@ -450,7 +450,7 @@ class SupabaseF1Service:
             return True
         try:
             async with self.pool.acquire() as conn:
-                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing')")
+                await conn.execute("DELETE FROM prediction_cache WHERE circuit_name NOT IN ('_walkforward', '_championship', '_weather', '_testing', '_penalties')")
             return True
         except Exception as exc:
             logger.error("❌ Error clearing prediction cache: %s", exc)

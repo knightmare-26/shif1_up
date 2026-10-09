@@ -267,6 +267,23 @@ const sortValue = (d: BacktestDriverRow, key: SortKey): number | string => {
   return v == null ? Number.POSITIVE_INFINITY : (v as number);
 };
 
+/** The starting grid, flagged when a driver started behind where they qualified (a grid penalty)
+ *  or from the pit lane (grid 0). */
+const StartingGrid: React.FC<{ d: BacktestDriverRow; session: PredictedSession }> = ({ d, session }) => {
+  const grid = session === 'sprint' ? d.sprint_grid : d.actual_grid;
+  const qualified = session === 'sprint' ? d.actual_sq : d.actual_quali;
+  if (grid == null) return <>—</>;
+  if (grid === 0) {
+    return <span title={qualified ? `Qualified P${qualified}, started from the pit lane` : 'Started from the pit lane'}>Pit lane</span>;
+  }
+  if (qualified == null || grid <= qualified) return <>P{grid}</>;
+  return (
+    <span title={`Qualified P${qualified}, started P${grid}: a grid penalty`} className="cursor-help">
+      P{grid} <span className="text-xs text-yellow-400">↓{grid - qualified}</span>
+    </span>
+  );
+};
+
 /** One weekend's chosen session: each driver's prediction against the result. */
 const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSession }> = ({ race, session }) => {
   const columns = SESSION_COLUMNS[session];
@@ -329,6 +346,7 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSessi
               <Td className="font-medium text-white">{d.driver_name}</Td>
               {visible.map((c) => {
                 const v = cellValue(d, c.key) as number | null | undefined;
+                if (c.kind === 'grid') return <Td key={c.key} align="right" className="tabular-nums text-gray-400"><StartingGrid d={d} session={session} /></Td>;
                 return (
                   <Td key={c.key} align="right"
                     className={`tabular-nums ${c.kind === 'actual' ? 'text-white' : 'text-gray-400'}`}>
