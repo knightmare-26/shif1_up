@@ -335,8 +335,8 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores }> = ({ scores 
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ key, label, score }) => (
-            <Tr key={key}>
+          {rows.map(({ kind, key, label, score }) => (
+            <Tr key={`${kind}-${key}`}>{/* race and sprint share market names */}
               <Td className="font-medium text-white">{label}</Td>
               <Td align="right"><Pill tone={skillTone(score.skill_vs_uniform)}>{skillLabel(score.skill_vs_uniform)}</Pill></Td>
               <Td align="right">

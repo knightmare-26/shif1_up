@@ -87,3 +87,20 @@ test('a weekend whose race is still to run shows its finished sessions, not an e
   expect(screen.queryByText('Actual Finish')).not.toBeInTheDocument();
   expect(screen.getByText(/across 1 races/)).toBeInTheDocument();      // only races that have been run
 });
+
+test('race and sprint chances are listed side by side without clashing', async () => {
+  const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+  api.getPredictionBacktest.mockResolvedValue({
+    ...RESULT,
+    probability_scores: { ...RESULT.probability_scores!, sprint: { win: score(0.2, 0.05), podium: score(0.3, -0.02) } },
+  });
+  await act(async () => {
+    render(<MemoryRouter initialEntries={['/predictions?tab=backtest']}><Predictions /></MemoryRouter>);
+  });
+
+  expect(screen.getByText('Race win')).toBeInTheDocument();
+  expect(screen.getByText('Sprint win')).toBeInTheDocument();
+  expect(screen.getByText('Sprint podium')).toBeInTheDocument();
+  expect(errors.mock.calls.filter((c) => String(c[0]).includes('same key'))).toEqual([]);
+  errors.mockRestore();
+});
