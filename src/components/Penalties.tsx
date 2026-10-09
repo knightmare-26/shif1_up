@@ -1,7 +1,7 @@
 import React from 'react';
 import { Gavel } from 'lucide-react';
 import { DriverPenalties, GridChange, SessionPenalties, StewardsDecision } from '../services/backendApi';
-import { Card, CardHeader, Notice, Pill, TableWrap, Td, Th, Tr } from './ui';
+import { Card, CardHeader, Notice, Pill, TableWrap, Td, Th, Tooltip, Tr } from './ui';
 
 /** Sessions whose stewards' decisions are shown with the results. */
 export const PENALTY_SESSIONS = ['R', 'S', 'Q', 'SQ'];
@@ -19,56 +19,88 @@ const KIND_LABEL: Record<StewardsDecision['kind'], (d: StewardsDecision) => stri
   warning: () => 'Warning',
 };
 
-/** "Lap 12 · 5s time penalty: Speeding in the pit lane (served)" */
-export const describeDecision = (d: StewardsDecision): string =>
-  [d.lap ? `Lap ${d.lap} · ` : '', KIND_LABEL[d.kind](d), d.reason ? `: ${d.reason}` : '', d.served ? ' (served)' : ''].join('');
+/** "Lap 52 · Speeding in the pit lane (served)" — one decision, for a tooltip under its heading. */
+const decisionLine = (d: StewardsDecision, withKind = false): string =>
+  [d.lap ? `Lap ${d.lap}` : 'After the session', withKind ? KIND_LABEL[d.kind](d) : d.kind === 'time' ? `${d.seconds}s` : '',
+   d.reason].filter(Boolean).join(' · ') + (d.served ? ' (served)' : '');
 
-const describeGrid = (g: GridChange): string =>
-  g.pit_lane ? `Qualified P${g.qualified}, started from the pit lane` : `Qualified P${g.qualified}, started P${g.started}: a grid penalty`;
-
-interface Badge { label: string; tone: 'warn' | 'bad' | 'neutral'; title: string }
+/** A badge, and what its tooltip says: a heading, a line per decision, a note. */
+interface Badge { label: string; tone: 'warn' | 'bad' | 'neutral'; heading: string; lines: string[]; note?: string }
 
 /** What to flag next to a driver in the results: penalties first, then flags and deleted laps. */
 export function penaltyBadges(code: string, data: SessionPenalties | null, session: string): Badge[] {
   if (!data) return [];
   const key = code.toUpperCase();
   const mine = data.decisions.filter((d) => d.driver === key);
-  const lines = (kinds: StewardsDecision['kind'][]) => mine.filter((d) => kinds.includes(d.kind)).map(describeDecision).join('\n');
+  const of = (kind: StewardsDecision['kind']) => mine.filter((d) => d.kind === kind);
   const summary: DriverPenalties | undefined = data.drivers[key];
-  const grid = data.grid[key];
+  const grid: GridChange | undefined = data.grid[key];
   const out: Badge[] = [];
 
   if (grid) {
     out.push(grid.pit_lane
-      ? { label: 'Pit-lane start', tone: 'warn', title: describeGrid(grid) }
-      : { label: `Grid ↓${(grid.started ?? 0) - grid.qualified}`, tone: 'warn', title: describeGrid(grid) });
+      ? { label: 'Pit-lane start', tone: 'warn', heading: 'Started from the pit lane',
+          lines: [`Qualified P${grid.qualified}`],
+          note: 'A pit-lane start usually follows changes to the car under parc fermé, or a penalty.' }
+      : { label: `Grid ↓${(grid.started ?? 0) - grid.qualified}`, tone: 'warn', heading: 'Grid penalty',
+          lines: [`Qualified P${grid.qualified}, started P${grid.started}: ${(grid.started ?? 0) - grid.qualified} places back`],
+          note: 'Grid penalties (new engine parts, or carried over from an earlier race) are announced in FIA documents.' });
   }
   if (!summary) return out;
-  if (summary.disqualified) out.push({ label: 'DSQ', tone: 'bad', title: lines(['disqualified']) || 'Disqualified' });
+  if (summary.disqualified) {
+    out.push({ label: 'DSQ', tone: 'bad', heading: 'Disqualified', lines: of('disqualified').map((d) => decisionLine(d)) });
+  }
   if (summary.time_penalty_seconds) {
     // Served at a pit stop, a time penalty never reaches the race time; otherwise it's added after.
-    const time = mine.filter((d) => d.kind === 'time');
+    const time = of('time');
     const added = time.filter((d) => !d.served).reduce((sum, d) => sum + (d.seconds ?? 0), 0);
     const served = time.filter((d) => d.served).reduce((sum, d) => sum + (d.seconds ?? 0), 0);
     out.push({
       label: added ? `+${added}s` : `${served}s served`, tone: added ? 'warn' : 'neutral',
-      title: [lines(['time']), added ? `${added}s added to the race time` : 'Served at a pit stop'].join('\n'),
+      heading: time.length === 1 ? `${time[0].seconds}-second time penalty` : `${time.length} time penalties`,
+      lines: time.map((d) => decisionLine(d)),
+      note: [added && `${added}s added to the race time`, served && `${served}s served at a pit stop`].filter(Boolean).join('; ') + '.',
     });
   }
-  if (summary.penalties.includes('drive_through')) out.push({ label: 'Drive-through', tone: 'warn', title: lines(['drive_through']) });
-  if (summary.penalties.includes('stop_go')) out.push({ label: 'Stop-and-go', tone: 'warn', title: lines(['stop_go']) });
-  if (summary.penalties.includes('grid')) out.push({ label: 'Grid penalty (next race)', tone: 'warn', title: lines(['grid']) });
-  if (summary.black_and_white) out.push({ label: 'Black-and-white flag', tone: 'neutral', title: lines(['black_and_white']) });
+  if (summary.penalties.includes('drive_through')) {
+    out.push({ label: 'Drive-through', tone: 'warn', heading: 'Drive-through penalty', lines: of('drive_through').map((d) => decisionLine(d)),
+      note: 'Through the pit lane at the speed limit, without stopping.' });
+  }
+  if (summary.penalties.includes('stop_go')) {
+    out.push({ label: 'Stop-and-go', tone: 'warn', heading: 'Stop-and-go penalty', lines: of('stop_go').map((d) => decisionLine(d, true)),
+      note: 'A stop in the pit box with no work allowed on the car.' });
+  }
+  if (summary.penalties.includes('grid')) {
+    out.push({ label: 'Grid penalty (next race)', tone: 'warn', heading: 'Grid penalty for the next race',
+      lines: of('grid').map((d) => decisionLine(d, true)) });
+  }
+  if (summary.black_and_white) {
+    out.push({ label: 'Black-and-white flag', tone: 'neutral', heading: 'Black-and-white flag', lines: of('black_and_white').map((d) => decisionLine(d)),
+      note: 'A warning shown to the driver: the next offence brings a penalty.' });
+  }
   // A deleted lap decides a qualifying result; in a race it's only a step toward a penalty.
   if ((session === 'Q' || session === 'SQ') && summary.deleted_laps) {
     const laps = data.deleted_laps.filter((d) => d.driver === key);
     out.push({
       label: `${summary.deleted_laps} lap${summary.deleted_laps === 1 ? '' : 's'} deleted`, tone: 'neutral',
-      title: laps.map((d) => `${d.lap ? `Lap ${d.lap} · ` : ''}${d.time} deleted: ${d.reason}`).join('\n'),
+      heading: summary.deleted_laps === 1 ? 'Lap time deleted' : `${summary.deleted_laps} lap times deleted`,
+      lines: laps.map((d) => [d.lap ? `Lap ${d.lap}` : '', d.time, d.reason].filter(Boolean).join(' · ')),
     });
   }
   return out;
 }
+
+export const PenaltyTooltip: React.FC<{ heading: string; lines: string[]; note?: string }> = ({ heading, lines, note }) => (
+  <>
+    <p className="font-semibold text-white">{heading}</p>
+    {lines.length > 0 && (
+      <ul className="mt-1 space-y-0.5 text-gray-300">
+        {lines.map((line, i) => <li key={i}>{line}</li>)}
+      </ul>
+    )}
+    {note && <p className="mt-1.5 text-gray-400">{note}</p>}
+  </>
+);
 
 export const PenaltyBadges: React.FC<{ code: string; data: SessionPenalties | null; session: string }> = ({ code, data, session }) => {
   const badges = penaltyBadges(code, data, session);
@@ -76,9 +108,9 @@ export const PenaltyBadges: React.FC<{ code: string; data: SessionPenalties | nu
   return (
     <span className="mt-1 flex flex-wrap gap-1">
       {badges.map((b) => (
-        <span key={b.label} title={b.title} className="cursor-help">
+        <Tooltip key={b.label} label={`${b.label}: ${b.heading}`} content={<PenaltyTooltip {...b} />}>
           <Pill tone={b.tone}>{b.label}</Pill>
-        </span>
+        </Tooltip>
       ))}
     </span>
   );
