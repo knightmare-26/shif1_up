@@ -126,12 +126,12 @@ test('chances still being worked out arrive by themselves', async () => {
     api.predictRace.mockResolvedValueOnce(withOdds('Race Driver', false)).mockResolvedValue(withOdds('Race Driver'));
     await open();
 
-    expect(screen.getByText(/The chances are still being worked out/)).toBeInTheDocument();
+    expect(screen.getByText(/chances are still being worked out/)).toBeInTheDocument();
     expect(screen.queryByText('Win chance')).not.toBeInTheDocument();
 
     await act(async () => { jest.advanceTimersByTime(20000); });
     expect(screen.getByText('Win chance')).toBeInTheDocument();
-    expect(screen.queryByText(/The chances are still being worked out/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/chances are still being worked out/)).not.toBeInTheDocument();
     expect(screen.getByText('Race Prediction')).toBeInTheDocument();          // never cleared while it re-checked
   } finally {
     jest.useRealTimers();
@@ -247,4 +247,25 @@ test('Predicted vs Actual says it is loading past sessions', async () => {
   await open('/predictions?tab=backtest');
   expect(screen.getByRole('status')).toHaveTextContent('Loading past sessions…');
   expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+});
+
+test('slow chances still arrive: after 3 minutes it keeps checking, once a minute', async () => {
+  jest.useFakeTimers();
+  try {
+    weekend(false);
+    api.predictRace.mockResolvedValue(withOdds('Race Driver', false));
+    await open();
+
+    for (let i = 0; i < 9; i++) await act(async () => { jest.advanceTimersByTime(20000); });   // the first 3 minutes
+    expect(screen.getByText(/chances are still being worked out/)).toBeInTheDocument();
+
+    api.predictRace.mockResolvedValue(withOdds('Race Driver'));
+    await act(async () => { jest.advanceTimersByTime(20000); });
+    expect(screen.queryByText('Win chance')).not.toBeInTheDocument();                      // now once a minute
+    await act(async () => { jest.advanceTimersByTime(40000); });
+    expect(screen.getByText('Win chance')).toBeInTheDocument();
+    expect(screen.queryByText(/chances are still being worked out/)).not.toBeInTheDocument();
+  } finally {
+    jest.useRealTimers();
+  }
 });
