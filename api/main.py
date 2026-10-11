@@ -10,7 +10,7 @@ import os
 import re
 import time
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import uvicorn
@@ -270,6 +270,50 @@ data_upkeep = DataUpkeep(
 )
 
 
+# The scheduled job (scripts/data_upkeep_job.py, run by GitHub Actions while the API sleeps) records
+# here when it stored something, so an API that was awake meanwhile — its own pass then finds nothing
+# new to fetch — still retrains on it. Kept by clear_prediction_cache().
+UPKEEP_MARKER = "_upkeep"
+
+
+async def _mark_data_stored(what: List[str]) -> None:
+    await duckdb_service.set_prediction_cache(
+        UPKEEP_MARKER, "stored", "", {"at": datetime.now(timezone.utc).isoformat(), "what": what})
+
+
+async def _stored_since_training() -> bool:
+    """The scheduled job stored results after these models read their data."""
+    try:
+        marker = await duckdb_service.get_prediction_cache(UPKEEP_MARKER, "stored")
+    except Exception:
+        return False
+    at = ((marker or {}).get("result") or {}).get("at")
+    read = prediction_service.data_read_at
+    return bool(at) and (read is None or at > read)
+
+
+async def _data_upkeep_pass() -> tuple:
+    """One pass of data upkeep: store what's new or missing, and retrain on it. Run by the API's
+    loop while it's awake and by the scheduled job while it sleeps. Returns (what changed, this
+    season's races)."""
+    await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
+    changed = [f"{s['race_id']} {s['session_type']}" for s in await load_weekend_practice(
+        duckdb_service, entry_lists.client, prediction_service._constructor_map, _last_teams())]
+    races = await duckdb_service.get_races_by_year(datetime.now().year)
+    first_race = min((str(r.get("date"))[:10] for r in races if r.get("date")), default=None)
+    if await preseason_testing.refresh(duckdb_service, entry_lists.client, datetime.now().year, first_race):
+        changed.append("preseason testing")
+    report = await data_upkeep.run(duckdb_service, entry_lists.client,
+                                   prediction_service._constructor_map, _last_teams())
+    logger.info("Data upkeep: %s", report.summary())
+    if report.needs_retrain:
+        changed.append(report.summary())
+    if changed or await _stored_since_training():
+        logger.info("New data (%s); retraining", ", ".join(changed) or "stored by the scheduled job")
+        await prediction_service.train(duckdb_service)
+    return changed, races
+
+
 async def _data_upkeep_loop() -> None:
     await asyncio.sleep(DATA_UPKEEP_FIRST_DELAY)
     while True:
@@ -278,19 +322,7 @@ async def _data_upkeep_loop() -> None:
         try:
             ready = duckdb_service is not None and (database_guardian is None or database_guardian.ready)
             if ready and not ingest_service.status.get("running"):
-                await prediction_service._ensure_trained(duckdb_service)      # team names, last teams
-                changed = [f"{s['race_id']} {s['session_type']}" for s in await load_weekend_practice(
-                    duckdb_service, entry_lists.client, prediction_service._constructor_map, _last_teams())]
-                races = await duckdb_service.get_races_by_year(datetime.now().year)
-                first_race = min((str(r.get("date"))[:10] for r in races if r.get("date")), default=None)
-                if await preseason_testing.refresh(duckdb_service, entry_lists.client, datetime.now().year, first_race):
-                    changed.append("preseason testing")
-                report = await data_upkeep.run(duckdb_service, entry_lists.client,
-                                               prediction_service._constructor_map, _last_teams())
-                logger.info("Data upkeep: %s", report.summary())
-                if changed or report.needs_retrain:
-                    logger.info("New data (%s); retraining", ", ".join(changed) or report.summary())
-                    await prediction_service.train(duckdb_service)
+                _, races = await _data_upkeep_pass()
                 delay = check_again_in(races, date.today())
                 if _startup_upkeep is not None:
                     _startup_upkeep.set()
