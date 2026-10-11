@@ -308,6 +308,31 @@ def test_a_driver_who_missed_the_latest_race_is_still_in_contention_on_the_maths
     assert "hurt" not in proj["entrants"] and "sub" in proj["entrants"]
 
 
+
+def test_a_sprint_run_before_its_race_counts_now_and_isnt_simulated_again():
+    """Singapore 2026: the sprint is on Saturday, the race on Sunday. The title race ignored the
+    sprint until the race was stored (Antonelli 320, not 325) — and would have simulated it again."""
+    from services.championship_service import ChampionshipService
+
+    results = clean_results(pd.DataFrame([
+        {"round": 1, "session_type": "race", "driver_id": "ant", "constructor_id": "x", "position": 1, "points": 25},
+        {"round": 1, "session_type": "race", "driver_id": "rus", "constructor_id": "x", "position": 2, "points": 18},
+        {"round": 2, "session_type": "sprint", "driver_id": "rus", "constructor_id": "x", "position": 1, "points": 8},
+        {"round": 2, "session_type": "sprint", "driver_id": "ant", "constructor_id": "x", "position": 4, "points": 5},
+    ]))
+    svc = ChampionshipService(StubPrediction())
+
+    live = svc._project(2026, results, rounds(3, sprint_rounds=(2,)), 1, pd.DataFrame(), None, None, 1.0, 10,
+                        np.random.default_rng(0), sprints_run={2})
+    assert (live["drivers"][0]["ant"]["points"], live["drivers"][0]["rus"]["points"]) == (30, 26)
+    assert [(r.round, r.sprint) for r in live["remaining"]] == [(2, False), (3, False)]   # round 2: its race only
+
+    # The backtest replays the season from all its results: there, a later sprint is the future.
+    replay = svc._project(2026, results, rounds(3, sprint_rounds=(2,)), 1, pd.DataFrame(), None, None, 1.0, 10,
+                          np.random.default_rng(0))
+    assert replay["drivers"][0]["ant"]["points"] == 25
+    assert [(r.round, r.sprint) for r in replay["remaining"]] == [(2, True), (3, False)]
+
 # --- the title simulation's draw (Phase 4, #33) ------------------------------------------------
 
 def test_a_retired_car_goes_to_the_back():
