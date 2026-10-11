@@ -721,6 +721,7 @@ const Predictions: React.FC = () => {
   const rawSession = params.get('session') as PredictedSession | null;
   const setSession = (s: PredictedSession) => setParams(s === 'race' ? {} : { session: s });
   const oddsTries = useRef(0);
+  const [oddsCheck, setOddsCheck] = useState(0);       // re-arms the odds check while the tab is hidden
   const [showCircuitName, setShowCircuitName] = useState(false);
   const requestId = useRef(0);
 
@@ -808,15 +809,21 @@ const Predictions: React.FC = () => {
     if (selected) runPredictions(quiet);
   }, [selected, runPredictions]);
 
-  // Right after the models train, predictions go out before their chances are worked out (a minute
-  // or two): fetch again by itself until they arrive.
+  // Right after the models train (every restart), predictions go out before their chances are worked
+  // out — ~1.5 minutes on the free server, longer while it's busy: fetch again by itself until they
+  // arrive. Every 20s for the first 3 minutes, then once a minute (it used to give up after 3
+  // minutes, leaving the note up until a reload). Not while the tab is hidden.
   const waitingForOdds = [qualiResult, raceResult, sprintResult]
     .some((r) => !!r?.predictions?.length && r.odds_available === false);
   useEffect(() => {
-    if (!waitingForOdds || loading || oddsTries.current >= 9) return undefined;
-    const timer = setTimeout(() => { oddsTries.current += 1; runPredictions(true); }, 20000);
+    if (!waitingForOdds || loading) return undefined;
+    const timer = setTimeout(() => {
+      if (document.visibilityState === 'hidden') { setOddsCheck((n) => n + 1); return; }
+      oddsTries.current += 1;
+      runPredictions(true).finally(() => setOddsCheck((n) => n + 1));   // re-arm, whatever came back
+    }, oddsTries.current < 9 ? 20_000 : 60_000);
     return () => clearTimeout(timer);
-  }, [waitingForOdds, loading, runPredictions, qualiResult, raceResult, sprintResult]);
+  }, [waitingForOdds, loading, runPredictions, qualiResult, raceResult, sprintResult, oddsCheck]);
 
   // A freshly started server has no models yet and reports every flag as false. That isn't
   // "grid data missing" — only say so once the models are trained and still report no grid.
@@ -933,8 +940,8 @@ const Predictions: React.FC = () => {
               <FadeIn key={session}>
                 {shown?.predictions.length && shown.odds_available === false && (
                   <Notice tone="info">
-                    The chances are still being worked out after the models were trained; they appear here by
-                    themselves in a minute or two.
+                    The server has just restarted and retrained its models, so the chances are still being worked
+                    out. They appear here by themselves, usually within two minutes.
                   </Notice>
                 )}
                 {shown?.predictions.length ? (
