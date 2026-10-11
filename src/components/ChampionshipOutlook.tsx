@@ -217,6 +217,10 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
 
   const empty = outlook && outlook.standings.length === 0;
 
+  // The first load is just "Loading predictions…"; after that the dropdown stays while the other
+  // championship loads.
+  if (loading && !outlook && !error) return <Card><LoadingState label="Loading predictions…" /></Card>;
+
   return (
     <FadeIn>
       <FilterBar>
@@ -225,7 +229,7 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
         </SelectField>
       </FilterBar>
       <div className="space-y-6">
-        {loading ? <Card><LoadingState label="Playing out the rest of the season…" /></Card> : error ? (
+        {loading ? <Card><LoadingState label="Loading predictions…" /></Card> : error ? (
           <Card><ErrorState title="Couldn't load the championship outlook" message={error} onRetry={load} /></Card>
         ) : !outlook || empty ? (
           <Card>
