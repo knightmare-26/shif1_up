@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Columns3 } from 'lucide-react';
 import { CheckboxMenu } from './ui';
+import { useOnDataChange } from '../hooks/useDataVersion';
 
 // Optional result columns shared by the Drivers and Teams tabs. Off by default; the choice is kept
 // in the URL (?cols=race_wins,poles) and applies to both tabs. The standings feed has no podiums,
@@ -60,6 +61,8 @@ export function useResultStats<T extends CountedStats>(fetch: (year: number) => 
     setStats(null);
     if (wanted) load();
   }, [wanted, load]);
+  // Results stored while the page is open (a sprint, a correction): count again.
+  useOnDataChange(() => { if (wanted) load(); });
 
   return { stats, state, reload: load };
 }

@@ -205,6 +205,13 @@ class FastF1Service:
             
             events = []
             for _, row in schedule.iterrows():
+                # Each session's start ("Session1".."Session5", in UTC): a finished session leaves
+                # the Predictions page by the clock, not only once its result is stored.
+                sessions = {}
+                for n in range(1, 6):
+                    name, start = row.get(f'Session{n}'), row.get(f'Session{n}DateUtc')
+                    if name and isinstance(name, str) and pd.notna(start):
+                        sessions[name] = pd.Timestamp(start).strftime('%Y-%m-%dT%H:%M:%SZ')
                 event = RaceEvent(
                     round=int(row.get('RoundNumber', 0)),
                     race_name=row.get('EventName', 'Unknown Race'),
@@ -215,6 +222,7 @@ class FastF1Service:
                     time='14:00:00Z',  # Default time
                     url=f"https://www.formula1.com/en/racing/{year}/{row.get('Location', 'unknown')}.html",
                     is_sprint='sprint' in str(row.get('EventFormat', '')).lower(),
+                    sessions=sessions or None,
                 )
                 events.append(event)
             
