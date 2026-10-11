@@ -24,7 +24,7 @@ shared shock — the backtest shows how much that matters.
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
@@ -562,11 +562,17 @@ class ChampionshipService:
     def _project(self, year: int, results: pd.DataFrame, rounds: List[Round], completed: int,
                  history: pd.DataFrame, quali_model, race_model, beta: float, n_sims: int,
                  rng: np.random.Generator, form_sd: Optional[float] = None,
-                 odds: Optional[FinishOdds] = None) -> Dict[str, Any]:
-        done = results[results["round"] <= completed]
+                 odds: Optional[FinishOdds] = None, sprints_run: Set[int] = frozenset()) -> Dict[str, Any]:
+        """`sprints_run`: rounds after `completed` whose sprint has been run (a weekend under way —
+        the sprint is on Saturday, the race on Sunday). Their sprint points count now and only their
+        race is left to simulate. Only the live outlook passes them: the backtest replays a season
+        from all its results, where a later sprint is the future."""
+        done = results[(results["round"] <= completed)
+                       | ((results["session_type"] == "sprint") & results["round"].isin(list(sprints_run)))]
         driver_table = season_table(done, "driver_id")
         team_table = season_table(done, "constructor_id")
-        remaining = [r for r in rounds if r.round > completed]
+        remaining = [replace(r, sprint=False) if r.round in sprints_run else r
+                     for r in rounds if r.round > completed]
 
         # Who races the rest of the season: the field of the latest round run (the first
         # round's field before the season starts).
@@ -625,18 +631,22 @@ class ChampionshipService:
         async with self._lock:
             if key in self._cache:
                 return self._cache[key]
-            result = await asyncio.to_thread(self._outlook_sync, year, results, rounds, completed, sprint_rounds is not None)
+            # A weekend under way: its sprint (Saturday) counts before its race is in.
+            sprints_run = {r for r in sprint_done if r > completed}
+            result = await asyncio.to_thread(self._outlook_sync, year, results, rounds, completed, sprint_rounds is not None,
+                                             sprints_run)
             self._cache = {k: v for k, v in self._cache.items() if k[0] != year}  # keep one per season
             self._cache[key] = result
             return result
 
     def _outlook_sync(self, year: int, results: pd.DataFrame, rounds: List[Round], completed: int,
-                      sprint_info: bool) -> Dict[str, Any]:
+                      sprint_info: bool, sprints_run: Set[int] = frozenset()) -> Dict[str, Any]:
         held = self._held_out_state()
         p = self.pred
         rng = np.random.default_rng(self.seed)
         proj = self._project(year, results, rounds, completed, p._df, p._quali_model, p._race_model,
-                             held["beta"], LIVE_SIMULATIONS, rng, odds=held.get("odds", {}).get("race_pre"))
+                             held["beta"], LIVE_SIMULATIONS, rng, odds=held.get("odds", {}).get("race_pre"),
+                             sprints_run=sprints_run)
 
         names = results.drop_duplicates("driver_id").set_index("driver_id")["driver_name"].to_dict() if not results.empty else {}
         team_names = results.dropna(subset=["constructor_id"]).drop_duplicates("constructor_id").set_index("constructor_id")["constructor_name"].to_dict() if not results.empty else {}

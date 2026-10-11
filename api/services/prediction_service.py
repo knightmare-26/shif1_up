@@ -13,7 +13,7 @@ import logging
 import asyncio
 import hashlib
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 import numpy as np
@@ -118,6 +118,8 @@ class PredictionService:
         # One training at a time: the Predictions page asks for qualifying, race and sprint
         # predictions in parallel, and each used to start its own training on a cold server.
         self._train_lock = asyncio.Lock()
+        # When the latest training read its data (UTC ISO): results stored after it aren't in the models.
+        self.data_read_at: Optional[str] = None
         self._race_model = None
         self._quali_model = None
         self._sprint_model = None
@@ -481,6 +483,7 @@ class PredictionService:
             return {"success": False, "error": f"ML packages missing: {exc}. Run: pip install lightgbm"}
 
         try:
+            read_at = datetime.now(timezone.utc).isoformat()
             raw = await self._load_raw(duckdb_service)
             if raw.empty or len(raw) < 20:
                 return {"success": False, "error": f"Insufficient data ({len(raw)} rows). Run ingest first."}
@@ -492,6 +495,7 @@ class PredictionService:
             scratch = self._scratch_copy()
             result = await asyncio.to_thread(scratch._fit, raw, lgb)
             self._adopt(scratch)
+            self.data_read_at = read_at
             await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
             return {"success": True, **result}

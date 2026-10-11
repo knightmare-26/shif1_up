@@ -1,0 +1,74 @@
+# Keep the data current while the API sleeps: fetch new sessions, results corrections, weather,
+# stewards' decisions… straight into Supabase on GitHub's runners (scripts/data_upkeep_job.py), so
+# Render is never woken — the API picks the data up the next time it starts. scripts/upkeep_schedule.py
+# decides from the F1 calendar whether a run has anything to do; most end in seconds. Free for the
+# public repo. Not CI (that's still shelved).
+#
+# Needs the repository secret DATABASE_URL (Supabase's pooler connection string, as on Render).
+name: Data upkeep
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"           # every 15 minutes, off the busy top of the hour
+  workflow_dispatch:
+    inputs:
+      results_refresh:
+        description: Also re-fetch the last 14 days' results (post-race penalties)
+        type: boolean
+        default: false
+
+permissions:
+  actions: write      # the keep-alive step below
+  contents: read
+
+concurrency:
+  group: data-upkeep
+  cancel-in-progress: false
+
+jobs:
+  upkeep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Anything to pick up now?
+        id: when
+        run: |
+          python3 scripts/upkeep_schedule.py >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "results_refresh=${{ inputs.results_refresh }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.when.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - if: steps.when.outputs.run == 'true'
+        run: pip install -r api/requirements.txt
+
+      - name: Update the data in Supabase
+        if: steps.when.outputs.run == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FASTF1_CACHE_DIR: ${{ runner.temp }}/fastf1
+          MODEL_DIR: ${{ runner.temp }}/models
+          CACHE_DIR: ${{ runner.temp }}/cache
+        run: python scripts/data_upkeep_job.py ${{ steps.when.outputs.results_refresh == 'true' && '--results-refresh' || '' }}
+
+      # GitHub switches off a public repository's scheduled workflows after 60 days without activity
+      # (the off-season). Re-enabling this one every Monday keeps it on; if it ever is switched off,
+      # GitHub emails first, and Actions -> "Data upkeep" -> Enable workflow turns it back on.
+      - name: Keep the schedule on
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$(date -u +%u%H)" = "100" ] && [ "$(date -u +%M)" -lt 15 ]; then
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/data-upkeep.yml/enable"
+            echo "Schedule kept on."
+          fi
