@@ -188,21 +188,30 @@ async def _warm_prediction_models() -> None:
     await championship_service.warm()  # the odds on the Predictions page and the title outlook
 
 
-# Results change after they're first stored (post-race penalties, disqualifications), so once a
-# day the API re-fetches the race, sprint and qualifying results of the last N days' rounds and
-# retrains if anything moved. RESULTS_REFRESH_DAYS=0 turns it off.
+# Results change after they're first stored (post-race penalties, disqualifications), so the API
+# re-fetches the race, sprint and qualifying results of the last N days' rounds and retrains if
+# anything moved: at every start-up — right after data upkeep's first pass, so the two FastF1/OpenF1
+# batches don't run at once on the 512 MB instance — then once a day while it stays up. The free
+# server sleeps between visits, so a start-up is often the only chance. RESULTS_REFRESH_DAYS=0 turns it off.
 RESULTS_REFRESH_DAYS = int(os.getenv("RESULTS_REFRESH_DAYS", "14"))
-RESULTS_REFRESH_FIRST_DELAY = 600       # let a cold start settle (and the models train) first
+RESULTS_REFRESH_FIRST_DELAY = 600       # at most this long waiting for data upkeep's first pass
 RESULTS_REFRESH_INTERVAL = 24 * 3600
+_startup_upkeep: Optional[asyncio.Event] = None   # set once data upkeep's first pass is done
 
 
 async def _results_refresh_loop() -> None:
-    await asyncio.sleep(RESULTS_REFRESH_FIRST_DELAY)
+    if _startup_upkeep is not None:
+        try:
+            await asyncio.wait_for(_startup_upkeep.wait(), timeout=RESULTS_REFRESH_FIRST_DELAY)
+        except asyncio.TimeoutError:
+            pass
+    else:
+        await asyncio.sleep(RESULTS_REFRESH_FIRST_DELAY)
     while True:
         busy = (duckdb_service is None or (database_guardian is not None and not database_guardian.ready)
                 or ingest_service.status.get("running"))
         if busy:
-            await asyncio.sleep(900)
+            await asyncio.sleep(60)
             continue
         try:
             changed = await ingest_service.refresh_recent_results(duckdb_service, RESULTS_REFRESH_DAYS)
@@ -217,7 +226,9 @@ async def _results_refresh_loop() -> None:
 
 
 # The data keeps itself up to date (with Supabase only, like the results refresh; DATA_UPKEEP=0
-# turns it off): every 20 min over a race weekend, else every 6 h,
+# turns it off): as soon as the app starts and the database is connected — the free server sleeps
+# between visits, so whatever it missed is caught up the moment it wakes — then every 20 min over a
+# race weekend, else every 6 h,
 #  - each weekend's practice, sprint qualifying and qualifying, from OpenF1 as they finish
 #    (services/weekend_practice.py), so live predictions use them;
 #  - preseason testing, February to the first race (services/preseason_testing.py);
@@ -226,7 +237,9 @@ async def _results_refresh_loop() -> None:
 #    batch at a time (services/data_upkeep.py).
 # Anything that changed the results retrains the models (which rebuilds the backtest).
 DATA_UPKEEP = os.getenv("DATA_UPKEEP", "1") != "0"
-DATA_UPKEEP_FIRST_DELAY = 120
+DATA_UPKEEP_FIRST_DELAY = 5             # just let the start-up finish
+DATA_UPKEEP_NOT_READY = 30              # the database still connecting (or a paused project waking)
+DATA_UPKEEP_AFTER_ERROR = 15 * 60
 
 
 def _last_teams() -> Dict[str, str]:
@@ -260,7 +273,8 @@ data_upkeep = DataUpkeep(
 async def _data_upkeep_loop() -> None:
     await asyncio.sleep(DATA_UPKEEP_FIRST_DELAY)
     while True:
-        delay = 3600
+        # Not ready yet: look again shortly (this used to wait an hour, which a short visit never lasted).
+        delay = DATA_UPKEEP_NOT_READY
         try:
             ready = duckdb_service is not None and (database_guardian is None or database_guardian.ready)
             if ready and not ingest_service.status.get("running"):
@@ -278,10 +292,15 @@ async def _data_upkeep_loop() -> None:
                     logger.info("New data (%s); retraining", ", ".join(changed) or report.summary())
                     await prediction_service.train(duckdb_service)
                 delay = check_again_in(races, date.today())
+                if _startup_upkeep is not None:
+                    _startup_upkeep.set()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.warning("Data upkeep failed: %s", exc, exc_info=True)
+            delay = DATA_UPKEEP_AFTER_ERROR
+            if _startup_upkeep is not None:
+                _startup_upkeep.set()                # don't hold the results refresh back
         await asyncio.sleep(delay)
 
 
@@ -302,6 +321,7 @@ async def _ping_database() -> bool:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global redis_service, duckdb_service, fastf1_service, ergast_service, cache_service, database_guardian
+    global _startup_upkeep
     warmup_task = None
     refresh_task = None
     practice_task = None
@@ -327,6 +347,7 @@ async def lifespan(app: FastAPI):
             api_url=os.getenv("SUPABASE_API_URL", "https://api.supabase.com"),
         )
         await database_guardian.start()
+        _startup_upkeep = asyncio.Event() if DATA_UPKEEP else None
         if RESULTS_REFRESH_DAYS > 0:
             refresh_task = asyncio.create_task(_results_refresh_loop(), name="results-refresh")
         if DATA_UPKEEP:
@@ -1532,6 +1553,30 @@ async def predict_status():
 # A weekend's predicted sessions, in the order they run.
 PREDICTED_SESSIONS = ("sprint_qualifying", "sprint", "qualifying", "race")
 COMPLETED_LOOKAHEAD_DAYS = 4     # a weekend's sessions run in the 3 days before its race
+# How long after its scheduled start a session counts as over (it leaves the Predictions page);
+# its result reaches Predicted vs Actual once stored, ~15-35 min after the flag.
+SESSION_LENGTH = {"sprint_qualifying": timedelta(hours=1), "sprint": timedelta(hours=1),
+                  "qualifying": timedelta(minutes=75), "race": timedelta(hours=2, minutes=30)}
+SCHEDULE_SESSIONS = {"Sprint Qualifying": "sprint_qualifying", "Sprint Shootout": "sprint_qualifying",
+                     "Sprint": "sprint", "Qualifying": "qualifying", "Race": "race"}
+
+
+def _finished_sessions(event, stored: List[str], now: datetime) -> List[str]:
+    """The weekend's predicted sessions that are over but whose result isn't stored yet: past their
+    scheduled end, or followed by a session that is stored (sprint qualifying once the sprint is in —
+    Jolpica, the fallback while OpenF1 is shut, has no sprint qualifying)."""
+    starts: Dict[str, datetime] = {}
+    for name, when in (getattr(event, "sessions", None) or {}).items():
+        if name in SCHEDULE_SESSIONS:
+            try:
+                starts[SCHEDULE_SESSIONS[name]] = datetime.fromisoformat(when.replace("Z", "+00:00")).replace(tzinfo=None)
+            except ValueError:
+                pass
+    order = (sorted(starts, key=starts.get) if starts else
+             [s for s in PREDICTED_SESSIONS if event.is_sprint or not s.startswith("sprint")])
+    last_stored = max((i for i, s in enumerate(order) if s in stored), default=-1)
+    return [s for i, s in enumerate(order) if s not in stored
+            and (i < last_stored or (s in starts and now >= starts[s] + SESSION_LENGTH[s]))]
 
 
 async def _completed_sessions(year: int, rounds: List[int]) -> Dict[int, List[str]]:
@@ -1570,19 +1615,24 @@ async def predict_circuits():
         logger.error("❌ predict_circuits: failed to load %s schedule: %s", year, exc)
         return []
 
-    today = datetime.utcnow().date()
+    now = datetime.utcnow()
+    today = now.date()
     upcoming = sorted((r for r in schedule if r.date >= today.isoformat()), key=lambda r: r.round)
     soon = (today + timedelta(days=COMPLETED_LOOKAHEAD_DAYS)).isoformat()
     completed = await _completed_sessions(year, [r.round for r in upcoming if r.date <= soon])
-    return [
-        {
+    out = []
+    for r in upcoming:
+        stored = completed.get(r.round, [])
+        # Over, result on its way (it moves to Predicted vs Actual once stored).
+        finished = _finished_sessions(r, stored, now) if r.date <= soon else []
+        if "race" in stored or "race" in finished:
+            continue                      # the weekend's done: the next one is "upcoming"
+        out.append({
             "round": r.round, "race_name": r.race_name, "circuit_name": r.circuit_name,
             "date": r.date, "is_sprint": r.is_sprint,
-            "completed_sessions": completed.get(r.round, []),
-        }
-        for r in upcoming
-        if "race" not in completed.get(r.round, [])
-    ]
+            "completed_sessions": stored, "finished_sessions": finished,
+        })
+    return out
 
 
 @app.post("/predict/train")

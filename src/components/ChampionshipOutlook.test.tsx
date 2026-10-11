@@ -4,9 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
 import { formatChance } from '../utils/probability';
 import { backendApi, ChampionshipOutlook as Outlook, ChampionshipRow } from '../services/backendApi';
+import { resetDataVersionForTests } from '../hooks/useDataVersion';
 
 jest.mock('../services/backendApi', () => ({
-  backendApi: { getChampionshipOutlook: jest.fn(), getChampionshipBacktest: jest.fn() },
+  backendApi: { getChampionshipOutlook: jest.fn(), getChampionshipBacktest: jest.fn(), getPredictionStatus: jest.fn(),
+                forgetCachedData: jest.fn() },
 }));
 const api = backendApi as jest.Mocked<typeof backendApi>;
 
@@ -45,7 +47,7 @@ beforeEach(() => {
     constructors: {}, computed_at: 't',
   });
 });
-afterEach(() => jest.clearAllMocks());
+afterEach(() => { jest.clearAllMocks(); resetDataVersionForTests(); });
 
 test('chances are rounded to what a simulation can honestly claim', () => {
   expect([0, 0.004, 0.38, 0.996, 1].map(formatChance)).toEqual(['0%', '<1%', '38%', '>99%', '100%']);
@@ -91,4 +93,18 @@ test('choosing the constructors championship loads that view', async () => {
 
   expect(api.getChampionshipOutlook).toHaveBeenLastCalledWith('constructors', 2026);
   expect(screen.getByText("Constructors' Championship — 2026")).toBeInTheDocument();
+});
+
+test('points scored while the page is open (a sprint stored, the server retrained) show up by themselves', async () => {
+  api.getChampionshipOutlook.mockResolvedValue(outlook({ standings: [row(1, 'Antonelli', { points: 321 }), row(2, 'Russell')] }));
+  api.getPredictionStatus.mockResolvedValue({ trained: true, trained_at: '2026-10-11T11:47:11' });
+  await renderAt();
+  expect(screen.getByText('321')).toBeInTheDocument();                 // Antonelli before the sprint
+
+  api.getChampionshipOutlook.mockResolvedValue(outlook({ standings: [row(1, 'Antonelli', { points: 326 }), row(2, 'Russell')] }));
+  api.getPredictionStatus.mockResolvedValue({ trained: true, trained_at: '2026-10-11T11:52:40' });
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+
+  expect(screen.getByText('326')).toBeInTheDocument();
+  expect(screen.queryByText('321')).not.toBeInTheDocument();
 });

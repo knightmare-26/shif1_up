@@ -11,10 +11,15 @@ from models.f1_models import RaceEvent
 pytestmark = pytest.mark.asyncio
 
 
-def event(rnd, days_ahead, sprint=False):
+def event(rnd, days_ahead, sprint=False, sessions=None):
     day = (datetime.utcnow().date() + timedelta(days=days_ahead)).isoformat()
     return RaceEvent(round=rnd, race_name=f"GP {rnd}", circuit_name=f"Circuit {rnd}", country="X", location="X",
-                     date=day, time="13:00:00Z", is_sprint=sprint)
+                     date=day, time="13:00:00Z", is_sprint=sprint, sessions=sessions)
+
+
+def started(hours_ago):
+    """A session start `hours_ago` hours before now, as FastF1's schedule gives it (UTC)."""
+    return (datetime.utcnow() - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class Db:
@@ -46,6 +51,36 @@ async def test_a_weekend_under_way_lists_its_finished_sessions(circuits):
 
     assert [(c["round"], c["completed_sessions"]) for c in out] == [
         (18, ["sprint_qualifying", "sprint", "qualifying"]), (19, [])]
+    assert [c["finished_sessions"] for c in out] == [[], []]
+
+
+async def test_a_session_over_by_the_clock_leaves_before_its_result_is_stored(circuits):
+    """Saturday afternoon: sprint qualifying stored, the sprint ended an hour ago (its result not in
+    yet), qualifying still to come."""
+    sessions = {"Practice 1": started(30), "Sprint Qualifying": started(26), "Sprint": started(2),
+                "Qualifying": started(-2), "Race": started(-25)}
+    out = await circuits({"r18": {"sprint_qualifying"}}, [event(18, 1, sprint=True, sessions=sessions)])
+
+    assert (out[0]["completed_sessions"], out[0]["finished_sessions"]) == (["sprint_qualifying"], ["sprint"])
+
+
+async def test_sprint_qualifying_is_over_once_the_sprint_is_stored(circuits):
+    """Jolpica (the fallback while OpenF1 is shut) has the sprint but no sprint qualifying: it must
+    still leave the page. Without session times the weekend's order says so."""
+    out = await circuits({"r18": {"sprint"}}, [event(18, 1, sprint=True)])
+    assert (out[0]["completed_sessions"], out[0]["finished_sessions"]) == (["sprint"], ["sprint_qualifying"])
+
+
+async def test_once_the_race_is_over_the_next_weekend_is_upcoming(circuits):
+    sessions = {"Qualifying": started(27), "Race": started(3)}
+    out = await circuits({"r18": {"qualifying"}}, [event(18, 0, sessions=sessions), event(19, 7)])
+    assert [c["round"] for c in out] == [19]
+
+
+async def test_a_session_still_running_stays(circuits):
+    sessions = {"Qualifying": started(0.5), "Race": started(-23)}
+    out = await circuits({}, [event(18, 1, sessions=sessions)])
+    assert out[0]["finished_sessions"] == []
 
 
 async def test_the_weekend_drops_out_once_its_race_is_stored(circuits):

@@ -11,6 +11,8 @@ import {
   PageHeader, PageShell, Pill, PositionBadge, SelectField, TabPanel, Tabs, TableWrap, Td, Th, Tooltip, Tr,
 } from './ui';
 import { PenaltyTooltip } from './Penalties';
+import { useOnDataChange } from '../hooks/useDataVersion';
+import { daysUntil } from '../utils/dates';
 import { formatChance } from '../utils/probability';
 
 /** One session at a time, chosen from a dropdown (?session=, Race by default) on both the Upcoming
@@ -550,6 +552,8 @@ const BacktestTab: React.FC = () => {
   }, [apply]);
 
   useEffect(() => { load(); }, [load]);
+  // New results stored while the page is open: the server is about to rebuild (`updating`).
+  useOnDataChange(() => { backendApi.getPredictionBacktest().then(apply).catch(() => undefined); });
 
   useEffect(() => {
     if (!updating) return undefined;
@@ -696,6 +700,8 @@ const PREDICTION_TAB_IDS = PREDICTION_TABS.map((t) => t.id);
 /** "Sprint", "Sprint and Qualifying". */
 const listOf = (items: string[]) => (items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0] ?? '');
 const CURRENT_YEAR = new Date().getFullYear();
+const RACE_WEEKEND_DAYS = 4;              // a weekend's sessions run in the days before its race
+const WEEKEND_RECHECK_MS = 5 * 60_000;
 
 const Predictions: React.FC = () => {
   const [circuits, setCircuits]       = useState<PredictableRace[]>([]);
@@ -723,19 +729,35 @@ const Predictions: React.FC = () => {
     [],
   );
 
-  useEffect(() => {
-    refreshStatus();
-    backendApi.getPredictionCircuits().then((c) => {
+  const loadCircuits = useCallback((force = false) => {
+    backendApi.getPredictionCircuits(force).then((c) => {
       setCircuits(c);
-      if (c.length) setSelected(c[0].circuit_name);
+      // Keep the race picked; the next one when it's run (its race stored, it leaves the list).
+      setSelected((current) => (c.some((x) => x.circuit_name === current) ? current : c[0]?.circuit_name ?? ''));
     }).catch(() => {}).finally(() => setCircuitsLoaded(true));
-  }, [refreshStatus]);
+  }, []);
+
+  useEffect(() => { refreshStatus(); loadCircuits(); }, [refreshStatus, loadCircuits]);
+  // A session finishing while the page is open (stored by the server, which then retrains) leaves
+  // the dropdown and the race prediction moves to the real grid — no reload needed.
+  useOnDataChange(loadCircuits);
+  // Over a race weekend a session also finishes by the clock, before its result is stored (that
+  // doesn't change the data): look again every few minutes while the page is visible.
+  const raceWeekend = circuits.some((c) => { const d = daysUntil(c.date); return d !== null && d <= RACE_WEEKEND_DAYS; });
+  useEffect(() => {
+    if (!raceWeekend) return undefined;
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadCircuits(true); }, WEEKEND_RECHECK_MS);
+    return () => clearInterval(id);
+  }, [raceWeekend, loadCircuits]);
 
   const selectedRace = circuits.find((c) => c.circuit_name === selected);
   const isSprintWeekend = !!selectedRace?.is_sprint;
   // A finished session moves to Predicted vs Actual (the race never shows up here as done: the
-  // weekend leaves the list once its race is stored).
-  const doneSessions = sessionsFor(isSprintWeekend).filter((s) => selectedRace?.completed_sessions?.includes(s));
+  // weekend leaves the list once its race is over). `scored`: its result is stored and compared
+  // there; `pending`: over, result on its way.
+  const scoredSessions = sessionsFor(isSprintWeekend).filter((s) => selectedRace?.completed_sessions?.includes(s));
+  const pendingSessions = sessionsFor(isSprintWeekend).filter((s) => selectedRace?.finished_sessions?.includes(s));
+  const doneSessions = sessionsFor(isSprintWeekend).filter((s) => scoredSessions.includes(s) || pendingSessions.includes(s));
   const sessionOptions = sessionsFor(isSprintWeekend).filter((s) => !doneSessions.includes(s));
   // A sprint picked for one weekend falls back to the race on a weekend without one.
   const session: PredictedSession = rawSession && sessionOptions.includes(rawSession) ? rawSession : 'race';
@@ -753,7 +775,7 @@ const Predictions: React.FC = () => {
     }
     try {
       const race = circuits.find((c) => c.circuit_name === selected);
-      const done = race?.completed_sessions ?? [];
+      const done = [...(race?.completed_sessions ?? []), ...(race?.finished_sessions ?? [])];
       // Qualifying and sprint qualifying share one prediction (the qualifying model).
       const needQuali = sessionsFor(!!race?.is_sprint).some((x) => isQualifying(x) && !done.includes(x));
       const [q, r, s] = await Promise.all([
@@ -776,8 +798,15 @@ const Predictions: React.FC = () => {
   }, [selected, circuits, refreshStatus]);
 
   // Predictions are cheap (cached server-side), so generate them as soon as a
-  // circuit is chosen instead of making the user click a second time.
-  useEffect(() => { oddsTries.current = 0; if (selected) runPredictions(); }, [selected, runPredictions]);
+  // circuit is chosen instead of making the user click a second time. The same circuit again is
+  // the data moving (the race list re-read): refresh behind what's shown.
+  const predictedFor = useRef('');
+  useEffect(() => {
+    const quiet = predictedFor.current === selected;
+    predictedFor.current = selected;
+    oddsTries.current = 0;
+    if (selected) runPredictions(quiet);
+  }, [selected, runPredictions]);
 
   // Right after the models train, predictions go out before their chances are worked out (a minute
   // or two): fetch again by itself until they arrive.
@@ -864,12 +893,23 @@ const Predictions: React.FC = () => {
             {doneSessions.length > 0 && (
               <Notice tone="info">
                 <span>
-                  {listOf(doneSessions.map((s) => SESSION_LABELS[s]))} {doneSessions.length > 1 ? 'are' : 'is'} done
-                  — see how {doneSessions.length > 1 ? 'they' : 'it'} compared with the prediction in{' '}
-                  <button type="button" className="font-semibold underline hover:text-white"
-                    onClick={() => setParams({ tab: 'backtest', session: doneSessions[doneSessions.length - 1] })}>
-                    Predicted vs Actual
-                  </button>.
+                  {scoredSessions.length > 0 && (
+                    <>
+                      {listOf(scoredSessions.map((s) => SESSION_LABELS[s]))} {scoredSessions.length > 1 ? 'are' : 'is'} done
+                      — see how {scoredSessions.length > 1 ? 'they' : 'it'} compared with the prediction in{' '}
+                      <button type="button" className="font-semibold underline hover:text-white"
+                        onClick={() => setParams({ tab: 'backtest', session: scoredSessions[scoredSessions.length - 1] })}>
+                        Predicted vs Actual
+                      </button>.{' '}
+                    </>
+                  )}
+                  {pendingSessions.length > 0 && (
+                    <>
+                      {listOf(pendingSessions.map((s) => SESSION_LABELS[s]))} {pendingSessions.length > 1 ? 'have' : 'has'} finished
+                      — {pendingSessions.length > 1 ? 'their results move' : 'its result moves'} to Predicted vs Actual as soon as{' '}
+                      {pendingSessions.length > 1 ? "they're" : "it's"} in (usually within half an hour).
+                    </>
+                  )}
                 </span>
               </Notice>
             )}

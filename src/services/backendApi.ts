@@ -160,6 +160,8 @@ export interface PredictableRace {
   is_sprint: boolean;
   /** This weekend's finished sessions ('sprint_qualifying', 'sprint', 'qualifying'): they've moved to Predicted vs Actual. */
   completed_sessions?: string[];
+  /** Sessions over (by the clock, or a later one stored) whose result isn't stored yet: on their way. */
+  finished_sessions?: string[];
 }
 
 export interface BacktestDriverRow {
@@ -738,6 +740,11 @@ class BackendApiService {
   }
 
   // Cache management
+  /** Forget this tab's cached answers (the server's data moved: see hooks/useDataVersion). */
+  forgetCachedData(): void {
+    this.cache.clear();
+  }
+
   async clearCache(): Promise<{ message: string }> {
     try {
       const response = await this.makeRequest('/api/cache/clear', { method: 'POST' });
@@ -814,7 +821,9 @@ class BackendApiService {
     return this.getCachedOrFetch('/predict/status', {}, 10);
   }
 
-  async getPredictionCircuits(): Promise<PredictableRace[]> {
+  /** `force` skips the cache: over a race weekend a session finishes by the clock. */
+  async getPredictionCircuits(force = false): Promise<PredictableRace[]> {
+    if (force) this.cache.delete(this.getCacheKey('/predict/circuits', {}));
     return this.getCachedOrFetch('/predict/circuits', {}, 300);
   }
 

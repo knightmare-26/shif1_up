@@ -12,7 +12,9 @@ Practice rows are stored the way ingest_service._extract_practice_results stores
 best lap, the lap as a timedelta string, driver ids from the three-letter code. Qualifying comes from
 OpenF1's classification (services/openf1_results.py), so a race predicted after qualifying starts from
 the real qualifying order (the results refresh only fetches qualifying after the race). OpenF1 shuts free access
-while any session is live (OpenF1Locked) — the loader stops and tries again later.
+while any session is live (OpenF1Locked): then (or when it fails) a finished qualifying, sprint or race comes from
+Jolpica instead (services/jolpica_results.py), and the rest waits for the next check. The server sleeps between
+visits, so the loader often runs only when someone opens the site — around a session, while OpenF1 is locked.
 """
 import logging
 import unicodedata
@@ -20,6 +22,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+
+import httpx
 
 from services.driver_names import tidy_full_name
 from services.openf1_live import OpenF1Client, OpenF1Locked, find_session, parse_time
@@ -101,9 +105,11 @@ async def session_rows(client: OpenF1Client, session_key: int, constructor_names
 
 
 async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dict[str, str],
-                                last_teams: Dict[str, str], now: Optional[datetime] = None) -> List[Dict[str, str]]:
+                                last_teams: Dict[str, str], now: Optional[datetime] = None,
+                                jolpica: Optional[httpx.AsyncBaseTransport] = None) -> List[Dict[str, str]]:
     """Store every finished, not-yet-stored practice and qualifying session of the weekends around
-    now. Returns the sessions stored (the caller retrains when there are any)."""
+    now. Returns the sessions stored (the caller retrains when there are any). `jolpica` is a
+    transport for tests."""
     from services.openf1_results import classified_rows, weekend_teams
     now = now or datetime.now(timezone.utc)
     today = now.date()
@@ -112,8 +118,9 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
     for year in sorted({(today - timedelta(days=DAYS_AFTER_RACE)).year, today.year}):
         races += [{**r, "year": r.get("year", year)} for r in await db.get_races_by_year(year)]
 
+    weekends = weekends_to_check(races, today)
     try:
-        for race in weekends_to_check(races, today):
+        for race in weekends:
             for code, session_type in {**PRACTICE, **QUALIFYING, **{c: t for c, (t, _) in RACES.items()}}.items():
                 if await db.get_race_results(race["race_id"], session_type):
                     continue
@@ -142,11 +149,44 @@ async def load_weekend_practice(db, client: OpenF1Client, constructor_names: Dic
                 logger.info("weekend sessions: stored %s %s (%d drivers)", race["race_id"], code, len(rows))
                 stored.append({"race_id": race["race_id"], "session_type": session_type})
     except OpenF1Locked:
-        logger.info("weekend practice: OpenF1 is locked while a session is live — trying again later")
+        logger.info("weekend sessions: OpenF1 is locked while a session is live — trying Jolpica")
+        stored += await load_from_jolpica(db, weekends, last_teams, jolpica)
     except Exception as exc:
         # Rate-limited, a timeout, a server error: what's already stored is still reported (so the
         # models retrain on it — the next check skips stored sessions and wouldn't say so again).
-        logger.warning("weekend sessions: stopped after storing %d (%s); the rest at the next check", len(stored), exc)
+        logger.warning("weekend sessions: OpenF1 stopped after storing %d (%s); trying Jolpica", len(stored), exc)
+        stored += await load_from_jolpica(db, weekends, last_teams, jolpica)
+    return stored
+
+
+async def load_from_jolpica(db, weekends: List[Dict[str, Any]], last_teams: Dict[str, str],
+                            transport: Optional[httpx.AsyncBaseTransport] = None) -> List[Dict[str, str]]:
+    """The weekends' finished qualifying, sprint and race not yet stored, from Jolpica (OpenF1 is
+    shut or failing). Practice and sprint qualifying aren't on Jolpica: they wait for OpenF1."""
+    from services import jolpica_results
+    from services.openf1_results import weekend_teams
+    stored: List[Dict[str, str]] = []
+    try:
+        for race in weekends:
+            # A weekend whose race is stored is done (the results refresh brings any correction).
+            if race.get("round") is None or await db.get_race_results(race["race_id"], "race"):
+                continue
+            for session_type in jolpica_results.SESSIONS:
+                if await db.get_race_results(race["race_id"], session_type):
+                    continue
+                teams = {**last_teams, **await weekend_teams(db, race["race_id"])}
+                rows, people = await jolpica_results.session_rows(int(race["year"]), int(race["round"]),
+                                                                  session_type, teams, transport)
+                if len(rows) < MIN_DRIVERS:
+                    continue                                # not run or not published yet
+                await db.store_drivers(people, rename=False)
+                await db.store_race_results(race["race_id"], rows, session_type)
+                logger.info("weekend sessions: stored %s %s from Jolpica (%d drivers)",
+                            race["race_id"], session_type, len(rows))
+                stored.append({"race_id": race["race_id"], "session_type": session_type})
+    except Exception as exc:
+        logger.warning("weekend sessions: Jolpica stopped after storing %d (%s); the rest at the next check",
+                       len(stored), exc)
     return stored
 
 

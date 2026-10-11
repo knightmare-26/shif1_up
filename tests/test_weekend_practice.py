@@ -1,5 +1,6 @@
-"""Each weekend's practice is loaded from OpenF1 as it finishes (services/weekend_practice.py).
-OpenF1 is faked with httpx.MockTransport."""
+"""Each weekend's practice is loaded from OpenF1 as it finishes (services/weekend_practice.py), with
+Jolpica as the fallback for qualifying, sprint and race while OpenF1 is shut. Both are faked with
+httpx.MockTransport."""
 from datetime import date, datetime, timezone
 
 import httpx
@@ -112,8 +113,90 @@ async def test_sessions_already_stored_are_left_alone():
     assert calls == []
 
 
-async def test_a_live_session_lock_stops_quietly():
-    assert await load_weekend_practice(FakeDb(), client([], locked=True), TEAMS, {}, now=NOW) == []
+def jolpica(calls, sessions=None, status=200):
+    """Jolpica with Singapore's qualifying and sprint published (no race yet), unless `sessions` says."""
+    names = [("VER", "Max", "Verstappen", "1", "red_bull"), ("LEC", "Charles", "Leclerc", "16", "ferrari"),
+             ("HAM", "Lewis", "Hamilton", "44", "ferrari"), ("ANT", "Andrea Kimi", "Antonelli", "12", "mercedes")] + [
+            (f"D{i:02d}", "Driver", f"D{i:02d}", str(100 + i), "haas") for i in range(8)]
+
+    def entry(i, code, given, family, number, team):
+        return {"position": str(i), "Driver": {"code": code, "givenName": given, "familyName": family,
+                                               "permanentNumber": number},
+                "Constructor": {"constructorId": team}}
+
+    published = {
+        "qualifying": ("QualifyingResults", [
+            {**entry(i, *n), "Q1": "1:33.241", "Q2": "1:31.639" if i <= 8 else None, "Q3": "1:31.373" if i == 1 else
+             "1:31.5" if i <= 4 else None} for i, n in enumerate(names, start=1)]),
+        "sprint": ("SprintResults", [
+            {**entry(i, *n), "grid": "0" if n[0] == "HAM" else str(i), "points": str(max(9 - i, 0)), "laps": "21",
+             "status": "Finished" if i <= 9 else "Lapped" if i == 10 else "Retired",
+             **({"Time": {"millis": "2388162"}} if i == 1 else {})} for i, n in enumerate(names, start=1)]),
+    } if sessions is None else sessions
+    endpoints = {"qualifying": "qualifying", "sprint": "sprint", "results": "race"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.jolpi.ca"
+        kind = endpoints[request.url.path.rsplit("/", 1)[-1].removesuffix(".json")]
+        calls.append((request.url.path.split("/")[-2], kind))
+        if status != 200:
+            return httpx.Response(status, json={"detail": "Too many requests"})
+        races = [{"raceName": "Singapore Grand Prix", published[kind][0]: published[kind][1]}] if kind in published else []
+        return httpx.Response(200, json={"MRData": {"RaceTable": {"Races": races}}})
+    return httpx.MockTransport(handler)
+
+
+async def test_a_live_session_lock_takes_qualifying_and_the_sprint_from_jolpica():
+    """Singapore 2026: the server slept through Saturday and woke during Sunday's race, with OpenF1
+    shut — the sprint and qualifying have to come from somewhere else."""
+    db, calls = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "sprint_qualifying")]), []
+    db.results[("2026_Singapore", "fp1")] = [{"driver_id": "d00", "constructor_id": "williams"}]
+    stored = await load_weekend_practice(db, client([], locked=True), TEAMS, {}, now=NOW, jolpica=jolpica(calls))
+
+    assert stored == [{"race_id": "2026_Singapore", "session_type": "qualifying"},
+                      {"race_id": "2026_Singapore", "session_type": "sprint"}]
+    assert calls == [("17", "qualifying"), ("17", "sprint"), ("17", "race")]       # round 17 only; no race yet
+    quali = {r["driver_id"]: r for r in db.results[("2026_Singapore", "qualifying")]}
+    assert quali["ver"]["position"] == 1 and quali["ver"]["constructor_id"] == "red_bull"
+    assert pd.to_timedelta(quali["ver"]["time"]).total_seconds() == pytest.approx(91.373)       # Q3, the latest segment
+    assert pd.to_timedelta(quali["d05"]["time"]).total_seconds() == pytest.approx(93.241)       # out in Q1
+    assert quali["d00"]["constructor_id"] == "williams"              # the weekend's own team wins over Jolpica's
+    assert quali["ver"]["grid"] is None and quali["ver"]["points"] == 0.0 and quali["ver"]["status"] == ""
+    sprint = {r["driver_id"]: r for r in db.results[("2026_Singapore", "sprint")]}
+    assert (sprint["ver"]["points"], sprint["ver"]["status"], sprint["ver"]["grid"]) == (8.0, "Finished", 1)
+    assert pd.to_timedelta(sprint["ver"]["time"]).total_seconds() == pytest.approx(2388.162)
+    assert sprint["ham"]["grid"] == 0                                # a pit-lane start, as FastF1 stores it
+    assert sprint["d05"]["status"] == "Lapped" and sprint["d07"]["status"] == "Retired"
+    assert sprint["ant"]["laps_completed"] == 21 and sprint["lec"]["time"] == ""
+    assert {"driver_id": "ant", "full_name": "Andrea Kimi Antonelli", "number": 12} in db.drivers
+
+
+async def test_with_openf1_locked_and_nothing_on_jolpica_yet_nothing_is_stored():
+    calls = []
+    assert await load_weekend_practice(FakeDb(), client([], locked=True), TEAMS, {}, now=NOW,
+                                       jolpica=jolpica(calls, sessions={})) == []
+    assert len(calls) == 3
+
+
+async def test_jolpica_failing_too_stops_quietly():
+    calls = []
+    assert await load_weekend_practice(FakeDb(), client([], locked=True), TEAMS, {}, now=NOW,
+                                       jolpica=jolpica(calls, status=429)) == []
+    assert len(calls) == 1                                           # gives up at the first failure
+
+
+async def test_a_weekend_whose_race_is_stored_isnt_asked_about():
+    calls = []
+    db = FakeDb(stored=[("2026_Singapore", "race")])
+    assert await load_weekend_practice(db, client([], locked=True), TEAMS, {}, now=NOW, jolpica=jolpica(calls)) == []
+    assert calls == []
+
+
+async def test_jolpica_isnt_asked_while_openf1_answers():
+    calls = []
+    db = FakeDb(stored=[("2026_Singapore", s) for s in ("fp1", "fp2", "fp3")])
+    assert await load_weekend_practice(db, client([]), TEAMS, {}, now=NOW, jolpica=jolpica(calls)) == []
+    assert calls == []
 
 
 async def test_only_weekends_around_today_are_checked():
@@ -180,7 +263,7 @@ async def test_an_openf1_failure_mid_check_still_reports_what_was_stored():
 
     db = FakeDb()
     stored = await load_weekend_practice(db, OpenF1Client(creds={}, per_minute=60000, transport=httpx.MockTransport(handler)),
-                                         TEAMS, {}, now=NOW)
+                                         TEAMS, {}, now=NOW, jolpica=jolpica([], sessions={}))
 
     assert stored == [{"race_id": "2026_Singapore", "session_type": "fp1"}]
     assert ("2026_Singapore", "fp2") not in db.results
