@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import Predictions from './Predictions';
 import { backendApi } from '../services/backendApi';
+import { resetDataVersionForTests } from '../hooks/useDataVersion';
 
 jest.mock('../services/backendApi', () => ({
   backendApi: {
@@ -12,6 +13,7 @@ jest.mock('../services/backendApi', () => ({
     predictQualifying: jest.fn(),
     predictRace: jest.fn(),
     predictSprint: jest.fn(),
+    forgetCachedData: jest.fn(),
   },
 }));
 const api = backendApi as jest.Mocked<typeof backendApi>;
@@ -41,7 +43,7 @@ async function open(url = '/predictions') {
 
 const sessionSelect = () => screen.getByText('Session').parentElement!.querySelector('select') as HTMLSelectElement;
 
-afterEach(() => jest.clearAllMocks());
+afterEach(() => { jest.clearAllMocks(); resetDataVersionForTests(); });
 
 test('one session at a time — the race by default, the others from the dropdown in weekend order', async () => {
   weekend(true);
@@ -134,4 +136,72 @@ test('chances still being worked out arrive by themselves', async () => {
   } finally {
     jest.useRealTimers();
   }
+});
+
+test('a session finishing while the page is open leaves the dropdown, with no reload', async () => {
+  // Singapore 2026: the server stored the sprint while the page sat open (then retrained).
+  weekend(true, ['sprint_qualifying']);
+  const status = { trained: true, race_model_ready: true, quali_model_ready: true, sprint_model_ready: true,
+    grid_data_available: true };
+  api.getPredictionStatus.mockResolvedValue({ ...status, trained_at: '2026-10-11T11:47:11' });
+  await open('/predictions?session=sprint');
+  expect(sessionSelect().value).toBe('sprint');
+  expect(screen.getByText('Sprint Prediction')).toBeInTheDocument();
+
+  api.getPredictionCircuits.mockResolvedValue([{ round: 17, race_name: 'Singapore Grand Prix', circuit_name: 'Marina Bay',
+    date: '2026-10-11', is_sprint: true, completed_sessions: ['sprint_qualifying', 'sprint', 'qualifying'] }]);
+  api.predictRace.mockResolvedValue(result('Race Driver From The Real Grid'));
+  api.getPredictionStatus.mockResolvedValue({ ...status, trained_at: '2026-10-11T11:52:40' });
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });   // the next check
+
+  expect(api.forgetCachedData).toHaveBeenCalled();
+  expect(Array.from(sessionSelect().options, (o) => o.text)).toEqual(['Race']);
+  expect(screen.getByText(/Sprint Qualifying, Sprint and Qualifying are done/)).toBeInTheDocument();
+  expect(within(screen.getByRole('table')).getByText('Race Driver From The Real Grid')).toBeInTheDocument();
+});
+
+test('nothing is fetched again while the data stays the same', async () => {
+  weekend(false);
+  api.getPredictionStatus.mockResolvedValue({ trained: true, trained_at: '2026-10-11T11:47:11' });
+  await open();
+  const calls = api.getPredictionCircuits.mock.calls.length;
+
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+  expect(api.getPredictionCircuits).toHaveBeenCalledTimes(calls);
+  expect(api.forgetCachedData).not.toHaveBeenCalled();
+});
+
+test('a page opened in a background tab still catches up when it is first looked at', async () => {
+  const visibility = jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+  try {
+    weekend(true, ['sprint_qualifying']);
+    api.getPredictionStatus.mockResolvedValue({ trained: true, trained_at: '2026-10-11T11:47:11' });
+    await open('/predictions?session=sprint');
+
+    api.getPredictionCircuits.mockResolvedValue([{ round: 17, race_name: 'Singapore Grand Prix', circuit_name: 'Marina Bay',
+      date: '2026-10-11', is_sprint: true, completed_sessions: ['sprint_qualifying', 'sprint'] }]);
+    api.getPredictionStatus.mockResolvedValue({ trained: true, trained_at: '2026-10-11T11:52:40' });
+    visibility.mockReturnValue('visible');
+    await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+
+    expect(Array.from(sessionSelect().options, (o) => o.text)).toEqual(['Qualifying', 'Race']);
+  } finally {
+    visibility.mockRestore();
+  }
+});
+
+test("a session that's over leaves at once, even before its result is in", async () => {
+  // Singapore, Saturday: qualifying stored; sprint qualifying never fetched (OpenF1 shut, Jolpica
+  // doesn't publish it) and the sprint just ended — both over, results on their way.
+  weekend(true);
+  api.getPredictionCircuits.mockResolvedValue([{ round: 17, race_name: 'Singapore Grand Prix', circuit_name: 'Marina Bay',
+    date: '2026-10-11', is_sprint: true, completed_sessions: ['qualifying'], finished_sessions: ['sprint_qualifying', 'sprint'] }]);
+  await open('/predictions?session=sprint_qualifying');
+
+  expect(Array.from(sessionSelect().options, (o) => o.text)).toEqual(['Race']);
+  expect(screen.getByText('Race Prediction')).toBeInTheDocument();
+  expect(screen.getByText(/Qualifying is done — see how it compared/)).toBeInTheDocument();
+  expect(screen.getByText(/Sprint Qualifying and Sprint have finished — their results move to Predicted vs Actual/)).toBeInTheDocument();
+  expect(api.predictQualifying).not.toHaveBeenCalled();
+  expect(api.predictSprint).not.toHaveBeenCalled();
 });

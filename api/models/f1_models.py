@@ -50,6 +50,8 @@ class RaceEvent(BaseModel):
     time: str = Field(..., description="Race time (HH:MM:SSZ)")
     url: Optional[str] = Field(None, description="Official race URL")
     is_sprint: bool = Field(False, description="Whether this weekend has a sprint race")
+    sessions: Optional[Dict[str, str]] = Field(
+        None, description="Each session's scheduled start in UTC ('Sprint Qualifying': '2026-10-09T12:30:00Z'); FastF1's schedule only")
 
 class SessionData(BaseModel):
     """F1 session data"""

@@ -4,6 +4,7 @@ import { backendApi, RaceEvent, SessionPenalties } from '../services/backendApi'
 import { formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
 import SessionConditions from './SessionConditions';
+import { useOnDataChange } from '../hooks/useDataVersion';
 import { FIRST_PENALTY_SEASON, PENALTY_SESSIONS, PenaltyBadges, StewardsCard } from './Penalties';
 import {
   Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
@@ -144,6 +145,8 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   }, [year, selectedGP, selectedSession]);
 
   useEffect(() => { loadRaceResults(); }, [loadRaceResults]);
+  // A session stored (or corrected) while the page is open.
+  useOnDataChange(loadRaceResults);
 
   // The stewards' decisions for this session (badges next to the drivers, and a card under the results).
   const [penalties, setPenalties] = useState<SessionPenalties | null>(null);

@@ -9,6 +9,7 @@ import {
   PositionBadge, SelectField, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
 import { formatChance } from '../utils/probability';
+import { useOnDataChange } from '../hooks/useDataVersion';
 
 type View = 'drivers' | 'constructors';
 const VIEWS: { id: View; label: string }[] = [
@@ -200,6 +201,13 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
   }, [view, year]);
 
   useEffect(() => { load(); }, [load]);
+  // New results stored while the page is open (a sprint's points): refresh behind what's shown.
+  useOnDataChange(() => {
+    const id = ++requestId.current;
+    backendApi.getChampionshipOutlook(view, year)
+      .then((data) => { if (id === requestId.current) setOutlook(data); })
+      .catch(() => undefined);
+  });
 
   useEffect(() => {
     let cancelled = false;
