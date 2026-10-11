@@ -598,7 +598,7 @@ const BacktestTab: React.FC = () => {
   const setSession = (s: PredictedSession) => setParams(s === 'race' ? { tab: 'backtest' } : { tab: 'backtest', session: s });
 
   if (error) return <Card><ErrorState title="Couldn't load past predictions" message={error} onRetry={load} /></Card>;
-  if (!races) return <Card><LoadingState label="Loading past seasons…" /></Card>;
+  if (!races) return <Card><LoadingState label="Loading past sessions…" /></Card>;
   if (races.length === 0) {
     return (
       <Card>
@@ -825,6 +825,11 @@ const Predictions: React.FC = () => {
   const gridMissing = !!status?.trained && !status.grid_data_available;
   const hasResults = !!(qualiResult || raceResult || sprintResult);
   const shown = { sprint_qualifying: qualiResult, qualifying: qualiResult, sprint: sprintResult, race: raceResult }[session];
+  // Until the first predictions are in, the tab is just "Loading predictions…" — no dropdowns or
+  // notices around it. After that the dropdowns stay while a different race or session loads.
+  const firstLoading = !circuitsLoaded || (!!selected && !hasResults && !error);
+  const [loadedOnce, setLoadedOnce] = useState(false);
+  useEffect(() => { if (!firstLoading) setLoadedOnce(true); }, [firstLoading]);
 
   return (
     <PageShell>
@@ -836,7 +841,13 @@ const Predictions: React.FC = () => {
         {tab === 'backtest' && <TabPanel id="backtest" idPrefix="pred"><BacktestTab /></TabPanel>}
         {tab === 'title' && <TabPanel id="title" idPrefix="pred"><ChampionshipOutlook year={CURRENT_YEAR} /></TabPanel>}
 
-        {tab === 'upcoming' && (
+        {tab === 'upcoming' && !loadedOnce && firstLoading && (
+          <TabPanel id="upcoming" idPrefix="pred">
+            <Card><LoadingState label="Loading predictions…" /></Card>
+          </TabPanel>
+        )}
+
+        {tab === 'upcoming' && (loadedOnce || !firstLoading) && (
           <TabPanel id="upcoming" idPrefix="pred">
             {gridMissing && (
               <Notice tone="warning">
@@ -917,7 +928,7 @@ const Predictions: React.FC = () => {
             {error ? (
               <Card><ErrorState title="Couldn't generate predictions" message={error} onRetry={() => runPredictions()} /></Card>
             ) : loading && !hasResults ? (
-              <Card><LoadingState label={warmingUp ? "Training the models — the first run after a restart takes a little longer…" : "Generating predictions…"} /></Card>
+              <Card><LoadingState label="Loading predictions…" /></Card>
             ) : hasResults ? (
               <FadeIn key={session}>
                 {shown?.predictions.length && shown.odds_available === false && (

@@ -8,6 +8,7 @@ import ConstructorAnalytics from './ConstructorAnalytics';
 import DriverAnalytics from './DriverAnalytics';
 import TrackAnalytics from './TrackAnalytics';
 import RaceResults from './RaceResults';
+import { useOnDataChange } from '../hooks/useDataVersion';
 import {
   Card, CardHeader, DetailList, ErrorState, EmptyState, FadeIn, LoadingState, PageHeader, PageShell,
   PositionBadge, SelectField, StatCard, TabPanel, Tabs, TableWrap, TeamChip, Td, Tr,
@@ -83,6 +84,8 @@ const Dashboard: React.FC = () => {
   }, [year]);
 
   useEffect(() => { load(); }, [load]);
+  // New results stored while the page is open (the standings follow them): the Overview and Teams refresh.
+  useOnDataChange(load);
 
   const completed    = races.filter((r) => isPastDate(r.date));
   const nextRace     = races.find((r) => !isPastDate(r.date));

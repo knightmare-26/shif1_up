@@ -1244,6 +1244,43 @@ async def _standings_or_stale(cache_key: str, fetch, use_cache: bool):
     return standings  # the source answered and has none (yet)
 
 
+async def _with_stored_results(standings, year: int, by: str):
+    """This season's standings, brought up to date from the stored results when the source is behind.
+
+    The standings come from Jolpica, which adds a round's points hours after it's run — after
+    Singapore 2026's race it still had Antonelli on 325 (the sprint counted, the race not), while
+    the database already had the race (340), so the Overview lagged the Title Race and Race Results.
+    When the stored race and sprint points add up to more than the source's table, the points,
+    wins and order come from them (countback as for the title race); names, numbers and the rest
+    stay the source's. Once the source catches up the totals match and its table is used as is.
+    Only the current season: a finished one's table is the official record."""
+    if not isinstance(standings, list) or year != datetime.now().year or duckdb_service is None:
+        return standings
+    import numpy as np
+    import pandas as pd
+    try:
+        from services.championship_service import _order_key, clean_results, season_table
+        results = clean_results(pd.DataFrame(await duckdb_service.get_season_results(year)))
+        table = season_table(results, by)
+    except Exception as exc:
+        logger.warning("standings: couldn't read the stored results for %s: %s", year, exc)
+        return standings
+    rows = [s.model_dump() if hasattr(s, "model_dump") else dict(s) for s in standings]
+    key = (lambda r: (r.get("code") or "").lower()) if by == "driver_id" else (lambda r: r.get("constructor_id"))
+    if not table or sum(t["points"] for t in table.values()) <= sum(float(r.get("points") or 0) for r in rows) + 1e-6:
+        return standings
+    for row in rows:
+        entry = table.get(key(row))
+        if entry:
+            row["points"], row["wins"] = entry["points"], int(entry["countback"][0])
+    zero = {"points": 0.0, "countback": np.zeros(30, dtype=int)}
+    rows.sort(key=lambda r: _order_key(table.get(key(r), zero)), reverse=True)
+    for position, row in enumerate(rows, start=1):
+        row["position"] = position
+    logger.info("standings %s %s: the source is behind the stored results — using them", year, by)
+    return rows
+
+
 @app.get("/api/drivers", response_model=List[DriverStanding])
 async def legacy_driver_standings(year: int = None, round: int = None, use_cache: bool = True):
     try:
@@ -1256,7 +1293,8 @@ async def legacy_driver_standings(year: int = None, round: int = None, use_cache
             async with ergast_service as ergast:
                 return await ergast.get_driver_standings(year, round, strict=True)
 
-        return await _standings_or_stale(cache_key, fetch, use_cache)
+        standings = await _standings_or_stale(cache_key, fetch, use_cache)
+        return standings if round else await _with_stored_results(standings, year, "driver_id")
     except Exception as exc:
         logger.error("❌ legacy_driver_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
@@ -1333,7 +1371,8 @@ async def legacy_constructor_standings(year: int = None, round: int = None, use_
             async with ergast_service as ergast:
                 return await ergast.get_constructor_standings(year, round, strict=True)
 
-        return await _standings_or_stale(cache_key, fetch, use_cache)
+        standings = await _standings_or_stale(cache_key, fetch, use_cache)
+        return standings if round else await _with_stored_results(standings, year, "constructor_id")
     except Exception as exc:
         logger.error("❌ legacy_constructor_standings: %s", exc)
         raise HTTPException(status_code=500, detail="Internal server error")
