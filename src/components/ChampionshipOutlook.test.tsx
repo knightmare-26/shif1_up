@@ -108,3 +108,18 @@ test('points scored while the page is open (a sprint stored, the server retraine
   expect(screen.getByText('326')).toBeInTheDocument();
   expect(screen.queryByText('321')).not.toBeInTheDocument();
 });
+
+test('the first load is just "Loading predictions…"; switching championship keeps the dropdown', async () => {
+  let finish!: (o: Outlook) => void;
+  api.getChampionshipOutlook.mockReturnValueOnce(new Promise((r) => { finish = r; }));
+  await renderAt();
+  expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+  await act(async () => { finish(outlook()); });
+  const view = screen.getByRole('combobox');
+  api.getChampionshipOutlook.mockReturnValueOnce(new Promise(() => undefined));
+  await act(async () => { fireEvent.change(view, { target: { value: 'constructors' } }); });
+  expect(screen.getByRole('combobox')).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
+});

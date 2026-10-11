@@ -205,3 +205,46 @@ test("a session that's over leaves at once, even before its result is in", async
   expect(api.predictQualifying).not.toHaveBeenCalled();
   expect(api.predictSprint).not.toHaveBeenCalled();
 });
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>((r) => { resolve = r; });
+  return { promise, resolve };
+}
+
+test('until the first predictions are in, each tab is just its loading message — no dropdowns', async () => {
+  weekend(false);
+  const circuits = deferred<any>();
+  const race = deferred<any>();
+  api.getPredictionCircuits.mockReturnValue(circuits.promise);
+  api.predictRace.mockReturnValue(race.promise);
+  await open();
+
+  expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+  await act(async () => {
+    circuits.resolve([{ round: 18, race_name: 'United States Grand Prix', circuit_name: 'Austin', date: '2026-10-25', is_sprint: false },
+                      { round: 19, race_name: 'Mexico City Grand Prix', circuit_name: 'Mexico City', date: '2026-11-01', is_sprint: false }]);
+  });
+  expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');      // the race list alone isn't enough
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+
+  await act(async () => { race.resolve(result('Race Driver')); });
+  expect(screen.getByText('Race Prediction')).toBeInTheDocument();
+
+  // From then on the dropdowns stay while another race loads.
+  api.predictRace.mockReturnValue(new Promise(() => undefined));
+  const gp = screen.getByText('Grand Prix').parentElement!.querySelector('select') as HTMLSelectElement;
+  await act(async () => { fireEvent.change(gp, { target: { value: 'Mexico City' } }); });
+  expect(sessionSelect()).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
+});
+
+test('Predicted vs Actual says it is loading past sessions', async () => {
+  weekend(false);
+  api.getPredictionBacktest.mockReturnValue(new Promise(() => undefined));
+  await open('/predictions?tab=backtest');
+  expect(screen.getByRole('status')).toHaveTextContent('Loading past sessions…');
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+});

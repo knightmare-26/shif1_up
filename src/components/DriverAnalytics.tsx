@@ -6,6 +6,7 @@ import {
   TableWrap, TeamChip, Td, Th, Tr,
 } from './ui';
 import { STAT_COLUMNS, StatColumn, StatColumnsMenu, statsNote, statValue, useResultStats, useStatColumns } from './statColumns';
+import { useOnDataChange } from '../hooks/useDataVersion';
 
 const clean = (v?: string | null) => (!v || v === 'Unavailable' ? '—' : v);
 const teamOf = (d: DriverStanding) => (typeof d.constructor === 'string' ? d.constructor : '');
@@ -58,6 +59,7 @@ const DriverAnalytics: React.FC<{ year: number }> = ({ year }) => {
   }, [year]);
 
   useEffect(() => { load(); }, [load]);
+  useOnDataChange(load);                      // new results stored while the page is open
 
   const findStats = useMemo(() => statsMatcher(stats?.drivers ?? []), [stats]);
 
