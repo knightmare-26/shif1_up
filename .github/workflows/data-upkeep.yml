@@ -9,7 +9,7 @@ name: Data upkeep
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"           # every 15 minutes, off the busy top of the hour
+    - cron: "3,18,33,48 * * * *"           # every 15 minutes, off the busy top of the hour
   workflow_dispatch:
     inputs:
       results_refresh:
