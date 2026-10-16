@@ -120,6 +120,9 @@ class PredictionService:
         self._train_lock = asyncio.Lock()
         # When the latest training read its data (UTC ISO): results stored after it aren't in the models.
         self.data_read_at: Optional[str] = None
+        # Training clears the cached predictions (they came from the old models). The scheduled job
+        # (scripts/data_upkeep_job.py) trains its own copy and leaves the API's cache to the API.
+        self.clear_cache_after_training = True
         self._race_model = None
         self._quali_model = None
         self._sprint_model = None
@@ -496,7 +499,8 @@ class PredictionService:
             result = await asyncio.to_thread(scratch._fit, raw, lgb)
             self._adopt(scratch)
             self.data_read_at = read_at
-            await duckdb_service.clear_prediction_cache()
+            if self.clear_cache_after_training:
+                await duckdb_service.clear_prediction_cache()
             logger.info("Prediction models trained: %s", result)
             return {"success": True, **result}
 
