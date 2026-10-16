@@ -276,9 +276,10 @@ data_upkeep = DataUpkeep(
 UPKEEP_MARKER = "_upkeep"
 
 
-async def _mark_data_stored(what: List[str]) -> None:
-    await duckdb_service.set_prediction_cache(
-        UPKEEP_MARKER, "stored", "", {"at": datetime.now(timezone.utc).isoformat(), "what": what})
+async def _mark_data_stored(what: List[str]) -> str:
+    at = datetime.now(timezone.utc).isoformat()
+    await duckdb_service.set_prediction_cache(UPKEEP_MARKER, "stored", "", {"at": at, "what": what})
+    return at
 
 
 async def _stored_since_training() -> bool:
