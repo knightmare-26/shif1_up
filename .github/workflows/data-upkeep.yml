@@ -1,24 +1,32 @@
 # Keep the data current while the API sleeps: fetch new sessions, results corrections, weather,
 # stewards' decisions… straight into Supabase on GitHub's runners (scripts/data_upkeep_job.py), so
-# Render is never woken — the API picks the data up the next time it starts. scripts/upkeep_schedule.py
-# decides from the F1 calendar whether a run has anything to do; most end in seconds. Free for the
-# public repo. Not CI (that's still shelved).
+# Render is never woken — the API picks the data up the next time it starts. Free for the public repo.
+# Not CI (that's still shelved).
+#
+# GitHub starts only a few of the scheduled runs asked for (4-5 a day, at no fixed time), so
+# scripts/upkeep_schedule.py doesn't count on timing: on a normal day a run updates unless the last
+# update was under 3 hours ago; over a race weekend a run stays on, checking every 15 minutes after
+# each session ends, and starts the next run itself before GitHub's 6-hour limit.
 #
 # Needs the repository secret DATABASE_URL (Supabase's pooler connection string, as on Render).
 name: Data upkeep
 
 on:
   schedule:
-    - cron: "3,18,33,48 * * * *"           # every 15 minutes, off the busy top of the hour
+    - cron: "3,18,33,48 * * * *"           # asked for every 15 minutes; GitHub starts a few a day
   workflow_dispatch:
     inputs:
+      force:
+        description: Update now, whatever the schedule says
+        type: boolean
+        default: true
       results_refresh:
         description: Also re-fetch the last 14 days' results (post-race penalties)
         type: boolean
         default: false
 
 permissions:
-  actions: write      # the keep-alive step below
+  actions: write      # start the next run over a race weekend; keep the schedule on; read past runs
   contents: read
 
 concurrency:
@@ -28,15 +36,17 @@ concurrency:
 jobs:
   upkeep:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
 
       - name: Anything to pick up now?
         id: when
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           python3 scripts/upkeep_schedule.py >> "$GITHUB_OUTPUT"
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "results_refresh=${{ inputs.results_refresh }}" >> "$GITHUB_OUTPUT"
           fi
@@ -58,7 +68,22 @@ jobs:
           FASTF1_CACHE_DIR: ${{ runner.temp }}/fastf1
           MODEL_DIR: ${{ runner.temp }}/models
           CACHE_DIR: ${{ runner.temp }}/cache
-        run: python scripts/data_upkeep_job.py ${{ steps.when.outputs.results_refresh == 'true' && '--results-refresh' || '' }}
+        run: >-
+          python scripts/data_upkeep_job.py
+          ${{ steps.when.outputs.results_refresh == 'true' && '--results-refresh' || '' }}
+          ${{ steps.when.outputs.until != '' && format('--until {0}', steps.when.outputs.until) || '' }}
+
+      # A race weekend outlasts one run: hand over to the next one, so a dropped trigger can't leave a
+      # session's end unwatched. (Not after a failure, so a broken run can't start an endless chain.)
+      - name: Hand over to the next run (race weekend)
+        if: success() && steps.when.outputs.run == 'true' && steps.when.outputs.until != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if python3 scripts/upkeep_schedule.py --still-weekend; then
+            gh workflow run data-upkeep.yml --repo "${{ github.repository }}" --ref "${{ github.ref_name }}" -f force=false
+            echo "Started the next run."
+          fi
 
       # GitHub switches off a public repository's scheduled workflows after 60 days without activity
       # (the off-season). Re-enabling this one every Monday keeps it on; if it ever is switched off,
@@ -68,7 +93,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "$(date -u +%u%H)" = "100" ] && [ "$(date -u +%M)" -lt 15 ]; then
+          if [ "$(date -u +%u)" = "1" ]; then              # any Monday run: GitHub's are few and untimed
             gh api -X PUT "repos/${{ github.repository }}/actions/workflows/data-upkeep.yml/enable"
             echo "Schedule kept on."
           fi
