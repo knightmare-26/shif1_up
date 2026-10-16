@@ -1,107 +1,153 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import {
-  Home, BarChart3, Activity,
-  Database, Menu, X, TrendingUp,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
-import { LogoMark, Wordmark } from './ui';
+import { Menu, X } from 'lucide-react';
+import { Wordmark } from './ui';
 import { useLiveTiming } from '../config/features';
 
-type NavItem = { path: string; label: string; icon: LucideIcon };
+type NavItem = { path: string; label: string };
 
 const NAV_ITEMS: NavItem[] = [
-  { path: '/',             label: 'Home',         icon: Home },
-  { path: '/dashboard',    label: 'Dashboard',    icon: BarChart3 },
-  { path: '/predictions',  label: 'Predictions',  icon: TrendingUp },
-  { path: '/live',         label: 'Live',         icon: Activity },
-  { path: '/data-manager', label: 'Data Manager', icon: Database },
+  { path: '/',             label: 'Home' },
+  { path: '/dashboard',    label: 'Dashboard' },
+  { path: '/predictions',  label: 'Predictions' },
+  { path: '/live',         label: 'Live' },
+  { path: '/data-manager', label: 'Data Manager' },
 ];
 
+// Nested routes (e.g. /live-monitor under Live) keep their section highlighted.
+const isActive = (path: string, pathname: string) => (path === '/' ? pathname === '/' : pathname.startsWith(path));
+
+/**
+ * A slim bar — the SHIF1 | UP badge on the left, the menu button on the right — and a full-height
+ * panel that slides in from the right with the sections in big type (the current one in red).
+ * Closes on Escape, a click outside, or moving to another page; focus goes into the panel and back
+ * to the button.
+ */
 const Navigation: React.FC = () => {
-  const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname, search } = useLocation();
+  const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
+  const panel = useRef<HTMLElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
   // Live timing is on hold unless the API has a feed (or a replay) running: say so in the menu.
   const { enabled: liveOn, loading: liveLoading } = useLiveTiming();
+  const current = NAV_ITEMS.find((item) => item.path !== '/' && isActive(item.path, pathname));
 
-  const renderItem = (item: NavItem, compact = false) => {
-    const Icon = item.icon;
-    // Nested routes (e.g. /live-monitor under Live) keep their section highlighted.
-    const isActive = item.path === '/'
-      ? location.pathname === '/'
-      : location.pathname.startsWith(item.path);
-    const base = 'flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium';
-    const state = isActive
-      ? 'bg-racing-red text-pure-white'
-      : 'text-gray-300 hover:bg-gray-800 hover:text-pure-white';
+  useEffect(() => { setOpen(false); }, [pathname, search]);
 
-    return (
-      <NavLink
-        key={item.path}
-        to={item.path}
-        onClick={() => setMobileOpen(false)}
-        className={`${base} ${state} ${compact ? 'w-full justify-start' : ''}`}
-      >
-        <Icon className="w-4 h-4 flex-shrink-0" />
-        <span>{item.label}</span>
-        {item.path === '/live' && !liveOn && !liveLoading && (
-          <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none tracking-wide ${
-            isActive ? 'bg-pure-white/20 text-pure-white' : 'bg-yellow-500/15 text-yellow-400'}`}>
-            Soon
-          </span>
-        )}
-      </NavLink>
-    );
-  };
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        toggle.current?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';                 // the page doesn't scroll under the menu
+    panel.current?.querySelector<HTMLElement>('a')?.focus();
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [open]);
 
   return (
-    <motion.nav
-      initial={{ y: -64 }}
-      animate={{ y: 0 }}
-      transition={{ duration: 0.4 }}
-      className="fixed top-0 left-0 right-0 h-16 bg-carbon-black border-b border-racing-red shadow-lg z-50"
-    >
-      <div className="max-w-[1600px] mx-auto h-full px-4 sm:px-6 flex items-center justify-between gap-4">
-        {/* Logo */}
-        <Link to="/" aria-label="Shif1 UP home" className="flex items-center flex-shrink-0 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60">
-          <LogoMark className="h-9 w-9 sm:hidden" />
-          <Wordmark className="hidden text-2xl sm:inline-flex" />
-        </Link>
+    <>
+      <header className="fixed inset-x-0 top-0 z-50 h-16 border-b border-white/5 bg-black/75 backdrop-blur-md">
+        <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
+          <Link to="/" aria-label="Shif1 UP home"
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/70">
+            <Wordmark className="text-sm sm:text-base" />
+          </Link>
 
-        {/* Desktop nav */}
-        <div className="hidden lg:flex items-center space-x-1 flex-1 justify-center overflow-x-auto">
-          {NAV_ITEMS.map((item) => renderItem(item))}
+          <div className="flex items-center gap-5">
+            {current && <span className="label hidden text-muted sm:inline">{current.label}</span>}
+            <button
+              ref={toggle}
+              type="button"
+              onClick={() => setOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={open}
+              aria-controls="site-menu"
+              className="p-1.5 text-white transition-colors hover:text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/70"
+            >
+              <Menu className="h-7 w-7" strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
+      </header>
 
-        {/* Mobile toggle */}
-        <button
-          onClick={() => setMobileOpen((v) => !v)}
-          className="lg:hidden p-2 text-gray-300 hover:text-pure-white rounded-lg hover:bg-gray-800 transition-colors"
-          aria-label="Toggle menu"
-          aria-expanded={mobileOpen}
-        >
-          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </div>
-
-      {/* Mobile drawer */}
       <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="lg:hidden absolute left-0 right-0 top-16 bg-carbon-black border-b border-racing-red shadow-xl"
-          >
-            <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-3 flex flex-col space-y-1">
-              {NAV_ITEMS.map((item) => renderItem(item, true))}
-            </div>
-          </motion.div>
+        {open && (
+          <>
+            <motion.div
+              key="backdrop"
+              className="fixed inset-0 z-[60] bg-black/60"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              transition={{ duration: reduce ? 0 : 0.25 }}
+              onClick={() => setOpen(false)}
+              aria-hidden="true"
+            />
+            <motion.nav
+              key="panel"
+              ref={panel}
+              id="site-menu"
+              aria-label="Site"
+              className="fixed inset-y-0 right-0 z-[61] flex w-full max-w-md flex-col bg-[#141414] px-10 pb-10 pt-6 sm:px-14"
+              initial={reduce ? { opacity: 0 } : { x: '100%' }}
+              animate={reduce ? { opacity: 1 } : { x: 0 }}
+              exit={reduce ? { opacity: 0 } : { x: '100%' }}
+              transition={{ duration: reduce ? 0 : 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setOpen(false); toggle.current?.focus(); }}
+                  aria-label="Close menu"
+                  className="p-1.5 text-white transition-colors hover:text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/70"
+                >
+                  <X className="h-7 w-7" strokeWidth={2.5} />
+                </button>
+              </div>
+
+              <ul className="mt-12 space-y-6">
+                {NAV_ITEMS.map((item, i) => {
+                  const active = isActive(item.path, pathname);
+                  return (
+                    <motion.li
+                      key={item.path}
+                      initial={reduce ? false : { opacity: 0, x: 24 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: reduce ? 0 : 0.08 + i * 0.04 }}
+                    >
+                      <NavLink
+                        to={item.path}
+                        aria-current={active ? 'page' : undefined}
+                        className={`group inline-flex items-baseline gap-3 font-display text-3xl font-medium uppercase tracking-tight transition-colors focus:outline-none focus-visible:text-racing-red sm:text-4xl ${
+                          active ? 'text-racing-red' : 'text-white hover:text-racing-red'}`}
+                      >
+                        {item.label}
+                        {item.path === '/live' && !liveOn && !liveLoading && (
+                          <span className="label text-muted group-hover:text-white">Soon</span>
+                        )}
+                      </NavLink>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+
+              <div className="mt-auto border-t border-white/10 pt-6">
+                <p className="label text-muted">Standings · Results · Predictions</p>
+                <p className="mt-2 text-sm italic text-muted">Data: FastF1, Jolpica and OpenF1.</p>
+              </div>
+            </motion.nav>
+          </>
         )}
       </AnimatePresence>
-    </motion.nav>
+    </>
   );
 };
 

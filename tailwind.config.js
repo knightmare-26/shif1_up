@@ -1,4 +1,8 @@
 /** @type {import('tailwindcss').Config} */
+// The look: pure black, white type, one red; a DIN-style grotesk (Barlow) set big and tight for
+// display, small and tracked-out in uppercase for labels; square corners and thin rules.
+const DISPLAY = ['Barlow', 'ui-sans-serif', 'system-ui', 'sans-serif'];
+
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
@@ -6,22 +10,51 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'racing-red': '#D62828',
-        'carbon-black': '#0A0A0A',
+        'racing-red': '#E42320',
+        'carbon-black': '#000000',
         'track-grey': '#F7F7F7',
-        'turbo-teal': '#005F73',
-        'pit-stop-yellow': '#FFBA08',
+        // Old accents, folded into the palette: one accent colour (red), the rest white and grey.
+        'turbo-teal': '#FFFFFF',
+        'pit-stop-yellow': '#808080',
         'pure-white': '#FFFFFF',
+        // Surfaces and rules on black.
+        'ink': {
+          900: '#0B0B0B',
+          800: '#131313',
+          700: '#1C1C1C',
+          600: '#262626',
+          500: '#3A3A3A',
+        },
+        'muted': '#808080',
       },
       fontFamily: {
-        'f1': ['Orbitron', 'monospace'],
-        'racing': ['Racing Sans One', 'cursive'],
+        sans: DISPLAY,
+        display: DISPLAY,
+        // Earlier names, kept so older markup picks up the new face.
+        'f1': DISPLAY,
+        'racing': DISPLAY,
+      },
+      // Square, like the rest of the look; `rounded-full` (dots, avatars) stays round.
+      borderRadius: {
+        none: '0',
+        sm: '1px',
+        DEFAULT: '2px',
+        md: '2px',
+        lg: '2px',
+        xl: '2px',
+        '2xl': '3px',
+        '3xl': '4px',
+      },
+      letterSpacing: {
+        display: '-0.035em',
+        label: '0.12em',
       },
       animation: {
         'race-start': 'raceStart 0.5s ease-out',
         'checkered-flag': 'checkeredFlag 2s linear infinite',
         'pit-stop': 'pitStop 1s ease-in-out',
         'lap-time': 'lapTime 0.3s ease-out',
+        'caret': 'caret 1s steps(1) infinite',
       },
       keyframes: {
         raceStart: {
@@ -39,6 +72,10 @@ module.exports = {
         lapTime: {
           '0%': { transform: 'translateY(-20px)', opacity: '0' },
           '100%': { transform: 'translateY(0)', opacity: '1' },
+        },
+        caret: {
+          '0%, 100%': { opacity: '1' },
+          '50%': { opacity: '0' },
         },
       },
       backgroundImage: {

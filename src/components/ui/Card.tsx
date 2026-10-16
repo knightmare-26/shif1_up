@@ -4,7 +4,7 @@ import { Info } from 'lucide-react';
 export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({
   children,
   className = '',
-}) => <section className={`rounded-xl border border-gray-800 bg-gray-900 ${className}`}>{children}</section>;
+}) => <section className={`border border-ink-600 bg-ink-900 ${className}`}>{children}</section>;
 
 export const CardHeader: React.FC<{
   title: React.ReactNode;
@@ -12,13 +12,13 @@ export const CardHeader: React.FC<{
   icon?: React.ReactNode;
   action?: React.ReactNode;
 }> = ({ title, subtitle, icon, action }) => (
-  <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-5 py-4">
+  <div className="flex items-center justify-between gap-3 border-b border-ink-600 px-5 py-4">
     <div className="min-w-0">
-      <h2 className="flex items-center gap-2 text-base font-semibold text-white">
+      <h2 className="flex items-center gap-2 text-sm font-medium uppercase tracking-wider text-white">
         {icon && <span className="text-racing-red" aria-hidden="true">{icon}</span>}
         <span className="truncate">{title}</span>
       </h2>
-      {subtitle && <p className="mt-0.5 text-xs text-gray-400">{subtitle}</p>}
+      {subtitle && <p className="mt-1 text-xs text-muted">{subtitle}</p>}
     </div>
     {action && <div className="flex-shrink-0">{action}</div>}
   </div>
@@ -43,10 +43,10 @@ export const HowItWorksCard: React.FC<{ children: React.ReactNode; title?: strin
 
 /** Label / value rows inside a card (race details, session info, ...). */
 export const DetailList: React.FC<{ rows: (string | number)[][] }> = ({ rows }) => (
-  <dl className="divide-y divide-gray-800/60">
+  <dl className="divide-y divide-ink-600">
     {rows.map(([label, value]) => (
       <div key={label} className="flex items-center justify-between gap-4 px-5 py-3">
-        <dt className="text-sm text-gray-400">{label}</dt>
+        <dt className="label text-muted">{label}</dt>
         <dd className="text-right text-sm font-medium text-white">{value}</dd>
       </div>
     ))}
@@ -65,13 +65,13 @@ export const StatCard: React.FC<{
 }> = ({ label, value, sub, icon, accent = 'text-racing-red', loading }) => (
   <Card className="flex items-start justify-between gap-3 p-5">
     <div className="min-w-0">
-      <p className="text-xs uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="label text-muted">{label}</p>
       {loading ? (
-        <div className="mt-2 h-6 w-28 animate-pulse rounded bg-gray-800" aria-hidden="true" />
+        <div className="mt-3 h-7 w-32 animate-pulse bg-ink-700" aria-hidden="true" />
       ) : (
         <>
-          <p className="mt-1 line-clamp-2 break-words text-xl font-bold leading-tight tabular-nums text-white sm:text-2xl">{value}</p>
-          {sub && <p className="mt-1 text-xs text-gray-500">{sub}</p>}
+          <p className="display mt-2 line-clamp-2 break-words text-2xl tabular-nums text-white sm:text-3xl">{value}</p>
+          {sub && <p className="mt-2 text-sm text-muted">{sub}</p>}
         </>
       )}
     </div>

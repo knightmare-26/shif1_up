@@ -33,7 +33,7 @@ export function Tabs<T extends string>({
   };
 
   return (
-    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-gray-800">
+    <div role="tablist" aria-label={label} className="flex gap-1 overflow-x-auto overflow-y-hidden border-b border-ink-600">
       {tabs.map((t, i) => {
         const selected = t.id === active;
         return (
@@ -47,10 +47,10 @@ export function Tabs<T extends string>({
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(t.id)}
             onKeyDown={(e) => onKeyDown(e, i)}
-            className={`-mb-px flex items-center gap-2 whitespace-nowrap rounded-t border-b-2 px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 ${
+            className={`-mb-px flex items-center gap-2 whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium uppercase tracking-wider transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 ${
               selected
                 ? 'border-racing-red text-white'
-                : 'border-transparent text-gray-500 hover:text-gray-300'
+                : 'border-transparent text-muted hover:text-white'
             }`}
           >
             {t.icon && <span aria-hidden="true">{t.icon}</span>}

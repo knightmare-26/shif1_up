@@ -21,7 +21,7 @@ export const Th: React.FC<{
 }> = ({ children, align = 'left', className = '' }) => (
   <th
     scope="col"
-    className={`whitespace-nowrap px-4 py-3 text-xs font-medium uppercase tracking-wide text-gray-500 ${ALIGN[align]} ${className}`}
+    className={`label whitespace-nowrap px-4 py-3 text-muted ${ALIGN[align]} ${className}`}
   >
     {children}
   </th>
@@ -39,7 +39,7 @@ export const Tr: React.FC<{ children: React.ReactNode; className?: string }> = (
   children,
   className = '',
 }) => (
-  <tr className={`border-b border-gray-800/60 transition-colors last:border-b-0 hover:bg-gray-800/40 ${className}`}>
+  <tr className={`border-b border-ink-600 transition-colors last:border-b-0 hover:bg-white/[0.03] ${className}`}>
     {children}
   </tr>
 );
@@ -57,10 +57,10 @@ export const PositionBadge: React.FC<{ position: number | string; label?: string
       ? 'border-gray-400/40 bg-gray-400/10 text-gray-200'
       : n === 3
       ? 'border-amber-500/40 bg-amber-500/10 text-amber-500'
-      : 'border-gray-700 text-gray-400';
+      : 'border-ink-500 text-gray-300';
   return (
     <span
-      className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md border px-1.5 text-xs font-bold tabular-nums ${tone}`}
+      className={`inline-flex h-7 min-w-[1.75rem] items-center justify-center border px-1.5 text-xs font-semibold tabular-nums ${tone}`}
     >
       {label ?? position}
     </span>

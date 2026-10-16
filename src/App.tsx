@@ -5,6 +5,7 @@ import MainPage from './components/MainPage';
 import LiveAnalytics from './components/LiveAnalytics';
 import Dashboard from './components/Dashboard';
 import Navigation from './components/Navigation';
+import SiteFooter from './components/SiteFooter';
 import LapData from './components/LapData';
 import DataManager from './components/DataManager';
 import LiveDataMonitor from './components/LiveDataMonitor';
@@ -46,6 +47,7 @@ const AppContent: React.FC = () => {
         </Routes>
         </div>
       </main>
+      {!gated && <SiteFooter />}
     </div>
   );
 };

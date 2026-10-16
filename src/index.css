@@ -1,37 +1,57 @@
-@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Racing+Sans+One&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
-    font-family: 'Orbitron', monospace;
-    background-color: #0A0A0A;
+    font-family: 'Barlow', ui-sans-serif, system-ui, sans-serif;
+    background-color: #000000;
+    color: #FFFFFF;
+  }
+
+  ::selection {
+    background: #E42320;
     color: #FFFFFF;
   }
 }
 
 @layer components {
+  /* Big, tight display type — the headline style. */
+  .display {
+    @apply font-display font-medium leading-[0.92] tracking-display;
+  }
+
+  /* Small uppercase label, tracked out ("RACE NUMBER:", "P1 | LEADER"). */
+  .label {
+    @apply text-[11px] font-medium uppercase tracking-label;
+  }
+
   .btn-primary {
-    @apply bg-racing-red hover:bg-red-700 text-pure-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl;
+    @apply inline-flex items-center gap-2 bg-racing-red px-5 py-2.5 text-sm font-medium uppercase tracking-wide text-pure-white transition-colors hover:bg-red-700;
   }
-  
+
   .btn-secondary {
-    @apply bg-turbo-teal hover:bg-blue-700 text-pure-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl;
+    @apply inline-flex items-center gap-2 bg-pure-white px-5 py-2.5 text-sm font-medium uppercase tracking-wide text-black transition-colors hover:bg-gray-200;
   }
-  
+
   .card {
-    @apply bg-track-grey text-carbon-black p-6 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300;
+    @apply border border-ink-600 bg-ink-900 p-6 text-white;
   }
-  
+
   .nav-link {
-    @apply text-pure-white hover:text-racing-red transition-colors duration-300 font-medium;
+    @apply text-pure-white transition-colors duration-300 hover:text-racing-red;
   }
-  
+
   .track-border {
-    @apply border-2 border-racing-red rounded-lg;
+    @apply border border-racing-red;
   }
-  
+
   .checkered-bg {
     background-image: repeating-conic-gradient(#000 0deg 90deg, #fff 90deg 180deg);
     background-size: 20px 20px;
