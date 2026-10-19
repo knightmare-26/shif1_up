@@ -11,6 +11,7 @@ import { ScrollStatement } from './home/ScrollStatement';
 import { CircuitArt } from './home/CircuitArt';
 import { ContendersCarousel, splitName } from './home/ContendersCarousel';
 import { Faq, FaqItem } from './home/Faq';
+import { DockingLogo } from './home/DockingLogo';
 
 const PHRASES = ['PREDICT THE GRID', 'READ THE RACE', 'PROVE THE PACE', 'CHASE THE TITLE'];
 
@@ -95,6 +96,7 @@ const MainPage: React.FC = () => {
             style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '64px 64px' }} />
           <CircuitArt className="absolute -right-10 top-4 -z-10 w-[85%] max-w-[900px] text-white sm:top-0" />
 
+          <div className="mb-6"><DockingLogo className="text-[clamp(2.75rem,6.5vw,5.75rem)]" /></div>
           {isAuthenticated && user && <p className="label mb-4 text-muted">Welcome back, {user.username}</p>}
           <p className="label text-racing-red">Formula 1 · {year} season</p>
           <h1 className="display mt-4 min-h-[2.1em] text-[clamp(3rem,7.4vw,7rem)] uppercase text-white sm:min-h-[1.05em]">
