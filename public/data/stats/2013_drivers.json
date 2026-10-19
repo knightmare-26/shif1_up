@@ -1,0 +1,261 @@
+{
+  "year": 2013,
+  "races_counted": 19,
+  "sprints_counted": 0,
+  "poles_from_grid": [],
+  "drivers": [
+    {
+      "code": "VET",
+      "driver_id": "vettel",
+      "driver_name": "Sebastian Vettel",
+      "race_wins": 13,
+      "race_podiums": 16,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 9,
+      "top3_starts": 18
+    },
+    {
+      "code": "ALO",
+      "driver_id": "alonso",
+      "driver_name": "Fernando Alonso",
+      "race_wins": 2,
+      "race_podiums": 9,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 4
+    },
+    {
+      "code": "ROS",
+      "driver_id": "rosberg",
+      "driver_name": "Nico Rosberg",
+      "race_wins": 2,
+      "race_podiums": 4,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 3,
+      "top3_starts": 8
+    },
+    {
+      "code": "RAI",
+      "driver_id": "raikkonen",
+      "driver_name": "Kimi R\u00e4ikk\u00f6nen",
+      "race_wins": 1,
+      "race_podiums": 8,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "HAM",
+      "driver_id": "hamilton",
+      "driver_name": "Lewis Hamilton",
+      "race_wins": 1,
+      "race_podiums": 5,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 5,
+      "top3_starts": 12
+    },
+    {
+      "code": "WEB",
+      "driver_id": "webber",
+      "driver_name": "Mark Webber",
+      "race_wins": 0,
+      "race_podiums": 8,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 7
+    },
+    {
+      "code": "GRO",
+      "driver_id": "grosjean",
+      "driver_name": "Romain Grosjean",
+      "race_wins": 0,
+      "race_podiums": 6,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 4
+    },
+    {
+      "code": "MAS",
+      "driver_id": "massa",
+      "driver_name": "Felipe Massa",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "BOT",
+      "driver_id": "bottas",
+      "driver_name": "Valtteri Bottas",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "HUL",
+      "driver_id": "hulkenberg",
+      "driver_name": "Nico H\u00fclkenberg",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "SUT",
+      "driver_id": "sutil",
+      "driver_name": "Adrian Sutil",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "DIR",
+      "driver_id": "resta",
+      "driver_name": "Paul di Resta",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "BUT",
+      "driver_id": "button",
+      "driver_name": "Jenson Button",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "PER",
+      "driver_id": "perez",
+      "driver_name": "Sergio P\u00e9rez",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "VER",
+      "driver_id": "vergne",
+      "driver_name": "Jean-\u00c9ric Vergne",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "GUT",
+      "driver_id": "gutierrez",
+      "driver_name": "Esteban Guti\u00e9rrez",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "BIA",
+      "driver_id": "jules_bianchi",
+      "driver_name": "Jules Bianchi",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "PIC",
+      "driver_id": "pic",
+      "driver_name": "Charles Pic",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "CHI",
+      "driver_id": "chilton",
+      "driver_name": "Max Chilton",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "VDG",
+      "driver_id": "garde",
+      "driver_name": "Giedo van der Garde",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "RIC",
+      "driver_id": "ricciardo",
+      "driver_name": "Daniel Ricciardo",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "MAL",
+      "driver_id": "maldonado",
+      "driver_name": "Pastor Maldonado",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "KOV",
+      "driver_id": "kovalainen",
+      "driver_name": "Heikki Kovalainen",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}

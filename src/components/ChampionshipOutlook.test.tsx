@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ChampionshipOutlook from './ChampionshipOutlook';
 import { formatChance } from '../utils/probability';
@@ -147,5 +147,7 @@ test('the summary sits under an Insights button: a line or two about the title, 
   expect(panel).not.toHaveTextContent(/closest fight|projected|missed the latest race/);
 
   await openInsights();
-  expect(screen.queryByRole('region', { name: 'Insights' })).not.toBeInTheDocument();
+  expect(button).toHaveAttribute('aria-expanded', 'false');
+  // It folds away (an exit animation), then leaves the page.
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Insights' })).not.toBeInTheDocument());
 });

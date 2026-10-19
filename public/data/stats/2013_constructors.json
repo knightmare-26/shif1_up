@@ -1,0 +1,118 @@
+{
+  "year": 2013,
+  "races_counted": 19,
+  "sprints_counted": 0,
+  "poles_from_grid": [],
+  "constructors": [
+    {
+      "constructor_id": "red_bull",
+      "constructor_name": "Red Bull",
+      "race_wins": 13,
+      "race_podiums": 24,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 11,
+      "top3_starts": 25
+    },
+    {
+      "constructor_id": "mercedes",
+      "constructor_name": "Mercedes",
+      "race_wins": 3,
+      "race_podiums": 9,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 8,
+      "top3_starts": 20
+    },
+    {
+      "constructor_id": "ferrari",
+      "constructor_name": "Ferrari",
+      "race_wins": 2,
+      "race_podiums": 10,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 5
+    },
+    {
+      "constructor_id": "lotus_f1",
+      "constructor_name": "Lotus F1",
+      "race_wins": 1,
+      "race_podiums": 14,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 5
+    },
+    {
+      "constructor_id": "sauber",
+      "constructor_name": "Sauber",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "constructor_id": "williams",
+      "constructor_name": "Williams",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "constructor_id": "force_india",
+      "constructor_name": "Force India",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "mclaren",
+      "constructor_name": "McLaren",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "toro_rosso",
+      "constructor_name": "Toro Rosso",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "marussia",
+      "constructor_name": "Marussia",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "caterham",
+      "constructor_name": "Caterham",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}

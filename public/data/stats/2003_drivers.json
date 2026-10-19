@@ -1,0 +1,272 @@
+{
+  "year": 2003,
+  "races_counted": 16,
+  "sprints_counted": 0,
+  "poles_from_grid": [],
+  "drivers": [
+    {
+      "code": "MSC",
+      "driver_id": "michael_schumacher",
+      "driver_name": "Michael Schumacher",
+      "race_wins": 6,
+      "race_podiums": 8,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 5,
+      "top3_starts": 9
+    },
+    {
+      "code": "MON",
+      "driver_id": "montoya",
+      "driver_name": "Juan Pablo Montoya",
+      "race_wins": 2,
+      "race_podiums": 9,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 1,
+      "top3_starts": 8
+    },
+    {
+      "code": "BAR",
+      "driver_id": "barrichello",
+      "driver_name": "Rubens Barrichello",
+      "race_wins": 2,
+      "race_podiums": 8,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 3,
+      "top3_starts": 9
+    },
+    {
+      "code": "SCH",
+      "driver_id": "ralf_schumacher",
+      "driver_name": "Ralf Schumacher",
+      "race_wins": 2,
+      "race_podiums": 3,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 3,
+      "top3_starts": 7
+    },
+    {
+      "code": "RAI",
+      "driver_id": "raikkonen",
+      "driver_name": "Kimi R\u00e4ikk\u00f6nen",
+      "race_wins": 1,
+      "race_podiums": 10,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 5
+    },
+    {
+      "code": "ALO",
+      "driver_id": "alonso",
+      "driver_name": "Fernando Alonso",
+      "race_wins": 1,
+      "race_podiums": 4,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 3
+    },
+    {
+      "code": "COU",
+      "driver_id": "coulthard",
+      "driver_name": "David Coulthard",
+      "race_wins": 1,
+      "race_podiums": 3,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "FIS",
+      "driver_id": "fisichella",
+      "driver_name": "Giancarlo Fisichella",
+      "race_wins": 1,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "TRU",
+      "driver_id": "trulli",
+      "driver_name": "Jarno Trulli",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 2
+    },
+    {
+      "code": "",
+      "driver_id": "frentzen",
+      "driver_name": "Heinz-Harald Frentzen",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "WEB",
+      "driver_id": "webber",
+      "driver_name": "Mark Webber",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 2
+    },
+    {
+      "code": "",
+      "driver_id": "panis",
+      "driver_name": "Olivier Panis",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "",
+      "driver_id": "matta",
+      "driver_name": "Cristiano da Matta",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "VIL",
+      "driver_id": "villeneuve",
+      "driver_name": "Jacques Villeneuve",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "BUT",
+      "driver_id": "button",
+      "driver_name": "Jenson Button",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "verstappen",
+      "driver_name": "Jos Verstappen",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "PIZ",
+      "driver_id": "pizzonia",
+      "driver_name": "Ant\u00f4nio Pizzonia",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "HEI",
+      "driver_id": "heidfeld",
+      "driver_name": "Nick Heidfeld",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "wilson",
+      "driver_name": "Justin Wilson",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "firman",
+      "driver_name": "Ralph Firman",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "kiesa",
+      "driver_name": "Nicolas Kiesa",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "baumgartner",
+      "driver_name": "Zsolt Baumgartner",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "",
+      "driver_id": "gene",
+      "driver_name": "Marc Gen\u00e9",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "SAT",
+      "driver_id": "sato",
+      "driver_name": "Takuma Sato",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}

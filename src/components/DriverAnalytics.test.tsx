@@ -88,7 +88,7 @@ test('a season with no stored results says so instead of showing zeros', async (
   api.getDriverStats.mockResolvedValue({ year: 2026, races_counted: 0, sprints_counted: 0, drivers: [] });
   await renderAt('/dashboard?tab=drivers&cols=race_wins');
 
-  expect(screen.getByText(/not available for 2026/i)).toBeInTheDocument();
+  expect(screen.getByText("These columns aren't available for 2026.")).toBeInTheDocument();
   expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
 });
 
@@ -109,6 +109,16 @@ test('an ambiguous surname is not guessed', () => {
 
   expect(find(standing(1, 'Carl Smith'))).toBeUndefined();
   expect(find(standing(1, 'Bob Smith'))?.code).toBe('BBB');
+});
+
+test("an older season's snapshot is matched by Jolpica's driver id, so two Schumachers don't mix", () => {
+  const find = statsMatcher([
+    { code: '', driver_id: 'michael_schumacher', driver_name: 'Michael Schumacher', race_wins: 9, race_podiums: 9, sprint_wins: 0, sprint_podiums: 0 },
+    { code: '', driver_id: 'ralf_schumacher', driver_name: 'Ralf Schumacher', race_wins: 1, race_podiums: 1, sprint_wins: 0, sprint_podiums: 0 },
+  ]);
+
+  expect(find(standing(1, 'M. Schumacher', { driver_id: 'michael_schumacher' }))?.race_wins).toBe(9);
+  expect(find(standing(2, 'Ralf Schumacher'))?.driver_id).toBe('ralf_schumacher');
 });
 
 test('pole positions and top-3 starts are columns too, after wins and podiums', async () => {

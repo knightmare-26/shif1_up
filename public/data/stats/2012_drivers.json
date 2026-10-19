@@ -1,0 +1,283 @@
+{
+  "year": 2012,
+  "races_counted": 20,
+  "sprints_counted": 0,
+  "poles_from_grid": [],
+  "drivers": [
+    {
+      "code": "VET",
+      "driver_id": "vettel",
+      "driver_name": "Sebastian Vettel",
+      "race_wins": 5,
+      "race_podiums": 10,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 6,
+      "top3_starts": 10
+    },
+    {
+      "code": "HAM",
+      "driver_id": "hamilton",
+      "driver_name": "Lewis Hamilton",
+      "race_wins": 4,
+      "race_podiums": 7,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 8,
+      "top3_starts": 14
+    },
+    {
+      "code": "ALO",
+      "driver_id": "alonso",
+      "driver_name": "Fernando Alonso",
+      "race_wins": 3,
+      "race_podiums": 13,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 4
+    },
+    {
+      "code": "BUT",
+      "driver_id": "button",
+      "driver_name": "Jenson Button",
+      "race_wins": 3,
+      "race_podiums": 6,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 1,
+      "top3_starts": 5
+    },
+    {
+      "code": "WEB",
+      "driver_id": "webber",
+      "driver_name": "Mark Webber",
+      "race_wins": 2,
+      "race_podiums": 4,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 1,
+      "top3_starts": 9
+    },
+    {
+      "code": "RAI",
+      "driver_id": "raikkonen",
+      "driver_name": "Kimi R\u00e4ikk\u00f6nen",
+      "race_wins": 1,
+      "race_podiums": 7,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "ROS",
+      "driver_id": "rosberg",
+      "driver_name": "Nico Rosberg",
+      "race_wins": 1,
+      "race_podiums": 2,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 1,
+      "top3_starts": 2
+    },
+    {
+      "code": "MAL",
+      "driver_id": "maldonado",
+      "driver_name": "Pastor Maldonado",
+      "race_wins": 1,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 4
+    },
+    {
+      "code": "GRO",
+      "driver_id": "grosjean",
+      "driver_name": "Romain Grosjean",
+      "race_wins": 0,
+      "race_podiums": 3,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 3
+    },
+    {
+      "code": "PER",
+      "driver_id": "perez",
+      "driver_name": "Sergio P\u00e9rez",
+      "race_wins": 0,
+      "race_podiums": 3,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "MAS",
+      "driver_id": "massa",
+      "driver_name": "Felipe Massa",
+      "race_wins": 0,
+      "race_podiums": 2,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "code": "MSC",
+      "driver_id": "michael_schumacher",
+      "driver_name": "Michael Schumacher",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 1,
+      "top3_starts": 4
+    },
+    {
+      "code": "KOB",
+      "driver_id": "kobayashi",
+      "driver_name": "Kamui Kobayashi",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 3
+    },
+    {
+      "code": "RIC",
+      "driver_id": "ricciardo",
+      "driver_name": "Daniel Ricciardo",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "DIR",
+      "driver_id": "resta",
+      "driver_name": "Paul di Resta",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "VER",
+      "driver_id": "vergne",
+      "driver_name": "Jean-\u00c9ric Vergne",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "GLO",
+      "driver_id": "glock",
+      "driver_name": "Timo Glock",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "PIC",
+      "driver_id": "pic",
+      "driver_name": "Charles Pic",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "SEN",
+      "driver_id": "bruno_senna",
+      "driver_name": "Bruno Senna",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "KOV",
+      "driver_id": "kovalainen",
+      "driver_name": "Heikki Kovalainen",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "PET",
+      "driver_id": "petrov",
+      "driver_name": "Vitaly Petrov",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "HUL",
+      "driver_id": "hulkenberg",
+      "driver_name": "Nico H\u00fclkenberg",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "KAR",
+      "driver_id": "karthikeyan",
+      "driver_name": "Narain Karthikeyan",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "DLR",
+      "driver_id": "rosa",
+      "driver_name": "Pedro de la Rosa",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "code": "DAM",
+      "driver_id": "ambrosio",
+      "driver_name": "J\u00e9r\u00f4me d'Ambrosio",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}
