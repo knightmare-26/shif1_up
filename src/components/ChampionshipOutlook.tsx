@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Lightbulb, Trophy } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { ChevronDown, Lightbulb, Trophy } from 'lucide-react';
 import {
   backendApi, ChampionshipBacktest, ChampionshipBacktestSummary, ChampionshipOutlook as Outlook, ChampionshipRow,
 } from '../services/backendApi';
@@ -72,13 +73,66 @@ export function titleInsights(outlook: Outlook, kind: View): string[] {
   return lines;
 }
 
-const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => (
-  <section id={id} aria-label="Insights" className="space-y-2 border-l-2 border-racing-red bg-ink-900 px-5 py-4">
-    {titleInsights(outlook, kind).map((line) => (
-      <p key={line} className="text-base leading-relaxed text-white">{line}</p>
-    ))}
-  </section>
-);
+const EASE = [0.22, 1, 0.36, 1] as const;   // fast out, long soft landing
+const LINE = {
+  hidden: { opacity: 0, y: 12, filter: 'blur(6px)' },
+  shown: { opacity: 1, y: 0, filter: 'blur(0px)', transition: { duration: 0.5, ease: EASE } },
+};
+
+/** Opens by growing to its height while the red rule draws down its edge, a red wash sweeps in
+ *  from it and the lines rise into focus one after another; closes by folding back up. Instant
+ *  with reduced motion. */
+const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => {
+  const reduce = useReducedMotion();
+  return (
+    <motion.div
+      className="overflow-hidden"
+      initial={reduce ? false : { height: 0, opacity: 0 }}
+      animate={{ height: 'auto', opacity: 1 }}
+      exit={reduce ? { opacity: 0, transition: { duration: 0 } } : { height: 0, opacity: 0 }}
+      transition={{ height: { duration: 0.5, ease: EASE }, opacity: { duration: 0.3 } }}
+    >
+      <div className="pb-6">
+        <section id={id} aria-label="Insights" className="relative overflow-hidden bg-ink-900 px-5 py-4">
+          <motion.span aria-hidden="true" className="absolute inset-y-0 left-0 w-[2px] origin-top bg-racing-red"
+            initial={reduce ? false : { scaleY: 0 }} animate={{ scaleY: 1 }}
+            transition={{ duration: 0.55, ease: EASE, delay: 0.08 }} />
+          <motion.span aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-r from-racing-red/15 via-racing-red/[0.04] to-transparent"
+            initial={reduce ? false : { opacity: 0, x: '-40%' }} animate={{ opacity: 1, x: '0%' }}
+            transition={{ duration: 0.8, ease: EASE, delay: 0.1 }} />
+          {/* keyed on the championship, so switching it plays the lines in again */}
+          <motion.div key={kind} className="relative space-y-2" initial={reduce ? false : 'hidden'} animate="shown"
+            variants={{ hidden: {}, shown: { transition: { staggerChildren: 0.1, delayChildren: 0.2 } } }}>
+            {titleInsights(outlook, kind).map((line) => (
+              <motion.p key={line} variants={LINE} className="text-base leading-relaxed text-white">{line}</motion.p>
+            ))}
+          </motion.div>
+        </section>
+      </div>
+    </motion.div>
+  );
+};
+
+/** The Insights toggle: the bulb lights up (with a little flick) and the chevron turns while it's open. */
+const InsightsButton: React.FC<{ open: boolean; onToggle: () => void; controls: string }> = ({ open, onToggle, controls }) => {
+  const reduce = useReducedMotion();
+  return (
+    <Button variant="secondary" aria-expanded={open} aria-controls={controls} onClick={onToggle}
+      className={open ? '!border-racing-red !bg-racing-red/10 hover:!bg-racing-red/25 hover:!text-white' : ''}
+      icon={
+        <motion.span className={`inline-flex ${open ? 'text-racing-red drop-shadow-[0_0_6px_rgba(214,40,40,0.9)]' : ''}`}
+          animate={open && !reduce ? { rotate: [0, -16, 12, -6, 0], scale: [1, 1.3, 1.1, 1] } : { rotate: 0, scale: 1 }}
+          transition={{ duration: 0.55, ease: 'easeOut' }}>
+          <Lightbulb className="h-4 w-4" fill={open ? 'currentColor' : 'none'} aria-hidden="true" />
+        </motion.span>
+      }>
+      Insights
+      <ChevronDown aria-hidden="true"
+        className={`h-4 w-4 transition-transform duration-300 ease-out motion-reduce:transition-none ${open ? 'rotate-180' : ''}`} />
+    </Button>
+  );
+};
 
 /** The title chance drawn as a bar for the top ten (out of contention too, at 0%); below that, the number. */
 const BAR_ROWS = 10;
@@ -255,12 +309,14 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
           {VIEWS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </SelectField>
         {outlook && !empty && (
-          <Button variant="secondary" icon={<Lightbulb className="h-4 w-4" />}
-            aria-expanded={showInsights} aria-controls="title-insights" onClick={() => setShowInsights((v) => !v)}>
-            Insights
-          </Button>
+          <InsightsButton open={showInsights} controls="title-insights" onToggle={() => setShowInsights((v) => !v)} />
         )}
       </FilterBar>
+      <AnimatePresence initial={false}>
+        {showInsights && outlook && !empty && !loading && !error && (
+          <InsightsPanel key="insights" id="title-insights" outlook={outlook} kind={view} />
+        )}
+      </AnimatePresence>
       <div className="space-y-6">
         {loading ? <Card><LoadingState label="Loading predictions…" /></Card> : error ? (
           <Card><ErrorState title="Couldn't load the championship outlook" message={error} onRetry={load} /></Card>
@@ -274,7 +330,6 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
           </Card>
         ) : (
           <>
-            {showInsights && <InsightsPanel id="title-insights" outlook={outlook} kind={view} />}
             <Card>
               <CardHeader
                 title={`${view === 'drivers' ? "Drivers'" : "Constructors'"} Championship — ${year}`}
