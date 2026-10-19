@@ -1,0 +1,135 @@
+{
+  "year": 2001,
+  "races_counted": 17,
+  "sprints_counted": 0,
+  "poles_from_grid": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    17
+  ],
+  "constructors": [
+    {
+      "constructor_id": "ferrari",
+      "constructor_name": "Ferrari",
+      "race_wins": 9,
+      "race_podiums": 24,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 11,
+      "top3_starts": 19
+    },
+    {
+      "constructor_id": "mclaren",
+      "constructor_name": "McLaren",
+      "race_wins": 4,
+      "race_podiums": 13,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 14
+    },
+    {
+      "constructor_id": "williams",
+      "constructor_name": "Williams",
+      "race_wins": 4,
+      "race_podiums": 9,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 4,
+      "top3_starts": 18
+    },
+    {
+      "constructor_id": "bar",
+      "constructor_name": "BAR",
+      "race_wins": 0,
+      "race_podiums": 2,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "sauber",
+      "constructor_name": "Sauber",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "jaguar",
+      "constructor_name": "Jaguar",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "benetton",
+      "constructor_name": "Benetton",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "jordan",
+      "constructor_name": "Jordan",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "prost",
+      "constructor_name": "Prost",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "arrows",
+      "constructor_name": "Arrows",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "minardi",
+      "constructor_name": "Minardi",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}

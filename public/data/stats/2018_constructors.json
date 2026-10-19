@@ -1,0 +1,108 @@
+{
+  "year": 2018,
+  "races_counted": 21,
+  "sprints_counted": 0,
+  "poles_from_grid": [],
+  "constructors": [
+    {
+      "constructor_id": "mercedes",
+      "constructor_name": "Mercedes",
+      "race_wins": 11,
+      "race_podiums": 25,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 13,
+      "top3_starts": 31
+    },
+    {
+      "constructor_id": "ferrari",
+      "constructor_name": "Ferrari",
+      "race_wins": 6,
+      "race_podiums": 24,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 6,
+      "top3_starts": 25
+    },
+    {
+      "constructor_id": "red_bull",
+      "constructor_name": "Red Bull",
+      "race_wins": 4,
+      "race_podiums": 13,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 2,
+      "top3_starts": 6
+    },
+    {
+      "constructor_id": "force_india",
+      "constructor_name": "Force India",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "constructor_id": "mclaren",
+      "constructor_name": "McLaren",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "renault",
+      "constructor_name": "Renault",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "sauber",
+      "constructor_name": "Sauber",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "williams",
+      "constructor_name": "Williams",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "toro_rosso",
+      "constructor_name": "Toro Rosso",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "haas",
+      "constructor_name": "Haas F1 Team",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}
