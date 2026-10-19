@@ -126,12 +126,11 @@ test('chances still being worked out arrive by themselves', async () => {
     api.predictRace.mockResolvedValueOnce(withOdds('Race Driver', false)).mockResolvedValue(withOdds('Race Driver'));
     await open();
 
-    expect(screen.getByText(/chances are still being worked out/)).toBeInTheDocument();
-    expect(screen.queryByText('Win chance')).not.toBeInTheDocument();
+    expect(screen.queryByText('Win chance')).not.toBeInTheDocument();      // no column, and no notice about it
+    expect(screen.queryByText(/still being worked out/)).not.toBeInTheDocument();
 
     await act(async () => { jest.advanceTimersByTime(20000); });
     expect(screen.getByText('Win chance')).toBeInTheDocument();
-    expect(screen.queryByText(/chances are still being worked out/)).not.toBeInTheDocument();
     expect(screen.getByText('Race Prediction')).toBeInTheDocument();          // never cleared while it re-checked
   } finally {
     jest.useRealTimers();
@@ -257,14 +256,13 @@ test('slow chances still arrive: after 3 minutes it keeps checking, once a minut
     await open();
 
     for (let i = 0; i < 9; i++) await act(async () => { jest.advanceTimersByTime(20000); });   // the first 3 minutes
-    expect(screen.getByText(/chances are still being worked out/)).toBeInTheDocument();
+    expect(screen.queryByText('Win chance')).not.toBeInTheDocument();
 
     api.predictRace.mockResolvedValue(withOdds('Race Driver'));
     await act(async () => { jest.advanceTimersByTime(20000); });
     expect(screen.queryByText('Win chance')).not.toBeInTheDocument();                      // now once a minute
     await act(async () => { jest.advanceTimersByTime(40000); });
     expect(screen.getByText('Win chance')).toBeInTheDocument();
-    expect(screen.queryByText(/chances are still being worked out/)).not.toBeInTheDocument();
   } finally {
     jest.useRealTimers();
   }
