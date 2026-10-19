@@ -140,7 +140,8 @@ test('the summary sits under an Insights button: a line or two about the title, 
   await openInsights();
   expect(button).toHaveAttribute('aria-expanded', 'true');
   const panel = screen.getByRole('region', { name: 'Insights' });
-  expect(panel).toHaveTextContent('After round 14 of 23 · updates after every race weekend');
+  expect(panel).toHaveTextContent('After round 14 of 23');
+  expect(panel).not.toHaveTextContent(/updates after every race weekend/);
   expect(panel).toHaveTextContent('Antonelli leads Russell by 50 points with 9 rounds (up to 233 points) left.');
   expect(panel).toHaveTextContent('Title chances: Antonelli 86%, Russell 7%.');
   expect(panel).not.toHaveTextContent(/closest fight|projected|missed the latest race/);

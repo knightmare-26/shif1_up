@@ -76,7 +76,7 @@ const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({
   <section id={id} aria-label="Insights" className="border-l-2 border-racing-red bg-ink-900 px-5 py-4">
     <p className="label text-muted">
       {outlook.status === 'finished' ? `The ${outlook.year} season, final`
-        : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · updates after every race weekend`}
+        : `After round ${outlook.rounds_completed} of ${outlook.rounds_total}`}
     </p>
     {titleInsights(outlook, kind).map((line) => (
       <p key={line} className="mt-2 text-base leading-relaxed text-white">{line}</p>
