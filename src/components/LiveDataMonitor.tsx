@@ -164,7 +164,7 @@ const LiveMonitor: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="Live" subtitle="Real-time timing data during F1 sessions" />
+      <PageHeader title="Live" />
       <LiveSectionTabs active="monitor" />
 
       <TabPanel id="monitor" idPrefix="live" className="pt-6">

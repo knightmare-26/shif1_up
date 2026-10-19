@@ -2,7 +2,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, RefreshCw } from 'lucide-react';
 
 const controlBase =
-  'w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-2 text-sm text-white transition-colors ' +
+  'w-full border border-ink-500 bg-ink-900 px-4 py-2.5 text-sm text-white transition-colors hover:border-white/50 ' +
   'focus:border-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40 ' +
   'disabled:cursor-not-allowed disabled:opacity-50';
 
@@ -16,7 +16,7 @@ export const SelectField: React.FC<{
   className?: string;
 }> = ({ label, value, onChange, children, disabled, className = 'min-w-[140px]' }) => (
   <label className={`flex flex-col gap-1 ${className}`}>
-    <span className="text-xs uppercase tracking-wide text-gray-400">{label}</span>
+    <span className="label text-muted">{label}</span>
     <span className="relative block">
       <select
         value={value}
@@ -43,7 +43,7 @@ export const TextField: React.FC<{
   className?: string;
 }> = ({ label, value, onChange, placeholder, disabled, className = 'min-w-[200px]' }) => (
   <label className={`flex flex-col gap-1 ${className}`}>
-    <span className="text-xs uppercase tracking-wide text-gray-400">{label}</span>
+    <span className="label text-muted">{label}</span>
     <input
       type="text"
       value={value}
@@ -66,7 +66,7 @@ export const CheckboxField: React.FC<{
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
-      className="h-4 w-4 rounded border-gray-700 bg-gray-900 text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
+      className="h-4 w-4 border-ink-500 bg-ink-900 text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
     />
     {label}
   </label>
@@ -125,7 +125,7 @@ export const CheckboxMenu: React.FC<{
         aria-expanded={open}
         aria-controls={menuId}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-2 rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-200 transition-colors hover:bg-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
+        className="inline-flex items-center gap-2 border border-ink-500 bg-ink-900 px-3 py-2 text-sm uppercase tracking-wider text-white transition-colors hover:border-white focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60"
       >
         {icon}
         {label}
@@ -139,18 +139,18 @@ export const CheckboxMenu: React.FC<{
           id={menuId}
           role="group"
           aria-label={label}
-          className={`absolute z-20 mt-2 min-w-[12rem] rounded-lg border border-gray-700 bg-gray-900 p-1 shadow-xl ${align === 'right' ? 'right-0' : 'left-0'}`}
+          className={`absolute z-20 mt-2 min-w-[12rem] border border-ink-500 bg-ink-900 p-1 shadow-2xl ${align === 'right' ? 'right-0' : 'left-0'}`}
         >
           {options.map((o) => (
             <label
               key={o.id}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-200 hover:bg-gray-800"
+              className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm text-gray-200 hover:bg-ink-700"
             >
               <input
                 type="checkbox"
                 checked={selected.includes(o.id)}
                 onChange={(e) => toggle(o.id, e.target.checked)}
-                className="h-4 w-4 rounded border-gray-700 bg-gray-900 text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
+                className="h-4 w-4 border-ink-500 bg-ink-900 text-racing-red focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/40"
               />
               {o.label}
             </label>
@@ -174,15 +174,15 @@ export const Button: React.FC<
   }
 > = ({ variant = 'primary', loading, icon, children, className = '', disabled, ...rest }) => {
   const styles = {
-    primary: 'bg-racing-red text-white hover:bg-red-700',
-    secondary: 'border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700',
-    danger: 'bg-red-600 text-white hover:bg-red-700',
+    primary: 'border border-racing-red bg-racing-red text-white hover:border-red-700 hover:bg-red-700',
+    secondary: 'border border-white/70 bg-transparent text-white hover:bg-white hover:text-black',
+    danger: 'border border-red-600 bg-red-600 text-white hover:bg-red-700',
   }[variant];
   return (
     <button
       type="button"
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium uppercase tracking-wider transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/60 disabled:cursor-not-allowed disabled:opacity-50 ${styles} ${className}`}
       {...rest}
     >
       {loading ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : icon}

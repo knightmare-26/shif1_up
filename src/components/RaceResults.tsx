@@ -76,7 +76,6 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const [selectedGP, setSelectedGP] = useState('');
   const [chosenSession, setSelectedSession] = useState('R');
   const [showCircuitName, setShowCircuitName] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const requestId = useRef(0);
 
   // The chosen weekend's sessions; a session it doesn't have (a sprint, picked on another weekend)
@@ -133,7 +132,6 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
       if ((normalized as any).error) throw new Error((normalized as any).error);
 
       setRaceData(normalized);
-      setLastUpdated(new Date());
     } catch (err: any) {
       if (id !== requestId.current) return;
       setRaceData(null);
@@ -188,9 +186,6 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
         <CardHeader
           title={selectedGP ? `${year} ${raceName} — ${sessionLabel}` : 'Race results'}
           icon={<ListOrdered className="h-4 w-4" />}
-          subtitle={raceData && !loading
-            ? `${raceData.results.length} drivers${lastUpdated ? ` · Updated ${lastUpdated.toLocaleTimeString()}` : ''}`
-            : undefined}
         />
 
         {scheduleFailed ? (

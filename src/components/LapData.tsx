@@ -133,7 +133,7 @@ const LapData: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="Lap Data" subtitle="Race lap times and sector splits" />
+      <PageHeader title="Lap Data" />
 
       <FilterBar>
         <SelectField label="Year" value={year} onChange={(v) => setYear(Number(v))}>

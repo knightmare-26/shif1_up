@@ -62,7 +62,7 @@ const LiveOverview: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="Live" subtitle="Real-time Formula 1 data — active during race weekends" />
+      <PageHeader title="Live" />
       <LiveSectionTabs active="overview" />
 
       <TabPanel id="overview" idPrefix="live" className="space-y-6 pt-6">

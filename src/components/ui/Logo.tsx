@@ -18,7 +18,7 @@ export const LogoMark: React.FC<{ className?: string }> = ({ className = 'h-9 w-
 /** The wordmark: speed streaks, SHIF with a red 1, and a small UP. Sized by font-size (pass a
  *  text-* class); read out as "Shif1 UP". */
 export const Wordmark: React.FC<{ className?: string }> = ({ className = 'text-2xl' }) => (
-  <span className={`inline-flex items-center font-racing leading-none ${className}`}>
+  <span className={`inline-flex items-center font-logo leading-none ${className}`}>
     <span className="sr-only">Shif1 UP</span>
     <span aria-hidden="true" className="inline-flex items-baseline">
       <span className="mr-[0.18em] flex flex-col items-end gap-[0.1em] self-center">
@@ -29,5 +29,13 @@ export const Wordmark: React.FC<{ className?: string }> = ({ className = 'text-2
       <span className="text-racing-red">1</span>
       <span className="ml-[0.3em] text-[0.45em] tracking-[0.3em] text-gray-400">UP</span>
     </span>
+  </span>
+);
+
+/** The name in text and headings — SHIF1 with a small UP, as in the wordmark. Takes the surrounding
+ *  font and colour; a real space keeps it read as "SHIF1 UP". */
+export const BrandName: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <span className={`whitespace-nowrap ${className}`}>
+    SHIF1 <span className="text-[max(0.42em,9px)] tracking-[0.25em] opacity-80">UP</span>
   </span>
 );

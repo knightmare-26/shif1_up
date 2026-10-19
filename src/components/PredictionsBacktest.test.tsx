@@ -123,7 +123,7 @@ test('sprint qualifying is scored, by the qualifying model', async () => {
   }, '/predictions?tab=backtest&session=sprint_qualifying');
 
   expect(screen.getByText('Round 17 — Singapore Grand Prix: Sprint Qualifying')).toBeInTheDocument();
-  expect(screen.getByText('Marina Bay · 2026 · race still to run · predicted by the qualifying model')).toBeInTheDocument();
+  expect(screen.getByText('Marina Bay · 2026 · race still to run')).toBeInTheDocument();
   expect(screen.getByText('Prediction error: 0.5 places')).toBeInTheDocument();
   expect(screen.getByText('31%')).toBeInTheDocument();
   expect(screen.getByText('11% better')).toBeInTheDocument();

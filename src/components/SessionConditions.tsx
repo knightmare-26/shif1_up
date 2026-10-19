@@ -119,9 +119,7 @@ const SessionConditions: React.FC<{ year: number; raceName: string; session: str
       <CardHeader
         title={open ? `Replay — ${sessionLabel}` : `Weather — ${sessionLabel}`}
         icon={<CloudSun className="h-4 w-4" />}
-        subtitle={open
-          ? 'The timing board and weather as the session unfolded'
-          : info ? `At the start of the session${summary ? `. During it: ${summary}.` : ''}` : undefined}
+        subtitle={!open && info ? `At the start of the session${summary ? `. During it: ${summary}.` : ''}` : undefined}
         action={info && (open
           ? <Button variant="secondary" onClick={() => { setOpen(false); setPlaying(false); }} icon={<X className="h-4 w-4" />}>Close replay</Button>
           : <Button onClick={() => { setOpen(true); setPlaying(true); }} icon={<Play className="h-4 w-4" />}>Watch replay</Button>)}

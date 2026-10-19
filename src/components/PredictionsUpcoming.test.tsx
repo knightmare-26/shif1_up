@@ -101,7 +101,7 @@ test("sprint qualifying is the qualifying model's prediction, under its own name
 
   expect(screen.getByText('Sprint Qualifying Prediction')).toBeInTheDocument();
   expect(within(screen.getByRole('table')).getByText('Quali Driver')).toBeInTheDocument();
-  expect(screen.getByText(/the qualifying model, so the same order as qualifying/)).toBeInTheDocument();
+  expect(screen.getByText(/same order as qualifying/)).toBeInTheDocument();
   expect(api.predictQualifying).toHaveBeenCalledTimes(1);           // one prediction serves both
 });
 
