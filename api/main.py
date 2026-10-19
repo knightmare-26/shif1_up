@@ -1021,11 +1021,15 @@ async def session_penalties(year: int, session: str, gp: str):
 
 
 @app.get("/api/sessions/{year}/{session}/replay")
-async def session_replay_frame(year: int, session: str, gp: str, t: float = 0.0):
-    """The timing board (with weather) `t` seconds into a finished session — what the Race Results
-    replay plays. The first call for a session loads it from OpenF1 (a few seconds)."""
+async def session_replay_frame(year: int, session: str, gp: str, t: float = 0.0, lap: Optional[int] = None):
+    """The timing board `t` seconds into a finished session — or, for a race or sprint with `lap`,
+    as the leader completes that lap (0: the start; the answer says how many laps there are). What
+    the Race Results replay plays. The first call for a session loads it from OpenF1 (a few seconds)."""
     try:
-        return await session_replays.frame(year, gp, _replay_session_code(session), t)
+        code = _replay_session_code(session)
+        if lap is not None:
+            return await session_replays.lap_frame(year, gp, code, lap)
+        return await session_replays.frame(year, gp, code, t)
     except ReplayUnavailable as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except OpenF1Locked:
