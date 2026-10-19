@@ -6,7 +6,7 @@ import { backendApi, ChampionshipOutlook, ConstructorStanding, DriverStanding, R
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { isRaceRound } from '../utils/races';
 import { useLiveTiming } from '../config/features';
-import { teamColor } from './ui';
+import { BrandName, teamColor } from './ui';
 import { Typewriter } from './home/Typewriter';
 import { ScrollStatement } from './home/ScrollStatement';
 import { CircuitArt } from './home/CircuitArt';
@@ -16,7 +16,7 @@ import { Faq, FaqItem } from './home/Faq';
 const PHRASES = ['PREDICT THE GRID', 'READ THE RACE', 'PROVE THE PACE', 'CHASE THE TITLE'];
 
 /** "BRAND | SECTION" section heading: red, a thin bar, white. */
-const SectionTitle: React.FC<{ red: string; white: string; id?: string }> = ({ red, white, id }) => (
+const SectionTitle: React.FC<{ red: React.ReactNode; white: string; id?: string }> = ({ red, white, id }) => (
   <h2 id={id} className="display text-[clamp(2.4rem,5vw,4.5rem)] uppercase">
     <span className="text-racing-red">{red}</span>
     <span className="mx-[0.22em] font-light text-white/80">|</span>
@@ -96,7 +96,7 @@ const MainPage: React.FC = () => {
       <section className="grid gap-2 bg-black p-2 lg:h-[calc(100vh-4rem)] lg:min-h-[620px] lg:grid-cols-[minmax(0,1fr)_400px]">
         <div className="relative isolate flex min-h-[560px] flex-col justify-end overflow-hidden bg-[#0a0a0a] p-6 sm:p-10 lg:p-14">
           <div aria-hidden="true" className="absolute inset-0 -z-10"
-            style={{ background: 'radial-gradient(ellipse at 15% 95%, rgba(228,35,32,0.45), transparent 55%), radial-gradient(ellipse at 85% 10%, rgba(255,255,255,0.06), transparent 50%)' }} />
+            style={{ background: 'radial-gradient(ellipse at 15% 95%, rgba(214,40,40,0.45), transparent 55%), radial-gradient(ellipse at 85% 10%, rgba(255,255,255,0.06), transparent 50%)' }} />
           <div aria-hidden="true" className="absolute inset-0 -z-10 opacity-[0.05]"
             style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '64px 64px' }} />
           <CircuitArt className="absolute -right-10 top-4 -z-10 w-[85%] max-w-[900px] text-white sm:top-0" />
@@ -178,7 +178,7 @@ const MainPage: React.FC = () => {
         <div aria-hidden="true" className="absolute inset-0 -z-10 flex -rotate-12 scale-125 flex-col justify-center gap-6 opacity-[0.11]">
           {Array.from({ length: 7 }, (_, row) => (
             <p key={row} className="display whitespace-nowrap text-7xl text-racing-red" style={{ marginLeft: `${(row % 2) * -6}rem` }}>
-              {'SHIF1+ '.repeat(14)}
+              {Array.from({ length: 12 }, (__, k) => <BrandName key={k} className="mr-[0.45em]" />)}
             </p>
           ))}
         </div>
@@ -204,13 +204,13 @@ const MainPage: React.FC = () => {
 
       {/* ---------------------------------------------------------------- explore */}
       <section className="mx-auto max-w-[1600px] px-4 py-28 sm:px-6 lg:px-10" aria-labelledby="explore">
-        <SectionTitle id="explore" red="Shif1" white="Explore" />
+        <SectionTitle id="explore" red={<BrandName />} white="Explore" />
         <div className="mt-14 grid gap-12 md:grid-cols-2">
           {EXPLORE.map((e) => (
             <div key={e.to} className="flex gap-6">
               <span className="w-px flex-shrink-0 bg-white" aria-hidden="true" />
               <div>
-                <p className="label text-white">{e.tag}<span className="mx-2">|</span><span className="text-racing-red">Shif1</span></p>
+                <p className="label text-white">{e.tag}<span className="mx-2">|</span><BrandName className="text-racing-red" /></p>
                 <h3 className="display mt-2 text-3xl text-white">{e.title}</h3>
                 <p className="mt-3 max-w-md leading-relaxed text-gray-300">{e.text}</p>
                 <Link to={e.to}
@@ -231,7 +231,7 @@ const MainPage: React.FC = () => {
 
       {/* ---------------------------------------------------------------- faq */}
       <section className="mx-auto max-w-[1600px] px-4 pb-12 sm:px-6 lg:px-10" aria-labelledby="faq">
-        <div className="mb-12 text-center"><SectionTitle id="faq" red="Shif1" white="FAQ" /></div>
+        <div className="mb-12 text-center"><SectionTitle id="faq" red={<BrandName />} white="FAQ" /></div>
         <Faq items={FAQ} />
       </section>
     </div>

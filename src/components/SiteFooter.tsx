@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Wordmark } from './ui';
+import { BrandName, Wordmark } from './ui';
 
 const LINKS = [
   { to: '/dashboard', label: 'Dashboard' },
@@ -20,10 +20,10 @@ const SiteFooter: React.FC = () => (
           ))}
         </nav>
         <p className="label mt-4 text-muted">
-          © {new Date().getFullYear()} Shif1 | Up · Not affiliated with Formula 1
+          © {new Date().getFullYear()} <BrandName /> · Not affiliated with Formula 1
         </p>
       </div>
-      <Wordmark className="text-sm" />
+      <Wordmark className="text-2xl" />
     </div>
   </footer>
 );

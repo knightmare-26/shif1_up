@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
-import { Wordmark } from './ui';
+import { LogoMark, Wordmark } from './ui';
 import { useLiveTiming } from '../config/features';
 
 type NavItem = { path: string; label: string };
@@ -19,7 +19,7 @@ const NAV_ITEMS: NavItem[] = [
 const isActive = (path: string, pathname: string) => (path === '/' ? pathname === '/' : pathname.startsWith(path));
 
 /**
- * A slim bar — the SHIF1 | UP badge on the left, the menu button on the right — and a full-height
+ * A slim bar — the Shif1 UP logo on the left, the menu button on the right — and a full-height
  * panel that slides in from the right with the sections in big type (the current one in red).
  * Closes on Escape, a click outside, or moving to another page; focus goes into the panel and back
  * to the button.
@@ -60,7 +60,8 @@ const Navigation: React.FC = () => {
         <div className="mx-auto flex h-full max-w-[1600px] items-center justify-between px-4 sm:px-6 lg:px-10">
           <Link to="/" aria-label="Shif1 UP home"
             className="focus:outline-none focus-visible:ring-2 focus-visible:ring-racing-red/70">
-            <Wordmark className="text-sm sm:text-base" />
+            <LogoMark className="h-9 w-9 sm:hidden" />
+            <Wordmark className="hidden text-2xl sm:inline-flex" />
           </Link>
 
           <div className="flex items-center gap-5">

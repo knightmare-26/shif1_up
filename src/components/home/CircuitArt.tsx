@@ -16,9 +16,9 @@ export const CircuitArt: React.FC<{ className?: string; lapSeconds?: number }> =
       <path d={TRACK} stroke="currentColor" strokeWidth="14" strokeLinejoin="round" opacity="0.12" />
       <path id={id} d={TRACK} stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" opacity="0.55" />
       {/* start / finish line */}
-      <path d="M 236 214 L 236 238" stroke="#E42320" strokeWidth="3" />
+      <path d="M 236 214 L 236 238" stroke="#D62828" strokeWidth="3" />
       {!reduce && (
-        <circle r="5.5" fill="#E42320">
+        <circle r="5.5" fill="#D62828">
           <animateMotion dur={`${lapSeconds}s`} repeatCount="indefinite" rotate="auto">
             <mpath href={`#${id}`} />
           </animateMotion>

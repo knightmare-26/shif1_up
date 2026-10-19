@@ -10,7 +10,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'racing-red': '#E42320',
+        'racing-red': '#D62828',          // the logo's red
         'carbon-black': '#000000',
         'track-grey': '#F7F7F7',
         // Old accents, folded into the palette: one accent colour (red), the rest white and grey.
@@ -33,6 +33,8 @@ module.exports = {
         // Earlier names, kept so older markup picks up the new face.
         'f1': DISPLAY,
         'racing': DISPLAY,
+        // The Shif1 UP wordmark's own face (the owner's logo, unchanged by the redesign).
+        'logo': ['"Racing Sans One"', 'cursive'],
       },
       // Square, like the rest of the look; `rounded-full` (dots, avatars) stays round.
       borderRadius: {

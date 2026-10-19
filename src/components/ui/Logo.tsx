@@ -3,7 +3,7 @@ import React from 'react';
 // The icon's red italic "1". Same shape as public/favicon.svg — both come from
 // scripts/make_icons.py; change them together.
 export const LOGO_ONE_POINTS = '39.04,13 49.04,13 40.96,51 30.96,51 36.49,25 28.03,29.5 29.73,21.5';
-const RED = '#E42320';
+const RED = '#D62828';
 
 /** The square icon: the red "1" and two speed streaks on carbon black (the browser-tab icon). */
 export const LogoMark: React.FC<{ className?: string }> = ({ className = 'h-9 w-9' }) => (
@@ -15,15 +15,27 @@ export const LogoMark: React.FC<{ className?: string }> = ({ className = 'h-9 w-
   </svg>
 );
 
-/** The wordmark, as a badge: SHIF1 in red, | UP in white, on black. Sized by font-size (pass a
+/** The wordmark: speed streaks, SHIF with a red 1, and a small UP. Sized by font-size (pass a
  *  text-* class); read out as "Shif1 UP". */
-export const Wordmark: React.FC<{ className?: string }> = ({ className = 'text-base' }) => (
-  <span className={`inline-flex items-center bg-black font-display font-medium uppercase leading-none tracking-tight ${className}`}>
+export const Wordmark: React.FC<{ className?: string }> = ({ className = 'text-2xl' }) => (
+  <span className={`inline-flex items-center font-logo leading-none ${className}`}>
     <span className="sr-only">Shif1 UP</span>
-    <span aria-hidden="true" className="inline-flex items-center px-[0.55em] py-[0.38em] ring-1 ring-white/10">
-      <span className="text-racing-red">SHIF1</span>
-      <span className="mx-[0.28em] font-light text-white/80">|</span>
-      <span className="text-white">UP</span>
+    <span aria-hidden="true" className="inline-flex items-baseline">
+      <span className="mr-[0.18em] flex flex-col items-end gap-[0.1em] self-center">
+        <span className="block h-[0.09em] w-[0.55em] rounded-full bg-racing-red" />
+        <span className="block h-[0.09em] w-[0.7em] rounded-full bg-racing-red opacity-60" />
+      </span>
+      <span className="text-white">SHIF</span>
+      <span className="text-racing-red">1</span>
+      <span className="ml-[0.3em] text-[0.45em] tracking-[0.3em] text-gray-400">UP</span>
     </span>
+  </span>
+);
+
+/** The name in text and headings — SHIF1 with a small UP, as in the wordmark. Takes the surrounding
+ *  font and colour; a real space keeps it read as "SHIF1 UP". */
+export const BrandName: React.FC<{ className?: string }> = ({ className = '' }) => (
+  <span className={`whitespace-nowrap ${className}`}>
+    SHIF1 <span className="text-[max(0.42em,9px)] tracking-[0.25em] opacity-80">UP</span>
   </span>
 );
