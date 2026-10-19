@@ -41,7 +41,7 @@ const FAQ: FaqItem[] = [
   { q: 'When does it update?',
     a: 'After every session. New results are stored by themselves, the last two weeks are re-checked for post-race penalties, and over a race weekend it checks every 15 minutes after each session ends.' },
   { q: 'Is there live timing?',
-    a: 'Not yet — live data needs a paid feed. Finished sessions can be replayed lap by lap, with the weather, on Race Results.' },
+    a: 'Not yet. Finished sessions can be replayed lap by lap, with the weather, on Race Results.' },
   { q: 'Do I need an account?', a: 'No. Everything here is open.' },
 ];
 
