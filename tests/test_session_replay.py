@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 import api.main as main
 from api.main import app
 from services.openf1_live import OpenF1Client, OpenF1Locked, weather_at, weather_summary
-from services.session_replay import ReplayUnavailable, SessionReplayService, session_key
+from services.session_replay import ReplayUnavailable, SessionReplayService, lap_marks, session_key
 
 T0 = datetime(2026, 9, 13, 13, 0, tzinfo=timezone.utc)
 
@@ -126,6 +126,55 @@ async def test_a_replay_frame_is_the_board_and_weather_at_that_moment():
     assert calls.count("laps") == 1                     # the session is loaded once, then kept
 
 
+# --- lap by lap --------------------------------------------------------------------------------
+
+def lap(driver, number, start_min, duration=None):
+    return {"driver_number": driver, "lap_number": number, "date_start": iso(start_min) if start_min is not None else None,
+            "lap_duration": duration}
+
+
+def test_each_lap_is_the_moment_the_leader_completes_it():
+    laps = [
+        lap(12, 1, 0), lap(12, 2, 2.0, 90.0), lap(12, 3, 3.5, 90.0),          # the leader; lap 1 has no time
+        lap(63, 1, 0.1), lap(63, 2, 2.2, 95.0), lap(63, 3, 3.8, 95.0),        # second
+        lap(14, 1, 0.2), lap(14, 2, 2.5, 120.0),                              # lapped / retired after lap 2
+    ]
+    marks = lap_marks(laps)
+
+    assert len(marks) == 4                                                    # the start + 3 laps
+    assert marks[0] == T0                                                     # the first car to begin lap 1
+    assert marks[1] == T0 + timedelta(minutes=2.0)                            # lap 1: when the leader began lap 2
+    assert marks[2] == T0 + timedelta(minutes=2.0, seconds=90)                # start + lap time
+    assert marks[3] == T0 + timedelta(minutes=3.5, seconds=90)
+
+
+def test_a_lap_no_one_has_an_end_for_keeps_the_moment_before():
+    # Lap 2 has neither a time nor a following lap with a start; lap 3 ends when lap 4 starts.
+    marks = lap_marks([lap(12, 1, 0, 100.0), lap(12, 2, None), lap(12, 3, None), lap(12, 4, 5.0, 90.0)])
+
+    assert marks[2] == marks[1] == T0 + timedelta(seconds=100)
+    assert marks[3] == T0 + timedelta(minutes=5.0) and marks[4] == T0 + timedelta(minutes=5.0, seconds=90)
+    assert lap_marks([]) == []
+
+
+@pytest.mark.asyncio
+async def test_a_lap_frame_is_the_board_as_the_leader_completes_that_lap(monkeypatch):
+    laps = [lap(12, 1, 0, 100.0), lap(12, 2, 100 / 60, 95.0), lap(12, 3, (100 + 95) / 60, 96.0)]
+    monkeypatch.setitem(DATA, "laps", laps)
+    svc = service([])
+
+    first = await svc.lap_frame(2026, "Spanish Grand Prix", "R", 0)
+    second = await svc.lap_frame(2026, "Spanish Grand Prix", "R", 2)
+    past_the_end = await svc.lap_frame(2026, "Spanish Grand Prix", "R", 99)
+
+    assert (first["lap"], first["laps"], first["state"]["lap"], first["state"]["total_laps"]) == (0, 3, 0, 3)
+    assert second["lap"] == 2 and second["seconds"] == pytest.approx(100 + 95 + 1)
+    assert second["state"]["positions"][0]["laps_completed"] == 2
+    assert past_the_end["lap"] == 3                                           # clamped to the last lap
+    with pytest.raises(ReplayUnavailable):
+        await svc.lap_frame(2026, "Spanish Grand Prix", "Q", 1)               # qualifying has no race laps
+
+
 # --- endpoints ---------------------------------------------------------------------------------
 
 @pytest.fixture
@@ -148,5 +197,15 @@ def test_endpoints_answer_404_for_unavailable_and_503_while_openf1_is_locked(cli
     monkeypatch.setattr(main.session_replays, "frame", locked)
     r = client.get("/api/sessions/2026/R/replay", params={"gp": "Spanish Grand Prix", "t": 60})
     assert r.status_code == 503 and r.json()["detail"] == "live_session_lock"
+
+    asked = []
+
+    async def lap_frame(year, gp, code, lap):
+        asked.append((year, gp, code, lap))
+        return {"lap": lap, "laps": 57, "seconds": 0, "state": {}}
+
+    monkeypatch.setattr(main.session_replays, "lap_frame", lap_frame)
+    r = client.get("/api/sessions/2026/R/replay", params={"gp": "Spanish Grand Prix", "lap": 12})
+    assert r.status_code == 200 and r.json()["laps"] == 57 and asked == [(2026, "Spanish Grand Prix", "R", 12)]
 
     assert client.get("/api/sessions/2026/FP9/weather", params={"gp": "X"}).status_code == 422

@@ -1,15 +1,38 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ListOrdered } from 'lucide-react';
-import { backendApi, RaceEvent, SessionPenalties } from '../services/backendApi';
+import { CloudRain, CloudSun, ListOrdered, Play } from 'lucide-react';
+import { backendApi, RaceEvent, SessionPenalties, SessionWeather } from '../services/backendApi';
 import { formatDate, isPastDate } from '../utils/dates';
 import { gpToken, isRaceRound } from '../utils/races';
-import SessionConditions from './SessionConditions';
+import SessionConditions, { isLapSession, WEATHER_ANCHOR } from './SessionConditions';
 import { useOnDataChange } from '../hooks/useDataVersion';
 import { FIRST_PENALTY_SEASON, PENALTY_SESSIONS, PenaltyBadges, StewardsCard } from './Penalties';
 import {
-  Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
+  Button, Card, CardHeader, CheckboxField, EmptyState, ErrorState, FadeIn, FilterBar, LoadingState, PositionBadge,
   SelectField, TableWrap, TeamChip, Td, Th, Tr,
 } from './ui';
+
+/** At the top of the results: the replay (the main draw) and, quieter, the weather — both further
+ *  down the page, where these scroll to. Shown once the session has them (2023 onwards). */
+const SessionShortcuts: React.FC<{ info: SessionWeather; session: string; onReplay: () => void }> = ({ info, session, onReplay }) => {
+  const start = info.weather?.at_start;
+  const rain = !!info.weather?.rain_during;
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-4">
+      {start?.air_temperature != null && (
+        <button type="button"
+          onClick={() => document.getElementById(WEATHER_ANCHOR)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })}
+          className="label inline-flex items-center gap-1.5 text-muted transition-colors hover:text-white focus:outline-none focus-visible:text-white"
+          aria-label={`Weather: ${Math.round(start.air_temperature)}°C at the start, ${rain ? 'rain fell' : 'dry'}`}>
+          {rain ? <CloudRain className="h-4 w-4" aria-hidden="true" /> : <CloudSun className="h-4 w-4" aria-hidden="true" />}
+          {Math.round(start.air_temperature)}°C · {rain ? 'Rain' : 'Dry'}
+        </button>
+      )}
+      <Button onClick={onReplay} icon={<Play className="h-4 w-4" />}>
+        {isLapSession(session) ? 'Replay lap by lap' : 'Watch replay'}
+      </Button>
+    </div>
+  );
+};
 
 const SESSION_LABELS: Record<string, string> = {
   FP1: 'Practice 1', FP2: 'Practice 2', FP3: 'Practice 3', SQ: 'Sprint Qualifying', S: 'Sprint', Q: 'Qualifying', R: 'Race',
@@ -76,6 +99,8 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
   const [selectedGP, setSelectedGP] = useState('');
   const [chosenSession, setSelectedSession] = useState('R');
   const [showCircuitName, setShowCircuitName] = useState(false);
+  const [conditions, setConditions] = useState<SessionWeather | null>(null);   // the replay and weather, once available
+  const [replayRequest, setReplayRequest] = useState(0);
   const requestId = useRef(0);
 
   // The chosen weekend's sessions; a session it doesn't have (a sprint, picked on another weekend)
@@ -186,6 +211,9 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
         <CardHeader
           title={selectedGP ? `${year} ${raceName} — ${sessionLabel}` : 'Race results'}
           icon={<ListOrdered className="h-4 w-4" />}
+          action={conditions && !loading && raceData?.results.length
+            ? <SessionShortcuts info={conditions} session={selectedSession} onReplay={() => setReplayRequest((n) => n + 1)} />
+            : undefined}
         />
 
         {scheduleFailed ? (
@@ -267,7 +295,8 @@ const RaceResults: React.FC<{ year: number; initialGp?: string }> = ({ year, ini
 
       {selectedGP && selectedScheduleEntry && !scheduleFailed && (
         <div className="mt-6">
-          <SessionConditions year={year} raceName={raceName} session={selectedSession} sessionLabel={sessionLabel} />
+          <SessionConditions year={year} raceName={raceName} session={selectedSession} sessionLabel={sessionLabel}
+            onInfo={setConditions} replayRequest={replayRequest} />
         </div>
       )}
     </FadeIn>

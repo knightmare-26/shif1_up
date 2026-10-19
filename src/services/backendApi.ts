@@ -419,6 +419,12 @@ export interface ReplayFrame {
   state: LiveState;
 }
 
+/** A race or sprint replayed lap by lap: the board as the leader completes `lap` (0: the start). */
+export interface ReplayLapFrame extends ReplayFrame {
+  lap: number;
+  laps: number;
+}
+
 /** Why session weather / a replay couldn't be loaded: not available for this session, paused
  *  while an F1 session is live (the data provider locks free access), or the request failed. */
 export class SessionDataError extends Error {
@@ -717,6 +723,11 @@ class BackendApiService {
   /** The timing board and weather `seconds` into a finished session. */
   async getReplayFrame(year: number, raceName: string, session: string, seconds: number): Promise<ReplayFrame> {
     return this.sessionData(`/api/sessions/${year}/${session}/replay`, { gp: raceName, t: String(Math.round(seconds)) });
+  }
+
+  /** The timing board of a race or sprint as the leader completes `lap`, and how many laps it had. */
+  async getReplayLap(year: number, raceName: string, session: string, lap: number): Promise<ReplayLapFrame> {
+    return this.sessionData(`/api/sessions/${year}/${session}/replay`, { gp: raceName, lap: String(lap) });
   }
 
   async getLiveStatus(): Promise<LiveFeedStatus> {

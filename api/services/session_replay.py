@@ -24,7 +24,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from services.openf1_live import OpenF1Client, SessionFeed, build_state, find_session, parse_time, weather_summary
-from services.timing_board import build_race_id
+from services.timing_board import build_race_id, is_timed_session
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,36 @@ Key = Tuple[int, str, str]
 
 class ReplayUnavailable(Exception):
     """This session can't be shown (too old, not run yet, or unknown to OpenF1)."""
+
+
+def lap_marks(laps: List[Dict[str, Any]]) -> List[Optional[datetime]]:
+    """When each lap of a race (sprint) was completed by the leader — the moments a lap-by-lap
+    replay shows. [0] is the start (the first car to begin lap 1), [n] the first car to complete lap
+    n. A lap ends at its start plus its time or, where OpenF1 has no time (lap 1 often hasn't), when
+    that driver's next lap starts. A lap nobody has an end for takes the one before's moment."""
+    by_driver: Dict[int, Dict[int, Dict[str, Any]]] = {}
+    for lap in laps:
+        by_driver.setdefault(lap["driver_number"], {})[lap["lap_number"]] = lap
+    ends: Dict[int, datetime] = {}
+    starts: List[datetime] = []
+    for driver_laps in by_driver.values():
+        for n, lap in driver_laps.items():
+            start = parse_time(lap.get("date_start"))
+            if n == 1 and start is not None:
+                starts.append(start)
+            duration = lap.get("lap_duration")
+            end = (start + timedelta(seconds=duration) if start is not None and duration is not None
+                   else parse_time((driver_laps.get(n + 1) or {}).get("date_start")))
+            if end is not None and (n not in ends or end < ends[n]):
+                ends[n] = end
+    if not ends:
+        return []
+    marks: List[Optional[datetime]] = [min(starts) if starts else None]
+    for n in range(1, max(ends) + 1):
+        mark = ends.get(n)
+        previous = marks[-1]
+        marks.append(previous if mark is None or (previous is not None and mark < previous) else mark)
+    return marks
 
 
 def session_key(year: int, gp: str, code: str) -> Key:
@@ -205,6 +235,23 @@ class SessionReplayService:
                         self._feeds.popitem(last=False)
         self._feeds.move_to_end(key)
         return session, self._feeds[key]
+
+    async def lap_frame(self, year: int, gp: str, code: str, lap: int) -> Dict[str, Any]:
+        """A race (sprint) replayed lap by lap: the timing board as the leader completes `lap`
+        (0: the start), with how many laps there are."""
+        if is_timed_session(code):
+            raise ReplayUnavailable("Lap-by-lap replays are for races and sprints")
+        session, feed = await self._feed(year, gp, code)
+        marks = lap_marks(feed.data.get("laps", []))
+        if not marks:
+            raise ReplayUnavailable("No laps were recorded for this session")
+        lap = min(max(int(lap), 0), len(marks) - 1)
+        start = parse_time(session["date_start"])
+        clock = (marks[lap] or start) + timedelta(seconds=1)      # just after the line, so the lap counts
+        state = await asyncio.to_thread(build_state, feed.data, session, code,
+                                        build_race_id(year, gp.replace("_", " "), code), clock, True)
+        state.update(lap=lap, total_laps=len(marks) - 1)
+        return {"lap": lap, "laps": len(marks) - 1, "seconds": (clock - start).total_seconds(), "state": state}
 
     async def frame(self, year: int, gp: str, code: str, seconds: float) -> Dict[str, Any]:
         """The timing board, with the weather, `seconds` into the session."""
