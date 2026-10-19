@@ -118,7 +118,7 @@ export const PenaltyBadges: React.FC<{ code: string; data: SessionPenalties | nu
 
 /** Every stewards' decision of the session (with the lap), plus who started behind where they qualified. */
 export const StewardsCard: React.FC<{ data: SessionPenalties; names: Record<string, string>; sessionLabel: string }> = ({
-  data, names, sessionLabel,
+  data, names,
 }) => {
   const name = (code: string) => names[code] ?? code;
   const grid = Object.entries(data.grid).sort((a, b) => a[1].qualified - b[1].qualified);
@@ -129,7 +129,6 @@ export const StewardsCard: React.FC<{ data: SessionPenalties; names: Record<stri
     <Card>
       <CardHeader
         title={<span className="flex items-center gap-2"><Gavel className="h-4 w-4 text-racing-red" aria-hidden="true" />Stewards' decisions</span>}
-        subtitle={`${sessionLabel}: penalties, flags and warnings from race control`}
       />
       {data.stewards === 'locked' && (
         <div className="px-4 pt-4"><Notice tone="info">
@@ -178,15 +177,10 @@ export const StewardsCard: React.FC<{ data: SessionPenalties; names: Record<stri
       )}
       {deleted.length > 0 && (
         <p className="border-t border-gray-800 px-4 py-3 text-xs text-gray-400">
-          Lap times deleted (track limits and the like):{' '}
+          Lap times deleted:{' '}
           {deleted.map(([code, d], i) => <span key={code}>{i > 0 && ', '}{name(code)} ×{d.deleted_laps}</span>)}
         </p>
       )}
-      <p className="border-t border-gray-800 px-4 py-3 text-xs text-gray-500">
-        Grid penalties for new engine parts, or carried over from an earlier race, are announced in FIA documents, not
-        race control: they show as starting behind where a driver qualified. A decision taken after the session doesn't
-        always reach race control, though its effect is in the results.
-      </p>
     </Card>
   );
 };

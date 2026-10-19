@@ -73,23 +73,23 @@ export function titleInsights(outlook: Outlook, kind: View): string[] {
 }
 
 const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => (
-  <section id={id} aria-label="Insights" className="border-l-2 border-racing-red bg-ink-900 px-5 py-4">
-    <p className="label text-muted">
-      {outlook.status === 'finished' ? `The ${outlook.year} season, final`
-        : `After round ${outlook.rounds_completed} of ${outlook.rounds_total}`}
-    </p>
+  <section id={id} aria-label="Insights" className="space-y-2 border-l-2 border-racing-red bg-ink-900 px-5 py-4">
     {titleInsights(outlook, kind).map((line) => (
-      <p key={line} className="mt-2 text-base leading-relaxed text-white">{line}</p>
+      <p key={line} className="text-base leading-relaxed text-white">{line}</p>
     ))}
   </section>
 );
 
-const ChanceBar: React.FC<{ p: number; color: string }> = ({ p, color }) => (
+/** The title chance drawn as a bar for the top ten (out of contention too, at 0%); below that, the number. */
+const BAR_ROWS = 10;
+const ChanceBar: React.FC<{ p: number; color: string; bar: boolean }> = ({ p, color, bar }) => (
   <span className="flex items-center justify-end gap-3">
-    <span className="hidden h-1.5 w-24 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
-      <span className="block h-full rounded" style={{ width: `${Math.max(p * 100, p > 0 ? 2 : 0)}%`, backgroundColor: color }} />
-    </span>
-    <span className="w-10 font-bold tabular-nums text-white">{formatChance(p)}</span>
+    {bar && (
+      <span className="hidden h-1.5 w-24 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
+        <span className="block h-full rounded" style={{ width: `${Math.max(p * 100, p > 0 ? 2 : 0)}%`, backgroundColor: color }} />
+      </span>
+    )}
+    <span className={`w-10 font-bold tabular-nums ${p > 0 ? 'text-white' : 'text-gray-500'}`}>{formatChance(p)}</span>
   </span>
 );
 
@@ -146,7 +146,10 @@ const OutlookTable: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kin
               )}
               {!decided && (
                 <Td align="right">
-                  {eliminated ? <span className="text-gray-600">—</span> : <ChanceBar p={row.title_probability} color={color} />}
+                  {row.position <= BAR_ROWS
+                    ? <ChanceBar p={eliminated ? 0 : row.title_probability} color={color} bar />
+                    : eliminated ? <span className="text-gray-600">—</span>
+                      : <ChanceBar p={row.title_probability} color={color} bar={false} />}
                 </Td>
               )}
             </Tr>
@@ -278,7 +281,7 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
                 icon={<Trophy className="h-4 w-4" />}
                 subtitle={outlook.status === 'finished'
                   ? 'Final standings'
-                  : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · sorted by the current table`}
+                  : `After round ${outlook.rounds_completed} of ${outlook.rounds_total}`}
               />
               <OutlookTable outlook={outlook} kind={view} />
             </Card>

@@ -2,10 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { backendApi, ChampionshipOutlook, ConstructorStanding, DriverStanding, RaceEvent } from '../services/backendApi';
+import { backendApi, ChampionshipOutlook, DriverStanding, RaceEvent } from '../services/backendApi';
 import { describeDaysUntil, daysUntil, formatDate, isPastDate } from '../utils/dates';
 import { isRaceRound } from '../utils/races';
-import { useLiveTiming } from '../config/features';
 import { BrandName, teamColor } from './ui';
 import { Typewriter } from './home/Typewriter';
 import { ScrollStatement } from './home/ScrollStatement';
@@ -54,11 +53,9 @@ const EXPLORE = [
 
 const MainPage: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
-  const { enabled: liveOn } = useLiveTiming();
   const year = new Date().getFullYear();
 
   const [drivers, setDrivers] = useState<DriverStanding[]>([]);
-  const [teams, setTeams] = useState<ConstructorStanding[]>([]);
   const [races, setRaces] = useState<RaceEvent[]>([]);
   const [outlook, setOutlook] = useState<ChampionshipOutlook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,12 +66,10 @@ const MainPage: React.FC = () => {
     let cancelled = false;
     Promise.allSettled([
       backendApi.getDriverStandings(year),
-      backendApi.getConstructorStandings(year),
       backendApi.getRaceSchedule(year),
-    ]).then(([d, c, r]) => {
+    ]).then(([d, r]) => {
       if (cancelled) return;
       if (d.status === 'fulfilled' && Array.isArray(d.value)) setDrivers(d.value);
-      if (c.status === 'fulfilled' && Array.isArray(c.value)) setTeams(c.value);
       if (r.status === 'fulfilled' && Array.isArray(r.value)) setRaces(r.value.filter(isRaceRound));
       setLoading(false);
     });
@@ -86,7 +81,6 @@ const MainPage: React.FC = () => {
   const nextIn = nextRace ? daysUntil(nextRace.date) : null;
   const leader = drivers[0];
   const second = drivers[1];
-  const teamLeader = teams[0];
   const [leaderFirst, leaderLast] = splitName(leader?.driver_name ?? '');
   const gpName = nextRace ? nextRace.race_name.replace(/\s*Grand Prix$/i, '') : '';
 
@@ -221,12 +215,6 @@ const MainPage: React.FC = () => {
             </div>
           ))}
         </div>
-        {teamLeader && (
-          <p className="mt-14 text-sm italic text-muted">
-            Constructors: {teamLeader.constructor_name} lead on {teamLeader.points} points.
-            {liveOn ? ' Live timing is on.' : ''}
-          </p>
-        )}
       </section>
 
       {/* ---------------------------------------------------------------- faq */}

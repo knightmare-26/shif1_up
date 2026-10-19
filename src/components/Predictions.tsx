@@ -174,8 +174,7 @@ const UnavailableCard: React.FC<{ what: string; reason?: string; severe?: boolea
 /** "Baku · drivers: this weekend's practice 2 · with this weekend's practice pace" */
 const predictionSubtitle = (r: PredictionResult) => [
   r.circuit,
-  r.field_source && `drivers: ${r.field_source}`,
-  r.practice_used != null && (r.practice_used ? "with this weekend's practice pace" : 'before practice: no pace data yet'),
+  r.practice_used != null && (r.practice_used ? "with this weekend's practice" : 'before practice'),
   r.grid_source && r.grid_source !== 'predicted qualifying' && `grid: ${r.grid_source}`,
 ].filter(Boolean).join(' · ');
 
@@ -327,8 +326,7 @@ const BacktestRaceDetail: React.FC<{ race: BacktestRace; session: PredictedSessi
 
   const facts = [race.circuit_name, String(race.year)];
   if (race.in_progress) facts.push('race still to run');
-  if (race.practice_data === false) facts.push('no practice data stored, so predicted without practice pace');
-  if (session === 'sprint_qualifying') facts.push('predicted by the qualifying model');
+  if (race.practice_data === false) facts.push('predicted without practice');
 
   return (
     <Card>
@@ -413,7 +411,6 @@ const ChanceScores: React.FC<{ scores: BacktestProbabilityScores; session: Predi
     <Card className="mt-6">
       <CardHeader
         title="How good the chances were"
-        subtitle={`${SESSION_LABELS[session]} chances, each worked out before the session from earlier sessions only${session === 'sprint_qualifying' ? " — the qualifying model's" : ''}`}
       />
       <TableWrap>
         <thead>
@@ -476,7 +473,6 @@ const HitRates: React.FC<{ rates: BacktestHitRates; session: PredictedSession }>
     <Card className="mt-6">
       <CardHeader
         title="Against simple guesses"
-        subtitle="The predicted order next to two guesses anyone could make: the starting grid, and the championship order going into the weekend"
       />
       <div className="min-w-0">{/* lets the table scroll inside the card instead of widening the page */}
           <TableWrap>
@@ -679,8 +675,7 @@ const BacktestTab: React.FC = () => {
             <p>
               <strong className="text-gray-200">Overall:</strong> across {raced} races
               ({seasons[0]}–{seasons[seasons.length - 1]}), the average prediction error was {quali.toFixed(1)} places for
-              qualifying and {race.toFixed(1)} for the race. F1 is unpredictable (retirements, strategy, weather), so a few places is
-              normal for any model.
+              qualifying and {race.toFixed(1)} for the race.
             </p>
           )}
         </HowItWorksCard>
@@ -840,7 +835,7 @@ const Predictions: React.FC = () => {
 
   return (
     <PageShell>
-      <PageHeader title="Predictions" subtitle="Qualifying and race predictions, the title race, and how past predictions held up" />
+      <PageHeader title="Predictions" />
 
       <Tabs tabs={PREDICTION_TABS} active={tab} onChange={setTab} label="Prediction views" idPrefix="pred" />
 
@@ -940,14 +935,13 @@ const Predictions: React.FC = () => {
               <FadeIn key={session}>
                 {shown?.predictions.length && shown.odds_available === false && (
                   <Notice tone="info">
-                    The server has just restarted and retrained its models, so the chances are still being worked
-                    out. They appear here by themselves, usually within two minutes.
+                    The chances are still being worked out; they'll appear here in a minute or two.
                   </Notice>
                 )}
                 {shown?.predictions.length ? (
                   isQualifying(session) ? (
                     <PredictionTable title={`${SESSION_LABELS[session]} Prediction`}
-                      subtitle={[predictionSubtitle(shown), session === 'sprint_qualifying' && 'the qualifying model, so the same order as qualifying']
+                      subtitle={[predictionSubtitle(shown), session === 'sprint_qualifying' && 'same order as qualifying']
                         .filter(Boolean).join(' · ')}
                       data={shown.predictions}
                       valueKey="predicted_grid" avgKey="circuit_avg_grid" rollingKey="rolling_avg_grid" gridMissing={gridMissing} qualifying />

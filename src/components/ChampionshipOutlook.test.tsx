@@ -65,6 +65,8 @@ test('shows the title race, who is out of contention and the track record', asyn
   expect(screen.getByText('Antonelli leads Russell by 50 points with 9 rounds (up to 233 points) left.')).toBeInTheDocument();
   expect(screen.getByText('86%')).toBeInTheDocument();
   expect(screen.getAllByText('Out of contention')).toHaveLength(1);
+  expect(screen.getAllByText('0%')).toHaveLength(2);                 // the top ten get a chance, out of contention too
+  expect(screen.getByText('After round 14 of 23')).toBeInTheDocument();
   expect(screen.getAllByText('Missed last race')).toHaveLength(1);   // not the same thing as eliminated
   expect(screen.getByText(/named the eventual champion 80% of the time/)).toBeInTheDocument();
 });
@@ -140,8 +142,6 @@ test('the summary sits under an Insights button: a line or two about the title, 
   await openInsights();
   expect(button).toHaveAttribute('aria-expanded', 'true');
   const panel = screen.getByRole('region', { name: 'Insights' });
-  expect(panel).toHaveTextContent('After round 14 of 23');
-  expect(panel).not.toHaveTextContent(/updates after every race weekend/);
   expect(panel).toHaveTextContent('Antonelli leads Russell by 50 points with 9 rounds (up to 233 points) left.');
   expect(panel).toHaveTextContent('Title chances: Antonelli 86%, Russell 7%.');
   expect(panel).not.toHaveTextContent(/closest fight|projected|missed the latest race/);
