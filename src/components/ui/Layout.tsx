@@ -1,6 +1,5 @@
 import React from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { BrandName } from './Logo';
 
 /** Same max width as the navbar so page content lines up with it. */
 export const PageShell: React.FC<{ children: React.ReactNode; className?: string }> = ({
@@ -36,11 +35,10 @@ export const PageHeader: React.FC<{
 }> = ({ title, subtitle, actions }) => (
   <header className="mb-8 flex flex-wrap items-end justify-between gap-6">
     <div className="min-w-0">
-      {/* "SHIF1 UP | DASHBOARD": the brand in red, the section in white; read out as the section. */}
-      <h1 className="display text-4xl uppercase sm:text-5xl lg:text-6xl">
-        <span aria-hidden="true" className="text-racing-red"><BrandName /></span>
-        <span aria-hidden="true" className="mx-[0.25em] font-light text-white/70">|</span>
-        <span className="text-white">{title}</span>
+      {/* The section in white after a short red bar (the logo is in the bar above, so no brand here). */}
+      <h1 className="display text-4xl uppercase text-white sm:text-5xl lg:text-6xl">
+        <span aria-hidden="true" className="mr-[0.3em] inline-block h-[0.72em] w-[0.11em] bg-racing-red" />
+        {title}
       </h1>
       {subtitle && <p className="mt-3 max-w-3xl text-base italic text-muted sm:text-lg">{subtitle}</p>}
     </div>

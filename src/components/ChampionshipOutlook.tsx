@@ -28,103 +28,59 @@ function likeliestFinish(row: ChampionshipRow): [number, number] | null {
   return [best + 1, probs[best]];
 }
 
-const listOf = (names: string[]) =>
-  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /**
- * What the latest results mean for the title, in sentences — who leads, what's left, how it can be
- * clinched, who can still win, the chances, the closest fight, the projection. Worked out from the
- * outlook, so it changes after every race weekend (and refreshes on an open page when new results
- * land).
+ * The title race in one or two lines: where it stands, then what settles it next (the clinch
+ * scenario at the next race) or, failing that, the title chances. Worked out from the outlook, so it
+ * changes after every race weekend (and refreshes on an open page when new results land).
  */
-export function titleInsights(outlook: Outlook, kind: View): React.ReactNode[] {
-  const out: React.ReactNode[] = [];
-  const rows = outlook.standings;
-  const leader = rows[0];
+export function titleInsights(outlook: Outlook, kind: View): string[] {
+  const [leader, second] = outlook.standings;
   const left = outlook.remaining.length;
   const s = kind === 'drivers' ? 's' : '';
-  const noun = kind === 'drivers' ? 'driver' : 'team';
-  const decided = outlook.status === 'finished';
+  const pts = (n: number) => `${n} point${n === 1 ? '' : 's'}`;
 
-  if (decided) {
-    const second = rows[1];
-    out.push(<><strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship
-      {second && leader ? `, ${round1(leader.points - second.points)} points ahead of ${second.name}` : ''}.</>);
-    return out;
+  if (outlook.status === 'finished') {
+    const by = leader && second ? ` by ${pts(round1(leader.points - second.points))} over ${second.name}` : '';
+    return [`${outlook.champion ?? leader?.name} won the ${outlook.year} title${by}.`];
   }
-  if (outlook.clinched) {
-    out.push(<><strong className="text-white">{outlook.champion}</strong> {kind === 'drivers' ? 'is' : 'are'} the {outlook.year} champion
-      {kind === 'constructors' ? 's' : ''} — clinched with {plural(left, 'round')} to go.</>);
-  } else if (outlook.status === 'pre_season' || !leader) {
-    out.push(<>The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</>);
-  } else {
-    out.push(<>{leader.name} lead{s} after {plural(outlook.rounds_completed, 'round')}.</>);
-    out.push(<>{plural(left, 'round')} left, with up to {outlook.max_points_remaining} points still available to a {noun}.</>);
-    const hint = outlook.next_race_clinch;
-    if (hint) {
-      out.push(hint.margin_needed > 0
-        ? <>{leader.name} can clinch it at the {hint.race_name} by outscoring {hint.rival_name} by {hint.margin_needed} or more points.</>
-        : <>{leader.name} clinches it at the {hint.race_name} unless {hint.rival_name} outscores them by {1 - hint.margin_needed} or more.</>);
-    }
-  }
-  if (!rows.length) return out;
+  if (outlook.clinched) return [`${outlook.champion} clinched the ${outlook.year} title with ${plural(left, 'round')} to go.`];
 
-  if (!outlook.clinched && outlook.status === 'in_progress') {
-    const alive = rows.filter((r) => r.alive).map((r) => r.name);
-    out.push(alive.length === 1
-      ? <>Only {alive[0]} can still win it.</>
-      : <>{alive.length} {noun}s can still win it mathematically: {listOf(alive)}.</>);
+  const favourites = [...outlook.standings].sort((a, b) => b.title_probability - a.title_probability)
+    .filter((r) => r.title_probability > 0).slice(0, 3);
+  const chances = favourites.length
+    ? `Title chances: ${favourites.map((r) => `${r.name} ${formatChance(r.title_probability)}`).join(', ')}.` : null;
+  if (outlook.status === 'pre_season' || !leader) {
+    return [`The ${outlook.year} season hasn't started yet.`, ...(chances ? [chances] : [])];
   }
-  if (!outlook.clinched) {
-    const favourites = [...rows].sort((a, b) => b.title_probability - a.title_probability)
-      .filter((r) => r.title_probability > 0).slice(0, 3);
-    if (favourites.length) {
-      out.push(<>Title chances: {favourites.map((r) => `${r.name} ${formatChance(r.title_probability)}`).join(', ')}.</>);
-    }
+
+  const gap = second ? round1(leader.points - second.points) : 0;
+  const standing = !second ? `${leader.name} lead${s}`
+    : gap === 0 ? `${leader.name} and ${second.name} are level on points`
+      : `${leader.name} lead${s} ${second.name} by ${pts(gap)}`;
+  const lines = [`${standing} with ${plural(left, 'round')} (up to ${outlook.max_points_remaining} points) left.`];
+  const hint = outlook.next_race_clinch;
+  const race = hint ? `${hint.race_name.replace(/\s*Grand Prix$/i, '')} GP` : '';
+  if (hint && hint.margin_needed > 0) {
+    lines.push(`${leader.name} can clinch it at the ${race} by outscoring ${hint.rival_name} by ${pts(hint.margin_needed)} or more.`);
+  } else if (hint) {
+    lines.push(`${leader.name} clinch${kind === 'drivers' ? 'es' : ''} it at the ${race} unless ${hint.rival_name} outscore${s} them by ${pts(1 - hint.margin_needed)} or more.`);
+  } else if (chances) {
+    lines.push(chances);
   }
-  const top = rows[0];
-  if (top.points_p90 > top.points_p10) {
-    out.push(<>{top.name} {kind === 'drivers' ? 'is' : 'are'} projected to finish on {Math.round(top.projected_points)} points
-      (likely {Math.round(top.points_p10)}–{Math.round(top.points_p90)}).</>);
-  }
-  // The closest fight below the top: the smallest gap between neighbours in the top eight.
-  let closest: [ChampionshipRow, ChampionshipRow] | null = null;
-  for (let i = 1; i + 1 < Math.min(rows.length, 8); i += 1) {
-    if (!closest || rows[i].points - rows[i + 1].points < closest[0].points - closest[1].points) closest = [rows[i], rows[i + 1]];
-  }
-  if (closest) {
-    const gap = round1(closest[0].points - closest[1].points);
-    out.push(gap === 0
-      ? <>The closest fight is for P{closest[0].position}: {closest[0].name} and {closest[1].name} are level on points.</>
-      : <>The closest fight is for P{closest[0].position}: {closest[0].name} {kind === 'drivers' ? 'is' : 'are'} {gap} point{gap === 1 ? '' : 's'} ahead of {closest[1].name}.</>);
-  }
-  const missed = rows.filter((r) => r.racing === false).map((r) => r.name);
-  if (kind === 'drivers' && missed.length) {
-    out.push(<>{listOf(missed)} missed the latest race; the projection gives them no more points.</>);
-  }
-  return out;
+  return lines;
 }
 
 const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => (
-  <section id={id} aria-label="Insights">
-    <Card>
-      <CardHeader
-        title="Insights"
-        icon={<Lightbulb className="h-4 w-4" />}
-        subtitle={outlook.status === 'finished'
-          ? `The ${outlook.year} season, final`
-          : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · updated after every race weekend`}
-      />
-      <ul className="divide-y divide-ink-600">
-        {titleInsights(outlook, kind).map((item, i) => (
-          <li key={i} className="flex gap-3 px-5 py-3 text-sm leading-relaxed text-gray-200">
-            <span className="text-racing-red" aria-hidden="true">|</span>
-            <span>{item}</span>
-          </li>
-        ))}
-      </ul>
-    </Card>
+  <section id={id} aria-label="Insights" className="border-l-2 border-racing-red bg-ink-900 px-5 py-4">
+    <p className="label text-muted">
+      {outlook.status === 'finished' ? `The ${outlook.year} season, final`
+        : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · updates after every race weekend`}
+    </p>
+    {titleInsights(outlook, kind).map((line) => (
+      <p key={line} className="mt-2 text-base leading-relaxed text-white">{line}</p>
+    ))}
   </section>
 );
 

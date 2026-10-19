@@ -62,8 +62,7 @@ test('shows the title race, who is out of contention and the track record', asyn
 
   expect(api.getChampionshipOutlook).toHaveBeenCalledWith('drivers', 2026);
   await openInsights();
-  expect(screen.getByText(/Antonelli leads after 14 rounds/)).toBeInTheDocument();
-  expect(screen.getByText(/up to 233 points/)).toBeInTheDocument();
+  expect(screen.getByText('Antonelli leads Russell by 50 points with 9 rounds (up to 233 points) left.')).toBeInTheDocument();
   expect(screen.getByText('86%')).toBeInTheDocument();
   expect(screen.getAllByText('Out of contention')).toHaveLength(1);
   expect(screen.getAllByText('Missed last race')).toHaveLength(1);   // not the same thing as eliminated
@@ -77,7 +76,8 @@ test('the next-race clinch scenario is spelled out', async () => {
   await renderAt();
   await openInsights();
 
-  expect(screen.getByText(/can clinch it at the Azerbaijan by outscoring Russell by 7 or more points/)).toBeInTheDocument();
+  expect(screen.getByText('Antonelli can clinch it at the Azerbaijan GP by outscoring Russell by 7 points or more.')).toBeInTheDocument();
+  expect(screen.queryByText(/Title chances/)).not.toBeInTheDocument();   // two lines at most
 });
 
 test('a clinched title is announced with the rounds to spare', async () => {
@@ -88,7 +88,7 @@ test('a clinched title is announced with the rounds to spare', async () => {
   await renderAt();
   await openInsights();
 
-  expect(screen.getByText(/clinched with 2 rounds to go/)).toBeInTheDocument();
+  expect(screen.getByText('Antonelli clinched the 2026 title with 2 rounds to go.')).toBeInTheDocument();
   expect(screen.getByText('Champion')).toBeInTheDocument();
 });
 
@@ -131,21 +131,19 @@ test('the first load is just "Loading predictions…"; switching championship ke
   expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
 });
 
-test('the summary sits under an Insights button, with more insights from the same numbers', async () => {
+test('the summary sits under an Insights button: a line or two about the title, nothing else', async () => {
   await renderAt();
   const button = screen.getByRole('button', { name: 'Insights' });
   expect(button).toHaveAttribute('aria-expanded', 'false');
-  expect(screen.queryByText(/leads after 14 rounds/)).not.toBeInTheDocument();       // folded away
+  expect(screen.queryByText(/Antonelli leads Russell/)).not.toBeInTheDocument();     // folded away
 
   await openInsights();
   expect(button).toHaveAttribute('aria-expanded', 'true');
   const panel = screen.getByRole('region', { name: 'Insights' });
-  expect(panel).toHaveTextContent('After round 14 of 23 · updated after every race weekend');
-  expect(panel).toHaveTextContent(/3 drivers can still win it mathematically: Antonelli, Russell and Hadjar/);
-  expect(panel).toHaveTextContent(/Title chances: Antonelli 86%/);
-  expect(panel).toHaveTextContent(/Antonelli is projected to finish on 350 points \(likely 300–400\)/);
-  expect(panel).toHaveTextContent(/The closest fight is for P2: Russell is 50 points ahead of Hadjar/);
-  expect(panel).toHaveTextContent(/Hadjar missed the latest race/);
+  expect(panel).toHaveTextContent('After round 14 of 23 · updates after every race weekend');
+  expect(panel).toHaveTextContent('Antonelli leads Russell by 50 points with 9 rounds (up to 233 points) left.');
+  expect(panel).toHaveTextContent('Title chances: Antonelli 86%, Russell 7%.');
+  expect(panel).not.toHaveTextContent(/closest fight|projected|missed the latest race/);
 
   await openInsights();
   expect(screen.queryByRole('region', { name: 'Insights' })).not.toBeInTheDocument();

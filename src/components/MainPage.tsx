@@ -15,7 +15,7 @@ import { Faq, FaqItem } from './home/Faq';
 
 const PHRASES = ['PREDICT THE GRID', 'READ THE RACE', 'PROVE THE PACE', 'CHASE THE TITLE'];
 
-/** "BRAND | SECTION" section heading: red, a thin bar, white. */
+/** "RED | WHITE" section heading: red, a thin bar, white. */
 const SectionTitle: React.FC<{ red: React.ReactNode; white: string; id?: string }> = ({ red, white, id }) => (
   <h2 id={id} className="display text-[clamp(2.4rem,5vw,4.5rem)] uppercase">
     <span className="text-racing-red">{red}</span>
@@ -177,8 +177,8 @@ const MainPage: React.FC = () => {
       <section className="relative isolate overflow-hidden border-y border-white/5 bg-[#070707] py-28">
         <div aria-hidden="true" className="absolute inset-0 -z-10 flex -rotate-12 scale-125 flex-col justify-center gap-6 opacity-[0.11]">
           {Array.from({ length: 7 }, (_, row) => (
-            <p key={row} className="display whitespace-nowrap text-7xl text-racing-red" style={{ marginLeft: `${(row % 2) * -6}rem` }}>
-              {Array.from({ length: 12 }, (__, k) => <BrandName key={k} className="mr-[0.45em]" />)}
+            <p key={row} className="display whitespace-nowrap text-7xl uppercase text-racing-red" style={{ marginLeft: `${(row % 2) * -6}rem` }}>
+              {`${gpName || 'Next race'} `.repeat(10)}
             </p>
           ))}
         </div>
@@ -204,13 +204,13 @@ const MainPage: React.FC = () => {
 
       {/* ---------------------------------------------------------------- explore */}
       <section className="mx-auto max-w-[1600px] px-4 py-28 sm:px-6 lg:px-10" aria-labelledby="explore">
-        <SectionTitle id="explore" red={<BrandName />} white="Explore" />
+        <SectionTitle id="explore" red="Explore" white="The data" />
         <div className="mt-14 grid gap-12 md:grid-cols-2">
           {EXPLORE.map((e) => (
             <div key={e.to} className="flex gap-6">
               <span className="w-px flex-shrink-0 bg-white" aria-hidden="true" />
               <div>
-                <p className="label text-white">{e.tag}<span className="mx-2">|</span><BrandName className="text-racing-red" /></p>
+                <p className="label text-racing-red">{e.tag}</p>
                 <h3 className="display mt-2 text-3xl text-white">{e.title}</h3>
                 <p className="mt-3 max-w-md leading-relaxed text-gray-300">{e.text}</p>
                 <Link to={e.to}
