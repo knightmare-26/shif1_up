@@ -106,7 +106,6 @@ const Dashboard: React.FC = () => {
     <PageShell>
       <PageHeader
         title="Dashboard"
-        subtitle={`Formula 1 analytics — ${year} season`}
         actions={
           <SelectField label="Year" value={year} onChange={(v) => setYear(Number(v))}>
             {YEAR_OPTIONS.map((y) => <option key={y} value={y}>{y}</option>)}

@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Trophy } from 'lucide-react';
+import { Lightbulb, Trophy } from 'lucide-react';
 import {
   backendApi, ChampionshipBacktest, ChampionshipBacktestSummary, ChampionshipOutlook as Outlook, ChampionshipRow,
 } from '../services/backendApi';
 import {
-  Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice, Pill,
+  Button, Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Pill,
   PositionBadge, SelectField, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
 import { formatChance } from '../utils/probability';
@@ -28,45 +28,68 @@ function likeliestFinish(row: ChampionshipRow): [number, number] | null {
   return [best + 1, probs[best]];
 }
 
-const StatusBanner: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kind }) => {
-  const title = kind === 'drivers' ? "Drivers' title" : "Constructors' title";
-  const leader = outlook.standings[0];
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+/**
+ * The title race in one or two lines: where it stands, then what settles it next (the clinch
+ * scenario at the next race) or, failing that, the title chances. Worked out from the outlook, so it
+ * changes after every race weekend (and refreshes on an open page when new results land).
+ */
+export function titleInsights(outlook: Outlook, kind: View): string[] {
+  const [leader, second] = outlook.standings;
   const left = outlook.remaining.length;
+  const s = kind === 'drivers' ? 's' : '';
+  const pts = (n: number) => `${n} point${n === 1 ? '' : 's'}`;
 
   if (outlook.status === 'finished') {
-    return <Notice tone="info" className="">{title}: <strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship.</Notice>;
+    const by = leader && second ? ` by ${pts(round1(leader.points - second.points))} over ${second.name}` : '';
+    return [`${outlook.champion ?? leader?.name} won the ${outlook.year} title${by}.`];
   }
-  if (outlook.clinched) {
-    return (
-      <Notice tone="info" className="">
-        <strong className="text-white">{outlook.champion}</strong> {kind === 'drivers' ? 'is' : 'are'} the {outlook.year} champion
-        {kind === 'constructors' ? 's' : ''} — clinched with {plural(left, 'round')} to go.
-      </Notice>
-    );
-  }
-  if (outlook.status === 'pre_season' || !leader) {
-    return <Notice tone="info" className="">The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</Notice>;
-  }
-  const hint = outlook.next_race_clinch;
-  return (
-    <Notice tone="info" className="">
-      {leader.name} lead{kind === 'drivers' ? 's' : ''} after {plural(outlook.rounds_completed, 'round')}. {plural(left, 'round')} left,
-      with up to {outlook.max_points_remaining} points still available to {kind === 'drivers' ? 'a driver' : 'a team'}.
-      {hint && (
-        hint.margin_needed > 0
-          ? <> {leader.name} can clinch it at the {hint.race_name} by outscoring {hint.rival_name} by {hint.margin_needed} or more points.</>
-          : <> {leader.name} clinches it at the {hint.race_name} unless {hint.rival_name} outscores them by {1 - hint.margin_needed} or more.</>
-      )}
-    </Notice>
-  );
-};
+  if (outlook.clinched) return [`${outlook.champion} clinched the ${outlook.year} title with ${plural(left, 'round')} to go.`];
 
-const ChanceBar: React.FC<{ p: number; color: string }> = ({ p, color }) => (
+  const favourites = [...outlook.standings].sort((a, b) => b.title_probability - a.title_probability)
+    .filter((r) => r.title_probability > 0).slice(0, 3);
+  const chances = favourites.length
+    ? `Title chances: ${favourites.map((r) => `${r.name} ${formatChance(r.title_probability)}`).join(', ')}.` : null;
+  if (outlook.status === 'pre_season' || !leader) {
+    return [`The ${outlook.year} season hasn't started yet.`, ...(chances ? [chances] : [])];
+  }
+
+  const gap = second ? round1(leader.points - second.points) : 0;
+  const standing = !second ? `${leader.name} lead${s}`
+    : gap === 0 ? `${leader.name} and ${second.name} are level on points`
+      : `${leader.name} lead${s} ${second.name} by ${pts(gap)}`;
+  const lines = [`${standing} with ${plural(left, 'round')} (up to ${outlook.max_points_remaining} points) left.`];
+  const hint = outlook.next_race_clinch;
+  const race = hint ? `${hint.race_name.replace(/\s*Grand Prix$/i, '')} GP` : '';
+  if (hint && hint.margin_needed > 0) {
+    lines.push(`${leader.name} can clinch it at the ${race} by outscoring ${hint.rival_name} by ${pts(hint.margin_needed)} or more.`);
+  } else if (hint) {
+    lines.push(`${leader.name} clinch${kind === 'drivers' ? 'es' : ''} it at the ${race} unless ${hint.rival_name} outscore${s} them by ${pts(1 - hint.margin_needed)} or more.`);
+  } else if (chances) {
+    lines.push(chances);
+  }
+  return lines;
+}
+
+const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => (
+  <section id={id} aria-label="Insights" className="space-y-2 border-l-2 border-racing-red bg-ink-900 px-5 py-4">
+    {titleInsights(outlook, kind).map((line) => (
+      <p key={line} className="text-base leading-relaxed text-white">{line}</p>
+    ))}
+  </section>
+);
+
+/** The title chance drawn as a bar for the top ten (out of contention too, at 0%); below that, the number. */
+const BAR_ROWS = 10;
+const ChanceBar: React.FC<{ p: number; color: string; bar: boolean }> = ({ p, color, bar }) => (
   <span className="flex items-center justify-end gap-3">
-    <span className="hidden h-1.5 w-24 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
-      <span className="block h-full rounded" style={{ width: `${Math.max(p * 100, p > 0 ? 2 : 0)}%`, backgroundColor: color }} />
-    </span>
-    <span className="w-10 font-bold tabular-nums text-white">{formatChance(p)}</span>
+    {bar && (
+      <span className="hidden h-1.5 w-24 overflow-hidden rounded bg-gray-800 sm:block" aria-hidden="true">
+        <span className="block h-full rounded" style={{ width: `${Math.max(p * 100, p > 0 ? 2 : 0)}%`, backgroundColor: color }} />
+      </span>
+    )}
+    <span className={`w-10 font-bold tabular-nums ${p > 0 ? 'text-white' : 'text-gray-500'}`}>{formatChance(p)}</span>
   </span>
 );
 
@@ -123,7 +146,10 @@ const OutlookTable: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kin
               )}
               {!decided && (
                 <Td align="right">
-                  {eliminated ? <span className="text-gray-600">—</span> : <ChanceBar p={row.title_probability} color={color} />}
+                  {row.position <= BAR_ROWS
+                    ? <ChanceBar p={eliminated ? 0 : row.title_probability} color={color} bar />
+                    : eliminated ? <span className="text-gray-600">—</span>
+                      : <ChanceBar p={row.title_probability} color={color} bar={false} />}
                 </Td>
               )}
             </Tr>
@@ -184,6 +210,7 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backtest, setBacktest] = useState<ChampionshipBacktest | null>(null);
+  const [showInsights, setShowInsights] = useState(false);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -227,6 +254,12 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
         <SelectField label="Championship" value={view} onChange={(v) => setView(v as View)} className="min-w-[240px]">
           {VIEWS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </SelectField>
+        {outlook && !empty && (
+          <Button variant="secondary" icon={<Lightbulb className="h-4 w-4" />}
+            aria-expanded={showInsights} aria-controls="title-insights" onClick={() => setShowInsights((v) => !v)}>
+            Insights
+          </Button>
+        )}
       </FilterBar>
       <div className="space-y-6">
         {loading ? <Card><LoadingState label="Loading predictions…" /></Card> : error ? (
@@ -241,14 +274,14 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
           </Card>
         ) : (
           <>
-            <StatusBanner outlook={outlook} kind={view} />
+            {showInsights && <InsightsPanel id="title-insights" outlook={outlook} kind={view} />}
             <Card>
               <CardHeader
                 title={`${view === 'drivers' ? "Drivers'" : "Constructors'"} Championship — ${year}`}
                 icon={<Trophy className="h-4 w-4" />}
                 subtitle={outlook.status === 'finished'
                   ? 'Final standings'
-                  : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · sorted by the current table`}
+                  : `After round ${outlook.rounds_completed} of ${outlook.rounds_total}`}
               />
               <OutlookTable outlook={outlook} kind={view} />
             </Card>

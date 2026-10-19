@@ -7,7 +7,7 @@ export const LoadingState: React.FC<{ label?: string; className?: string }> = ({
   label = 'Loading…',
   className = 'py-16',
 }) => (
-  <div role="status" className={`flex items-center justify-center gap-2 text-sm text-gray-400 ${className}`}>
+  <div role="status" className={`flex items-center justify-center gap-2 text-sm uppercase tracking-wider text-muted ${className}`}>
     <RefreshCw className="h-4 w-4 animate-spin text-racing-red" aria-hidden="true" />
     {label}
   </div>
@@ -21,7 +21,7 @@ export const ErrorState: React.FC<{
 }> = ({ title = "Couldn't load this", message, onRetry, className = 'py-14' }) => (
   <div role="alert" className={`flex flex-col items-center px-4 text-center ${className}`}>
     <AlertTriangle className="mb-3 h-8 w-8 text-racing-red" aria-hidden="true" />
-    <p className="font-semibold text-white">{title}</p>
+    <p className="font-medium uppercase tracking-wider text-white">{title}</p>
     {message && <p className="mt-1 max-w-md text-sm text-gray-400">{message}</p>}
     {onRetry && (
       <Button variant="secondary" className="mt-4" onClick={onRetry}>
@@ -49,7 +49,7 @@ export const EmptyState: React.FC<{
 const NOTICE_TONES = {
   warning: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-300',
   error: 'border-red-500/30 bg-red-500/10 text-red-300',
-  info: 'border-gray-700 bg-gray-800/60 text-gray-300',
+  info: 'border-ink-500 bg-ink-800 text-gray-300',
 };
 
 export const Notice: React.FC<{
@@ -59,7 +59,7 @@ export const Notice: React.FC<{
 }> = ({ tone = 'info', children, className = 'mb-6' }) => (
   <div
     role={tone === 'error' ? 'alert' : undefined}
-    className={`flex items-start gap-3 rounded-lg border px-4 py-3 text-sm ${NOTICE_TONES[tone]} ${className}`}
+    className={`flex items-start gap-3 border border-l-2 px-4 py-3 text-sm ${NOTICE_TONES[tone]} ${className}`}
   >
     <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
     <div>{children}</div>
