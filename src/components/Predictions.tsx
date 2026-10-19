@@ -514,7 +514,7 @@ const BacktestTab: React.FC = () => {
   const [showCircuitName, setShowCircuitName] = useState(false);
 
   // The server rebuilds this list by itself after a race weekend's results come in; while it
-  // works (`updating`) the current list is shown and checked again every 30s.
+  // works (`updating`) the current list is shown, without a notice, and checked again every 30s.
   const [updating, setUpdating]             = useState(false);
   const [scores, setScores]                 = useState<BacktestProbabilityScores | null>(null);
   const [hitRates, setHitRates]             = useState<BacktestHitRates | null>(null);
@@ -632,12 +632,6 @@ const BacktestTab: React.FC = () => {
         <CheckboxField label="Circuit name" checked={showCircuitName} onChange={setShowCircuitName} />
       </FilterBar>
 
-      {updating && (
-        <Notice tone="info" className="mb-6">
-          Adding the latest races: the models are being re-scored against them. This takes a few minutes and the list
-          updates by itself.
-        </Notice>
-      )}
 
       {selectedRace ? (
         <BacktestRaceDetail key={`${selectedRace.race_id}-${session}`} race={selectedRace} session={session} />
@@ -933,11 +927,6 @@ const Predictions: React.FC = () => {
               <Card><LoadingState label="Loading predictions…" /></Card>
             ) : hasResults ? (
               <FadeIn key={session}>
-                {shown?.predictions.length && shown.odds_available === false && (
-                  <Notice tone="info">
-                    The chances are still being worked out; they'll appear here in a minute or two.
-                  </Notice>
-                )}
                 {shown?.predictions.length ? (
                   isQualifying(session) ? (
                     <PredictionTable title={`${SESSION_LABELS[session]} Prediction`}
