@@ -8,6 +8,11 @@ Usage:
     python scripts/generate_static_data.py
     python scripts/generate_static_data.py --results-from 2018   # race results from a year
     python scripts/generate_static_data.py --year 2024           # refresh one year only
+    python scripts/generate_static_data.py --stats-only --standings-from 2000   # result counts only
+
+Result counts (public/data/stats): the Drivers/Teams tabs' optional columns — race and sprint
+wins/podiums, poles, top-3 starts. The API counts them from its database, which holds 2022 on;
+earlier seasons are counted here, the same way, from Jolpica's results.
 
 Only finished seasons are written (see the note at the bottom).
 """
@@ -23,6 +28,8 @@ import aiohttp
 BASE_URL    = "https://api.jolpi.ca/ergast/f1"
 OUT_DIR     = Path(__file__).parent.parent / "public" / "data"
 FIRST_WCC   = 1958   # constructors championship started
+STORED_FROM = 2022   # the API counts result stats from its own database from this season on
+COUNTS      = ("race_wins", "race_podiums", "sprint_wins", "sprint_podiums", "poles", "top3_starts")
 LOG_LEVEL   = logging.INFO
 
 # Polite rate-limiting: wait this long between every API call
@@ -150,6 +157,91 @@ async def fetch_race_results(session, year: int, round_num: int) -> list:
     return results
 
 
+async def fetch_season(session, year: int, what: str, table: str) -> list:
+    """A whole season of one Jolpica results table (results, qualifying, sprint), one entry per
+    round. Pages hold 100 rows and can split a race between them, so pages are merged by round."""
+    races: dict[int, dict] = {}
+    offset, total = 0, 1
+    while offset < total:
+        data = (await get_json(session, f"{BASE_URL}/{year}/{what}.json?limit=100&offset={offset}"))["MRData"]
+        total = int(data.get("total", 0))
+        page = data.get("RaceTable", {}).get("Races", [])
+        if not page:
+            break
+        for race in page:
+            entry = races.setdefault(int(race["round"]), {"round": int(race["round"]), table: []})
+            entry[table].extend(race.get(table, []))
+        offset += int(data.get("limit", 100))
+    return [races[r] for r in sorted(races)]
+
+
+def season_stats(year: int, races: list, qualifying: list, sprints: list) -> tuple[dict, dict]:
+    """The Drivers/Teams tabs' result counts for a season, defined as the API's
+    (GET /api/driver-stats, /api/constructor-stats): wins and podiums in the race and the sprint,
+    poles (P1 in qualifying) and top-3 starts (a Grand Prix started from grid slots 1-3; a pit-lane
+    start, grid 0, doesn't count). Jolpica has qualifying for every race from 2003 but only a few
+    before, so a race without it takes the pole from the grid: the driver who started first
+    (`poles_from_grid` lists those rounds). Teams count wins and poles once per race, podiums and
+    top-3 starts per car."""
+    drivers: dict[str, dict] = {}
+    teams: dict[str, dict] = {}
+
+    def rows(result):
+        d, c = result["Driver"], result["Constructor"]
+        driver = drivers.setdefault(d["driverId"], {
+            "code": d.get("code", ""), "driver_id": d["driverId"],
+            "driver_name": f"{d.get('givenName', '')} {d.get('familyName', '')}".strip(),
+            **{k: 0 for k in COUNTS}})
+        team = teams.setdefault(c["constructorId"], {
+            "constructor_id": c["constructorId"], "constructor_name": c.get("name", ""), **{k: 0 for k in COUNTS}})
+        return driver, team
+
+    def add(result, key):
+        for row in rows(result):
+            row[key] += 1
+
+    pole_sitters = {q["round"]: next((r for r in q["QualifyingResults"] if r.get("position") == "1"), None)
+                    for q in qualifying}
+    poles_from_grid = []
+    for race in races:
+        for r in race["Results"]:
+            rows(r)                                   # everyone who raced gets a row, zeros included
+            position, grid = int(r["position"]), int(r.get("grid") or 0)
+            if position == 1:
+                add(r, "race_wins")
+            if position <= 3:
+                add(r, "race_podiums")
+            if 1 <= grid <= 3:
+                add(r, "top3_starts")
+        pole = pole_sitters.get(race["round"])
+        if pole is None:
+            pole = next((r for r in race["Results"] if int(r.get("grid") or 0) == 1), None)
+            if pole is not None:
+                poles_from_grid.append(race["round"])
+        if pole is not None:
+            add(pole, "poles")
+    for sprint in sprints:
+        for r in sprint["SprintResults"]:
+            position = int(r["position"])
+            if position == 1:
+                add(r, "sprint_wins")
+            if position <= 3:
+                add(r, "sprint_podiums")
+
+    order = lambda row: tuple(-row[k] for k in COUNTS)  # noqa: E731 - as the API sorts
+    covered = {"year": year, "races_counted": len(races), "sprints_counted": len(sprints),
+               "poles_from_grid": poles_from_grid}
+    return ({**covered, "drivers": sorted(drivers.values(), key=order)},
+            {**covered, "constructors": sorted(teams.values(), key=order)})
+
+
+async def fetch_season_stats(session, year: int) -> tuple[dict, dict]:
+    races = await fetch_season(session, year, "results", "Results")
+    qualifying = await fetch_season(session, year, "qualifying", "QualifyingResults")
+    sprints = await fetch_season(session, year, "sprint", "SprintResults") if year >= 2021 else []
+    return season_stats(year, races, qualifying, sprints)
+
+
 # ---------------------------------------------------------------------------
 # Writers
 # ---------------------------------------------------------------------------
@@ -163,12 +255,33 @@ def write(path: Path, data) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(years: list[int], results_from: int):
+async def write_stats(session, year: int, refresh: bool) -> None:
+    """The result counts for a season the API doesn't hold (before STORED_FROM). A finished season
+    doesn't change, so an existing file is kept unless this year was asked for by name."""
+    paths = (OUT_DIR / "stats" / f"{year}_drivers.json", OUT_DIR / "stats" / f"{year}_constructors.json")
+    if year >= STORED_FROM or (all(p.exists() for p in paths) and not refresh):
+        return
+    try:
+        drivers, constructors = await fetch_season_stats(session, year)
+    except Exception as e:
+        log.warning("  result counts failed: %s", e)
+        return
+    if drivers["races_counted"]:
+        write(paths[0], drivers)
+        write(paths[1], constructors)
+        log.info("  result counts: %d races, %d sprints, poles from the grid in %d",
+                 drivers["races_counted"], drivers["sprints_counted"], len(drivers["poles_from_grid"]))
+
+
+async def run(years: list[int], results_from: int, stats_only: bool = False, refresh: bool = False):
     connector = aiohttp.TCPConnector(limit=5)   # polite concurrency
     async with aiohttp.ClientSession(connector=connector) as session:
 
         for year in years:
             log.info("Year %d …", year)
+            await write_stats(session, year, refresh)
+            if stats_only:
+                continue
 
             # Driver standings
             try:
@@ -230,6 +343,8 @@ if __name__ == "__main__":
                         help="Refresh a single year only")
     parser.add_argument("--standings-from", type=int, default=1950,
                         help="Fetch standings/schedule from this year (default: 1950)")
+    parser.add_argument("--stats-only", action="store_true",
+                        help=f"Only the result counts (public/data/stats; seasons before {STORED_FROM})")
     args = parser.parse_args()
 
     import datetime
@@ -240,5 +355,7 @@ if __name__ == "__main__":
     if args.year and args.year >= current_year:
         parser.error(f"{args.year} isn't finished; snapshots are only for past seasons")
     years = [args.year] if args.year else list(range(args.standings_from, current_year))
+    if args.stats_only:
+        years = [y for y in years if y < STORED_FROM]
 
-    asyncio.run(run(years, results_from=args.results_from))
+    asyncio.run(run(years, results_from=args.results_from, stats_only=args.stats_only, refresh=bool(args.year)))

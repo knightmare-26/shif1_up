@@ -1,0 +1,108 @@
+{
+  "year": 2021,
+  "races_counted": 22,
+  "sprints_counted": 3,
+  "poles_from_grid": [],
+  "constructors": [
+    {
+      "constructor_id": "red_bull",
+      "constructor_name": "Red Bull",
+      "race_wins": 11,
+      "race_podiums": 23,
+      "sprint_wins": 1,
+      "sprint_podiums": 3,
+      "poles": 8,
+      "top3_starts": 23
+    },
+    {
+      "constructor_id": "mercedes",
+      "constructor_name": "Mercedes",
+      "race_wins": 9,
+      "race_podiums": 28,
+      "sprint_wins": 2,
+      "sprint_podiums": 4,
+      "poles": 11,
+      "top3_starts": 28
+    },
+    {
+      "constructor_id": "mclaren",
+      "constructor_name": "McLaren",
+      "race_wins": 1,
+      "race_podiums": 5,
+      "sprint_wins": 0,
+      "sprint_podiums": 1,
+      "poles": 1,
+      "top3_starts": 6
+    },
+    {
+      "constructor_id": "alpine",
+      "constructor_name": "Alpine F1 Team",
+      "race_wins": 1,
+      "race_podiums": 2,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "constructor_id": "ferrari",
+      "constructor_name": "Ferrari",
+      "race_wins": 0,
+      "race_podiums": 5,
+      "sprint_wins": 0,
+      "sprint_podiums": 1,
+      "poles": 2,
+      "top3_starts": 5
+    },
+    {
+      "constructor_id": "williams",
+      "constructor_name": "Williams",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 2
+    },
+    {
+      "constructor_id": "alphatauri",
+      "constructor_name": "AlphaTauri",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 1
+    },
+    {
+      "constructor_id": "aston_martin",
+      "constructor_name": "Aston Martin",
+      "race_wins": 0,
+      "race_podiums": 1,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "alfa",
+      "constructor_name": "Alfa Romeo",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    },
+    {
+      "constructor_id": "haas",
+      "constructor_name": "Haas F1 Team",
+      "race_wins": 0,
+      "race_podiums": 0,
+      "sprint_wins": 0,
+      "sprint_podiums": 0,
+      "poles": 0,
+      "top3_starts": 0
+    }
+  ]
+}

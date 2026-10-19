@@ -16,10 +16,12 @@ const nameKey = (name?: string | null) =>
   (name ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z ]/g, '').trim();
 const lastName = (name?: string | null) => nameKey(name).split(' ').pop() ?? '';
 
-/** Find a standings row's stats: by driver code when the API gave one, else by full name, else by
- *  a surname only one driver has ("Kimi Antonelli" vs "Andrea Kimi Antonelli"). */
+/** Find a standings row's stats: by Jolpica's driver id (the older seasons' snapshots have it on
+ *  both sides), by driver code when the API gave one, else by full name, else by a surname only one
+ *  driver has ("Kimi Antonelli" vs "Andrea Kimi Antonelli"). */
 export function statsMatcher(stats: DriverResultStats[]) {
-  const byCode = new Map(stats.map((s) => [s.code.toUpperCase(), s]));
+  const byId = new Map(stats.filter((s) => s.driver_id).map((s) => [s.driver_id as string, s]));
+  const byCode = new Map(stats.filter((s) => s.code).map((s) => [s.code.toUpperCase(), s]));
   const byName = new Map(stats.map((s) => [nameKey(s.driver_name), s]));
   const surnames = new Map<string, DriverResultStats | null>();
   stats.forEach((s) => {
@@ -27,7 +29,8 @@ export function statsMatcher(stats: DriverResultStats[]) {
     surnames.set(key, surnames.has(key) ? null : s); // null = ambiguous
   });
   return (d: DriverStanding): DriverResultStats | undefined =>
-    (d.code ? byCode.get(d.code.toUpperCase()) : undefined)
+    (d.driver_id ? byId.get(d.driver_id) : undefined)
+    ?? (d.code ? byCode.get(d.code.toUpperCase()) : undefined)
     ?? byName.get(nameKey(d.driver_name))
     ?? surnames.get(lastName(d.driver_name))
     ?? undefined;

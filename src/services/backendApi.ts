@@ -6,6 +6,8 @@ import { Driver, Team, RaceResult } from '../types/f1';
 import type { LiveState } from '../components/LiveTimingBoard';
 
 export const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+/** The first season the API's database holds results for (the Drivers/Teams result columns). */
+export const STORED_RESULTS_FROM = 2022;
 
 /** Fired when the API says it (or its database) is waking up, so the app can show a banner and re-check. */
 export const SERVICE_WAKING_EVENT = 'shif1:service-waking';
@@ -33,9 +35,11 @@ export interface DriverStanding {
   code?: string | null;
 }
 
-/** Race and sprint wins/podiums per driver, counted from the stored results. */
+/** Race and sprint wins/podiums per driver, counted from the stored results (seasons before
+ *  STORED_RESULTS_FROM: from the committed snapshots, which also carry Jolpica's driver id). */
 export interface DriverResultStats {
   code: string;
+  driver_id?: string;
   driver_name: string | null;
   race_wins: number;
   race_podiums: number;
@@ -538,7 +542,7 @@ class BackendApiService {
     // Snapshots are only trustworthy for finished seasons. The current season
     // changes every race weekend (and its calendar can change mid-year), so a
     // committed snapshot would silently override fresher data from the API.
-    const season = /\/data\/(?:standings|schedule|results)\/(\d{4})/.exec(url);
+    const season = /\/data\/(?:standings|schedule|results|stats)\/(\d{4})/.exec(url);
     if (season && Number(season[1]) >= new Date().getFullYear()) return null;
 
     try {
@@ -575,11 +579,21 @@ class BackendApiService {
     return this.getCachedOrFetch('/api/drivers', params, 3600); // 1 hour cache
   }
 
+  // The API counts these from its database, which starts in STORED_RESULTS_FROM; earlier seasons
+  // are committed snapshots counted the same way (scripts/generate_static_data.py --stats-only).
   async getDriverStats(year: number): Promise<DriverStatsResponse> {
+    if (year < STORED_RESULTS_FROM) {
+      const snapshot = await this.fetchStatic<DriverStatsResponse>(`/data/stats/${year}_drivers.json`);
+      if (snapshot) return snapshot;
+    }
     return this.getCachedOrFetch('/api/driver-stats', { year }, 600);
   }
 
   async getConstructorStats(year: number): Promise<ConstructorStatsResponse> {
+    if (year < STORED_RESULTS_FROM) {
+      const snapshot = await this.fetchStatic<ConstructorStatsResponse>(`/data/stats/${year}_constructors.json`);
+      if (snapshot) return snapshot;
+    }
     return this.getCachedOrFetch('/api/constructor-stats', { year }, 600);
   }
 

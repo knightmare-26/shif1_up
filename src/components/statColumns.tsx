@@ -6,9 +6,10 @@ import { useOnDataChange } from '../hooks/useDataVersion';
 
 // Optional result columns shared by the Drivers and Teams tabs. Off by default; the choice is kept
 // in the URL (?cols=race_wins,poles) and applies to both tabs. The standings feed has no podiums,
-// poles or grids and doesn't split sprint from race wins, so these are counted from the stored
-// results (2022 onwards) — GET /api/driver-stats and /api/constructor-stats. A pole is P1 in
-// qualifying; a top-3 start is a Grand Prix started from grid slots 1-3.
+// poles or grids and doesn't split sprint from race wins, so these are counted from results: the
+// API's database from 2022 (GET /api/driver-stats and /api/constructor-stats), committed snapshots
+// before that (public/data/stats, 2000-2021). A pole is P1 in qualifying; a top-3 start is a Grand
+// Prix started from grid slots 1-3.
 export const STAT_COLUMNS = [
   { id: 'race_wins', label: 'Race wins', short: 'Wins' },
   { id: 'race_podiums', label: 'Race podiums', short: 'Podiums' },
@@ -87,7 +88,7 @@ export function statsNote(
     return <>Couldn't load these columns. <button type="button" onClick={reload} className="text-racing-red underline">Try again</button></>;
   }
   if (stats && empty) {
-    return `These columns are counted from stored results, which start in 2022 — not available for ${year}.`;
+    return `These columns aren't available for ${year}.`;
   }
   if (stats) {
     return `Counted from ${stats.races_counted} ${stats.races_counted === 1 ? 'race' : 'races'}`
