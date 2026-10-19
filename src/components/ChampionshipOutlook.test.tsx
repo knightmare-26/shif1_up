@@ -33,6 +33,10 @@ const outlook = (extra: Partial<Outlook> = {}): Outlook => ({
   computed_at: 't', ...extra,
 });
 
+const openInsights = async () => {
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Insights' })); });
+};
+
 async function renderAt(url = '/dashboard?tab=title') {
   await act(async () => {
     render(<MemoryRouter initialEntries={[url]}><ChampionshipOutlook year={2026} /></MemoryRouter>);
@@ -57,6 +61,7 @@ test('shows the title race, who is out of contention and the track record', asyn
   await renderAt();
 
   expect(api.getChampionshipOutlook).toHaveBeenCalledWith('drivers', 2026);
+  await openInsights();
   expect(screen.getByText(/Antonelli leads after 14 rounds/)).toBeInTheDocument();
   expect(screen.getByText(/up to 233 points/)).toBeInTheDocument();
   expect(screen.getByText('86%')).toBeInTheDocument();
@@ -70,6 +75,7 @@ test('the next-race clinch scenario is spelled out', async () => {
     next_race_clinch: { round: 15, race_name: 'Azerbaijan', rival: 'rus', rival_name: 'Russell', margin_needed: 7 },
   }));
   await renderAt();
+  await openInsights();
 
   expect(screen.getByText(/can clinch it at the Azerbaijan by outscoring Russell by 7 or more points/)).toBeInTheDocument();
 });
@@ -80,6 +86,7 @@ test('a clinched title is announced with the rounds to spare', async () => {
     remaining: [{ round: 22, name: 'Qatar', sprint: false }, { round: 23, name: 'Abu Dhabi', sprint: false }],
   }));
   await renderAt();
+  await openInsights();
 
   expect(screen.getByText(/clinched with 2 rounds to go/)).toBeInTheDocument();
   expect(screen.getByText('Champion')).toBeInTheDocument();
@@ -122,4 +129,24 @@ test('the first load is just "Loading predictions…"; switching championship ke
   await act(async () => { fireEvent.change(view, { target: { value: 'constructors' } }); });
   expect(screen.getByRole('combobox')).toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('Loading predictions…');
+});
+
+test('the summary sits under an Insights button, with more insights from the same numbers', async () => {
+  await renderAt();
+  const button = screen.getByRole('button', { name: 'Insights' });
+  expect(button).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText(/leads after 14 rounds/)).not.toBeInTheDocument();       // folded away
+
+  await openInsights();
+  expect(button).toHaveAttribute('aria-expanded', 'true');
+  const panel = screen.getByRole('region', { name: 'Insights' });
+  expect(panel).toHaveTextContent('After round 14 of 23 · updated after every race weekend');
+  expect(panel).toHaveTextContent(/3 drivers can still win it mathematically: Antonelli, Russell and Hadjar/);
+  expect(panel).toHaveTextContent(/Title chances: Antonelli 86%/);
+  expect(panel).toHaveTextContent(/Antonelli is projected to finish on 350 points \(likely 300–400\)/);
+  expect(panel).toHaveTextContent(/The closest fight is for P2: Russell is 50 points ahead of Hadjar/);
+  expect(panel).toHaveTextContent(/Hadjar missed the latest race/);
+
+  await openInsights();
+  expect(screen.queryByRole('region', { name: 'Insights' })).not.toBeInTheDocument();
 });

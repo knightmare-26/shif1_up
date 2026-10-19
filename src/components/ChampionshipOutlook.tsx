@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Trophy } from 'lucide-react';
+import { Lightbulb, Trophy } from 'lucide-react';
 import {
   backendApi, ChampionshipBacktest, ChampionshipBacktestSummary, ChampionshipOutlook as Outlook, ChampionshipRow,
 } from '../services/backendApi';
 import {
-  Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Notice, Pill,
+  Button, Card, CardHeader, EmptyState, ErrorState, FadeIn, FilterBar, HowItWorksCard, LoadingState, Pill,
   PositionBadge, SelectField, TableWrap, TeamChip, Td, Th, Tr, teamColor,
 } from './ui';
 import { formatChance } from '../utils/probability';
@@ -28,38 +28,105 @@ function likeliestFinish(row: ChampionshipRow): [number, number] | null {
   return [best + 1, probs[best]];
 }
 
-const StatusBanner: React.FC<{ outlook: Outlook; kind: View }> = ({ outlook, kind }) => {
-  const title = kind === 'drivers' ? "Drivers' title" : "Constructors' title";
-  const leader = outlook.standings[0];
-  const left = outlook.remaining.length;
+const listOf = (names: string[]) =>
+  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
-  if (outlook.status === 'finished') {
-    return <Notice tone="info" className="">{title}: <strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship.</Notice>;
+/**
+ * What the latest results mean for the title, in sentences — who leads, what's left, how it can be
+ * clinched, who can still win, the chances, the closest fight, the projection. Worked out from the
+ * outlook, so it changes after every race weekend (and refreshes on an open page when new results
+ * land).
+ */
+export function titleInsights(outlook: Outlook, kind: View): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const rows = outlook.standings;
+  const leader = rows[0];
+  const left = outlook.remaining.length;
+  const s = kind === 'drivers' ? 's' : '';
+  const noun = kind === 'drivers' ? 'driver' : 'team';
+  const decided = outlook.status === 'finished';
+
+  if (decided) {
+    const second = rows[1];
+    out.push(<><strong className="text-white">{outlook.champion ?? leader?.name}</strong> won the {outlook.year} championship
+      {second && leader ? `, ${round1(leader.points - second.points)} points ahead of ${second.name}` : ''}.</>);
+    return out;
   }
   if (outlook.clinched) {
-    return (
-      <Notice tone="info" className="">
-        <strong className="text-white">{outlook.champion}</strong> {kind === 'drivers' ? 'is' : 'are'} the {outlook.year} champion
-        {kind === 'constructors' ? 's' : ''} — clinched with {plural(left, 'round')} to go.
-      </Notice>
-    );
+    out.push(<><strong className="text-white">{outlook.champion}</strong> {kind === 'drivers' ? 'is' : 'are'} the {outlook.year} champion
+      {kind === 'constructors' ? 's' : ''} — clinched with {plural(left, 'round')} to go.</>);
+  } else if (outlook.status === 'pre_season' || !leader) {
+    out.push(<>The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</>);
+  } else {
+    out.push(<>{leader.name} lead{s} after {plural(outlook.rounds_completed, 'round')}.</>);
+    out.push(<>{plural(left, 'round')} left, with up to {outlook.max_points_remaining} points still available to a {noun}.</>);
+    const hint = outlook.next_race_clinch;
+    if (hint) {
+      out.push(hint.margin_needed > 0
+        ? <>{leader.name} can clinch it at the {hint.race_name} by outscoring {hint.rival_name} by {hint.margin_needed} or more points.</>
+        : <>{leader.name} clinches it at the {hint.race_name} unless {hint.rival_name} outscores them by {1 - hint.margin_needed} or more.</>);
+    }
   }
-  if (outlook.status === 'pre_season' || !leader) {
-    return <Notice tone="info" className="">The {outlook.year} season hasn't started, so this is a projection from last season's form and the full calendar.</Notice>;
+  if (!rows.length) return out;
+
+  if (!outlook.clinched && outlook.status === 'in_progress') {
+    const alive = rows.filter((r) => r.alive).map((r) => r.name);
+    out.push(alive.length === 1
+      ? <>Only {alive[0]} can still win it.</>
+      : <>{alive.length} {noun}s can still win it mathematically: {listOf(alive)}.</>);
   }
-  const hint = outlook.next_race_clinch;
-  return (
-    <Notice tone="info" className="">
-      {leader.name} lead{kind === 'drivers' ? 's' : ''} after {plural(outlook.rounds_completed, 'round')}. {plural(left, 'round')} left,
-      with up to {outlook.max_points_remaining} points still available to {kind === 'drivers' ? 'a driver' : 'a team'}.
-      {hint && (
-        hint.margin_needed > 0
-          ? <> {leader.name} can clinch it at the {hint.race_name} by outscoring {hint.rival_name} by {hint.margin_needed} or more points.</>
-          : <> {leader.name} clinches it at the {hint.race_name} unless {hint.rival_name} outscores them by {1 - hint.margin_needed} or more.</>
-      )}
-    </Notice>
-  );
-};
+  if (!outlook.clinched) {
+    const favourites = [...rows].sort((a, b) => b.title_probability - a.title_probability)
+      .filter((r) => r.title_probability > 0).slice(0, 3);
+    if (favourites.length) {
+      out.push(<>Title chances: {favourites.map((r) => `${r.name} ${formatChance(r.title_probability)}`).join(', ')}.</>);
+    }
+  }
+  const top = rows[0];
+  if (top.points_p90 > top.points_p10) {
+    out.push(<>{top.name} {kind === 'drivers' ? 'is' : 'are'} projected to finish on {Math.round(top.projected_points)} points
+      (likely {Math.round(top.points_p10)}–{Math.round(top.points_p90)}).</>);
+  }
+  // The closest fight below the top: the smallest gap between neighbours in the top eight.
+  let closest: [ChampionshipRow, ChampionshipRow] | null = null;
+  for (let i = 1; i + 1 < Math.min(rows.length, 8); i += 1) {
+    if (!closest || rows[i].points - rows[i + 1].points < closest[0].points - closest[1].points) closest = [rows[i], rows[i + 1]];
+  }
+  if (closest) {
+    const gap = round1(closest[0].points - closest[1].points);
+    out.push(gap === 0
+      ? <>The closest fight is for P{closest[0].position}: {closest[0].name} and {closest[1].name} are level on points.</>
+      : <>The closest fight is for P{closest[0].position}: {closest[0].name} {kind === 'drivers' ? 'is' : 'are'} {gap} point{gap === 1 ? '' : 's'} ahead of {closest[1].name}.</>);
+  }
+  const missed = rows.filter((r) => r.racing === false).map((r) => r.name);
+  if (kind === 'drivers' && missed.length) {
+    out.push(<>{listOf(missed)} missed the latest race; the projection gives them no more points.</>);
+  }
+  return out;
+}
+
+const InsightsPanel: React.FC<{ id: string; outlook: Outlook; kind: View }> = ({ id, outlook, kind }) => (
+  <section id={id} aria-label="Insights">
+    <Card>
+      <CardHeader
+        title="Insights"
+        icon={<Lightbulb className="h-4 w-4" />}
+        subtitle={outlook.status === 'finished'
+          ? `The ${outlook.year} season, final`
+          : `After round ${outlook.rounds_completed} of ${outlook.rounds_total} · updated after every race weekend`}
+      />
+      <ul className="divide-y divide-ink-600">
+        {titleInsights(outlook, kind).map((item, i) => (
+          <li key={i} className="flex gap-3 px-5 py-3 text-sm leading-relaxed text-gray-200">
+            <span className="text-racing-red" aria-hidden="true">|</span>
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  </section>
+);
 
 const ChanceBar: React.FC<{ p: number; color: string }> = ({ p, color }) => (
   <span className="flex items-center justify-end gap-3">
@@ -184,6 +251,7 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [backtest, setBacktest] = useState<ChampionshipBacktest | null>(null);
+  const [showInsights, setShowInsights] = useState(false);
   const requestId = useRef(0);
 
   const load = useCallback(async () => {
@@ -227,6 +295,12 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
         <SelectField label="Championship" value={view} onChange={(v) => setView(v as View)} className="min-w-[240px]">
           {VIEWS.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
         </SelectField>
+        {outlook && !empty && (
+          <Button variant="secondary" icon={<Lightbulb className="h-4 w-4" />}
+            aria-expanded={showInsights} aria-controls="title-insights" onClick={() => setShowInsights((v) => !v)}>
+            Insights
+          </Button>
+        )}
       </FilterBar>
       <div className="space-y-6">
         {loading ? <Card><LoadingState label="Loading predictions…" /></Card> : error ? (
@@ -241,7 +315,7 @@ const ChampionshipOutlook: React.FC<{ year: number }> = ({ year }) => {
           </Card>
         ) : (
           <>
-            <StatusBanner outlook={outlook} kind={view} />
+            {showInsights && <InsightsPanel id="title-insights" outlook={outlook} kind={view} />}
             <Card>
               <CardHeader
                 title={`${view === 'drivers' ? "Drivers'" : "Constructors'"} Championship — ${year}`}
